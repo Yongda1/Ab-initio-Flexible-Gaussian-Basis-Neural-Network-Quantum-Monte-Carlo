@@ -43,6 +43,8 @@ def logdet_matmul(xs: Sequence[jnp.ndarray], w: Optional[jnp.ndarray] = None) ->
     """return sum_i w_i D_i
     be careful, we do not use full_det. This means that we use |D_spin_up| * |D_spin_down|. So we can avoid many if.
     Here we do not consider the 1x1 determinant."""
+    #the following line has some problems. The return value of functool.reduce is a number but not a list. Fine, we
+    #solve this problem later.
     phase_in, logabsdet = functools.reduce(lambda a, b: (a[0] * b[0], a[1] + b[1]), [slogdet(x) for x in xs])
     maxlogabsdet = jnp.max(logabsdet)
     det = phase_in * jnp.exp(logabsdet - maxlogabsdet)
