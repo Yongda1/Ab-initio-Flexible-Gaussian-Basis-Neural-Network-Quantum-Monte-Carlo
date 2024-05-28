@@ -36,6 +36,18 @@ class FeatureLayer:
     init: FeatureInit
     apply: FeatureApply
 
+
+def construct_input_features(pos: jnp.ndarray, atoms: jnp.ndarray, ndim: int = 3) \
+        -> Tuple[jnp.ndarray, jnp.ndarray, jnp.ndarray, jnp.ndarray]:
+    """Construct inputs to AINet from raw electron and atomic positions."""
+    ae = jnp.reshape(pos, [-1, 1, ndim]) - atoms[None, ...]
+    ee = jnp.reshape(pos, [1, -1, ndim]) - jnp.reshape(pos, [-1, 1, ndim])
+    r_ae = jnp.linalg.norm(ae, axis=2, keepdims=True)
+    n = ee.shape[0]
+    r_ee = (jnp.linalg.norm(ee + jnp.eye(n)[..., None], axis=-1) * (1.0 - jnp.eye(n)))
+    return ae, ee, r_ae, r_ee[..., None]
+
+
 def make_ainet_features(natoms: int,
                         nspins: Tuple[int, int],
                         ndim: int = 3,):
@@ -50,6 +62,7 @@ def make_ainet_features(natoms: int,
 
     return FeatureLayer(init=init, apply=apply)
 
+'''
 def make_ai_net(nspins: Tuple[int, int],
                 charges: jnp.ndarray,
                 ndim: int = 3,
@@ -59,4 +72,4 @@ def make_ai_net(nspins: Tuple[int, int],
                 ) -> Network:
     natoms = charges.shape[0]
     feature_layer = make_ainet_features(natoms, nspins, ndim=ndim)
-    
+'''
