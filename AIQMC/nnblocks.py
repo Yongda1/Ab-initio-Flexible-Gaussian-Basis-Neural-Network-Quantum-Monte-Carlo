@@ -5,12 +5,12 @@ This is the initialization module of neural network.
 import functools
 import itertools
 from typing import MutableMapping, Optional, Sequence, Tuple
-import chex
+#import chex. something is wrong from this library chex.
 import jax
 import jax.numpy as jnp
 
 
-def init_linear_layer(key: chex.PRNGKey, in_dim: int, out_dim: int, include_bias: bool = True) \
+def init_linear_layer(key: jax.random.PRNGKey, in_dim: int, out_dim: int, include_bias: bool = True) \
         -> MutableMapping[str, jnp.ndarray]:
     """Initialise parameters for a linear layer, xw+b"""
     key1, key2 = jax.random.split(key)
@@ -29,7 +29,7 @@ def linear_layer(x: jnp.ndarray, w: jnp.ndarray, b: jnp.ndarray) -> jnp.ndarray:
 
 
 vmap_linear_layer = jax.vmap(linear_layer, in_axes=(0, None, None), out_axes=0)
-"""we map the function along x axis"""
+"""we map the function along x axis, i.e. along the electrons."""
 
 
 def slogdet(x):
