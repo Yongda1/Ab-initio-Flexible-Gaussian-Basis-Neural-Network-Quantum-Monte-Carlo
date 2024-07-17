@@ -13,7 +13,7 @@ from typing import Any, Iterable, Mapping, MutableMapping, Optional, Sequence, T
 import attr
 # from AIQMC import envelopes
 from AIQMC import nnblocks
-from AIQMC import Jastrow
+#from AIQMC import Jastrow
 import jax
 import chex
 import jax.numpy as jnp
@@ -57,9 +57,19 @@ class FeatureLayer:
     init: FeatureInit
     apply: FeatureApply
 
+class InitLayersFn(Protocol):
+    def __call__(self, key:chex.PRNGKey) -> Tuple[int, ParamTree]:
+        """Returns output dim and initizalized parameters for the interaction layers."""
 
-"""Let us finish the first function for constructing input features. We do not need the norm of r_ae and r_ee vectors as input
-features, because we use one-body and two body Jastrow factors. Here, we need think how many features will be used."""
+class ApplyLayersFn(Protocol):
+    def __call__(self, params, ae: jnp.ndarray, ee: jnp.ndarray, nelectrons: int = 4) -> jnp.ndarray:
+        """Forward evaluation of the interaction layers."""
+
+
+"""Let us finish the first function for constructing input features. 
+We do not need the norm of r_ae and r_ee vectors as input features, 
+because we use one-body and two body Jastrow factors. Here, we need think how many features will be used.
+Currenly, we only use a full connected layers"""
 
 
 def construct_input_features(pos: jnp.ndarray, atoms: jnp.ndarray, ndim: int = 3) \
@@ -80,12 +90,13 @@ def construct_input_features(pos: jnp.ndarray, atoms: jnp.ndarray, ndim: int = 3
     return ae, ee
 
 
-def make_ainet_features(natoms: int, nelectrons: int, ndim: int = 3):
+def make_ainet_features(natoms: int = 2, nelectrons: int = 4, ndim: int = 3) -> FeatureLayer:
 
     def init() -> Tuple[Tuple[int, int], Param]:
         """This is the number of per electron-atom pair, electron-electron features.
         We need use two streams for ae and ee. And it is different from FermiNet. Because our convolution layer has
-        a different structure."""
+        a different structure.For simplicity, we only use the full connected layer.
+        Maybe later, we will spend some time to rewrite this part."""
         return (natoms * ndim, nelectrons * ndim), {}
 
     def apply(ae, ee) -> Tuple[jnp.ndarray, jnp.ndarray]:
@@ -94,29 +105,29 @@ def make_ainet_features(natoms: int, nelectrons: int, ndim: int = 3):
         ee_features = ee
         return ae_features, ee_features
 
-    return init, apply
+    return FeatureLayer(init=init, apply=apply)
 
 pos = jnp.array([1, 1, 1, 1, 0.5, 0.5, 0.5, 0.5, 0.5, 0.5, 1, 0.5])
 atoms = jnp.array([[0, 0, 0], [1, 1, 1]])
 ae, ee = construct_input_features(pos, atoms, ndim=3)
-init, apply = make_ainet_features(natoms=3, nelectrons=4, ndim=3)
-ae_features, ee_features = apply(ae, ee)
+feature_layer = make_ainet_features(natoms=3, nelectrons=4, ndim=3)
+ae_features, ee_features = feature_layer.apply(ae, ee)
 print("ae_features", ae_features)
 print("ee_features", ee_features)
 
 
-def construct_symmetric_features(ae: jnp.ndarray, ee: jnp.ndarray, nelectrons: int) -> jnp.ndarray:
+def construct_symmetric_features(ae_features: jnp.ndarray, ee_features: jnp.ndarray, nelectrons: int) -> jnp.ndarray:
     """here, we dont spit spin up and spin down electrons, so this function is not necessary."""
-    ee = jnp.reshape(ee, [nelectrons, -1])
-    print("ee", ee)
-    print("ae", ae)
-    h = jnp.concatenate((ae, ee), axis=-1)
+    ee_features = jnp.reshape(ee_features, [nelectrons, -1])
+    #print("ee", ee)
+    #print("ae", ae)
+    h = jnp.concatenate((ae_features, ee_features), axis=-1)
     return h
 
 h = construct_symmetric_features(ae_features, ee_features, nelectrons=4)
 print("h", h)
 
-def make_ai_net_layers(nspins: Tuple[int, int], natoms: int, feature_layer):
+def make_ai_net_layers(nspins: Tuple[int, int], natoms: int, feature_layer) -> Tuple[InitLayersFn, ApplyLayersFn]:
     """
     we have two streams ae and ee. So, the hidden layers must also have two parts.
     :param nspins:
@@ -125,44 +136,51 @@ def make_ai_net_layers(nspins: Tuple[int, int], natoms: int, feature_layer):
     :param hidden_dims:
     :return:
     """
-    def init(key: chex.PRNGKey):
+    def init(key: chex.PRNGKey) -> Tuple[int, ParamTree]:
         params = {}
         (num_one_features, num_two_features), params['input'] = feature_layer.init()
         key, subkey = jax.random.split(key)
         nfeatures = num_one_features + num_two_features        
         layers = []
         hidden_dims = jnp.ndarray([16, 16, nfeatures])
-        for i in hidden_dims:
+        """here, we have some problems. Please be careful about the input dimensions and output dimensions.
+        Here, we only use one full connected. Therefore, the output dimensions should be the input for next layer."""
+        dims_in = nfeatures
+        for i in range(len(hidden_dims)):
             layer_params = {}
-            dims_in = nfeatures
-            dims_out = i
-            layer_params['ae'] = nnblocks.init_linear_layer(key, in_dim=dims_in, out_dim=dims_out, include_bias=True)
+            dims_out = hidden_dims[i]
+            layer_params['ae_ee'] = nnblocks.init_linear_layer(key, in_dim=dims_in, out_dim=dims_out, include_bias=True)
             layers.append(layer_params)
+            dims_in = dims_out #this is why we need reset the input dimensions.
 
         params['streams_linear_layer'] = layers
         output_dims = nfeatures
+
         return output_dims, params
 
-    def apply_layer(params: Mapping[str, ParamTree], nelectrons: int, ae: jnp.ndarray, ee: jnp.ndarray):
-        #residual = lambda x, y: (x + y)/jnp.sqrt(2.0) if x.shape == y.shape else y
-        h_in = construct_symmetric_features(ae, ee, nelectrons, nspins=nspins)
-        h_next = jnp.tanh(nnblocks.linear_layer(h_in, **params['ae']))
-        #h = residual(h, h_next)
+    def apply_layer(params: Mapping[str, ParamTree], h_in: jnp.ndarray) -> jnp.ndarray:
+        h_next = jnp.tanh(nnblocks.linear_layer(h_in, **params['ae_ee']))
         return h_next
-    """we stop here 16/7/2024, to be continued."""
-    def apply(params, ae_ee: jnp.ndarray, spins: jnp.ndarray, charges: jnp.ndarray) -> jnp.ndarray:
-        ae_ee_input = feature_layer.apply(ae_ee=ae_ee, **params['input'])
-        h = ae_ee_input
-        for i in range(len(hidden_dims)):
-            h = apply_layer(params['streams'][i], h)
 
-        h_to_orbitals = construct_symmetric_features(h)
+    def apply(params, ae: jnp.ndarray, ee: jnp.ndarray, nelectrons: int = 4) -> jnp.ndarray:
+        ae_features, ee_features = feature_layer.apply(ae, ee, **params['input'])
+        nfeatures = 2 * 3 + 4 * 3
+        hidden_dims = jnp.ndarray([16, 16, nfeatures])
+        h_in = construct_symmetric_features(ae_features, ee_features, nelectrons)
+
+        for i in range(len(hidden_dims)):
+            h = apply_layer(params['streams_linear_layer'][i], h_in=h_in)
+            h_in = h
+
+        h_to_orbitals = h
         return h_to_orbitals
+
     return init, apply
 
 
-def make_orbitals(nspins: Tuple[int, int], charges: jnp.ndarray, equivariant_layers):
+def make_orbitals(equivariant_layers: Tuple[InitLayersFn, ApplyLayersFn]) -> ...:
     equivariant_layers_init, equivariant_layers_apply = equivariant_layers
+    """here, we need use complicated Jastrow factor. So this module could cost us some time."""
     jastrow_ae_init, jastrow_ae_apply, jastrow_ee_init, jastrow_ee_apply = Jastrow.get_jastrow
 
     def init(key: chex.PRNGKey) -> ParamTree:
