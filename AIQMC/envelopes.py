@@ -4,7 +4,12 @@ Actually, this part is extremely important. Because our orbitals constructed fro
  corresponds to this order. This means that initio positions of electrons must distribute according to this orbitals order.
  The second problem is about the output from neural network. We are not only using the modified r. i.e. electrons positions, also
  modified coefficients, coe(r), modified exponents, xi(r). So these two variables should be done in nn moudle, but not in envelope.
-  We have to wait for the output from neural network, then finish this module."""
+  We have to wait for the output from neural network, then finish this module.
+  Currently, we already confirm the shape of output array, it should be h[numer_one_features + number_two_features].
+  We can get r easily by multiplying a vector w. 18/07/2024.
+  So, we can begin to deal with angular momentum functions in the envelope function."""
+import enum
+
 import numpy as np
 from typing_extensions import Protocol
 import jax
@@ -12,17 +17,8 @@ import jax.numpy as jnp
 import attr
 from typing import Any, Mapping, Sequence, Union, Tuple
 
-
-def construct_input_features(pos: jnp.ndarray, atoms: jnp.ndarray, ndim: int = 3) \
-        -> Tuple[jnp.ndarray, jnp.ndarray, jnp.ndarray, jnp.ndarray]:
-    """Construct inputs to AINet from raw electron and atomic positions."""
-    ae = jnp.reshape(pos, [-1, 1, ndim]) - atoms[None, ...]
-    ee = jnp.reshape(pos, [1, -1, ndim]) - jnp.reshape(pos, [-1, 1, ndim])
-    r_ae = jnp.linalg.norm(ae, axis=2, keepdims=True)
-    n = ee.shape[0]
-    r_ee = (jnp.linalg.norm(ee + jnp.eye(n)[..., None], axis=-1) * (1.0 - jnp.eye(n)))
-    return ae, ee, r_ae, r_ee[..., None]
-
+class EnvelopType(enum.Enum):
+    Expand_high_angular_momentum_functions = enum.atuo
 
 class EnvelopeInit(Protocol):
     def __call__(self, natom: int, output_dims: Union[int, Sequence[int]], ndim: int) \

@@ -13,8 +13,6 @@ charges = jnp.array([[[2], [2]], [[2], [2]], [[2], [2]], [[2], [2]]])
 ParamTree = Union[jnp.ndarray, Iterable['ParamTree'], Mapping[Any, 'ParamTree']]
 print("ae", ae)
 
-class JastrowType(enum.Enum):
-    PADE_EE_AE = enum.auto()
 
 
 def _jastrow_ee(ee: jnp.ndarray, params: ParamTree, jastrow_fun: Callable[[jnp.ndarray, float, jnp.ndarray], jnp.ndarray]) -> jnp.ndarray:
@@ -115,7 +113,7 @@ params2 = init()
 Jastrow_ae = apply(ae, charges, params2)
 
 
-def get_jastrow(jastrow: JastrowType):
+def get_jastrow():
         jastrow_ee_init, jastrow_ee_apply = make_pade_ee_jastrow()
         jastrow_ae_init, jastrow_ae_apply = make_pade_ae_jastrow()
         return jastrow_ae_init, jastrow_ae_apply, jastrow_ee_init, jastrow_ee_apply

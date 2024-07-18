@@ -13,7 +13,7 @@ from typing import Any, Iterable, Mapping, MutableMapping, Optional, Sequence, T
 import attr
 # from AIQMC import envelopes
 from AIQMC import nnblocks
-#from AIQMC import Jastrow
+from AIQMC import Jastrow
 import jax
 import chex
 import jax.numpy as jnp
@@ -142,7 +142,7 @@ def make_ai_net_layers(nspins: Tuple[int, int], natoms: int, feature_layer) -> T
         key, subkey = jax.random.split(key)
         nfeatures = num_one_features + num_two_features        
         layers = []
-        hidden_dims = jnp.ndarray([16, 16, nfeatures])
+        hidden_dims = jnp.array([16, 16, nfeatures])
         """here, we have some problems. Please be careful about the input dimensions and output dimensions.
         Here, we only use one full connected. Therefore, the output dimensions should be the input for next layer."""
         dims_in = nfeatures
@@ -153,7 +153,7 @@ def make_ai_net_layers(nspins: Tuple[int, int], natoms: int, feature_layer) -> T
             layers.append(layer_params)
             dims_in = dims_out #this is why we need reset the input dimensions.
 
-        params['streams_linear_layer'] = layers
+        params['linear_layer'] = layers
         output_dims = nfeatures
 
         return output_dims, params
@@ -169,7 +169,7 @@ def make_ai_net_layers(nspins: Tuple[int, int], natoms: int, feature_layer) -> T
         h_in = construct_symmetric_features(ae_features, ee_features, nelectrons)
 
         for i in range(len(hidden_dims)):
-            h = apply_layer(params['streams_linear_layer'][i], h_in=h_in)
+            h = apply_layer(params['linear_layer'][i], h_in=h_in)
             h_in = h
 
         h_to_orbitals = h
@@ -179,8 +179,11 @@ def make_ai_net_layers(nspins: Tuple[int, int], natoms: int, feature_layer) -> T
 
 
 def make_orbitals(equivariant_layers: Tuple[InitLayersFn, ApplyLayersFn]) -> ...:
+    """here, we need use complicated Jastrow factor. So this module could cost us some time. """
     equivariant_layers_init, equivariant_layers_apply = equivariant_layers
-    """here, we need use complicated Jastrow factor. So this module could cost us some time."""
+    """equivaiant_layers_init and equivariant_layers_apply are init, apply of make_ai_net_layers, separately, i.e. 
+    it is interaction layers."""
+
     jastrow_ae_init, jastrow_ae_apply, jastrow_ee_init, jastrow_ee_apply = Jastrow.get_jastrow
 
     def init(key: chex.PRNGKey) -> ParamTree:
@@ -188,6 +191,7 @@ def make_orbitals(equivariant_layers: Tuple[InitLayersFn, ApplyLayersFn]) -> ...
         key, subkey = jax.random.split(key)
         params = {}
         dims_orbital_in, params['layers'] = equivariant_layers_init(subkey)
+
 
 
 
