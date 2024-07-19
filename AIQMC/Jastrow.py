@@ -2,16 +2,16 @@
 import enum
 from typing import Any, Callable, Iterable, Mapping, Union
 import jax.numpy as jnp
-from nn import construct_input_features
+#from nn import construct_input_features
 import numpy as np
 
-pos = jnp.array([1, 1, 1, 1, 0.5, 0.5, 0.5, 0.5, 0.5, 0.5, 1, 0.5])
-atoms = jnp.array([[0, 0, 0], [1, 1, 1]])
-ae, ee = construct_input_features(pos, atoms, ndim=3)
+#pos = jnp.array([1, 1, 1, 1, 0.5, 0.5, 0.5, 0.5, 0.5, 0.5, 1, 0.5])
+#atoms = jnp.array([[0, 0, 0], [1, 1, 1]])
+#ae, ee = construct_input_features(pos, atoms, ndim=3)
 """this charge format is just for matching the format of jastrow factors. For convenice, we use it for now."""
-charges = jnp.array([[[2], [2]], [[2], [2]], [[2], [2]], [[2], [2]]])
+#charges = jnp.array([[[2], [2]], [[2], [2]], [[2], [2]], [[2], [2]]])
 ParamTree = Union[jnp.ndarray, Iterable['ParamTree'], Mapping[Any, 'ParamTree']]
-print("ae", ae)
+#print("ae", ae)
 
 
 
@@ -68,9 +68,9 @@ def make_pade_ee_jastrow() -> ...:
     return init, apply
 
 
-init, apply = make_pade_ee_jastrow()
-params1 = init()
-Jastrow_ee = apply(ee, params1)
+#init, apply = make_pade_ee_jastrow()
+#params1 = init()
+#Jastrow_ee = apply(ee, params1)
 
 """to be continued 17/7/2024"""
 def _jastrow_ae(r_ae: jnp.ndarray, charges: jnp.array, params: ParamTree, jastrow_fun: Callable[[jnp.ndarray, float, jnp.ndarray], jnp.ndarray]) -> jnp.ndarray:
@@ -108,9 +108,9 @@ def make_pade_ae_jastrow() -> ...:
     return init, apply
 
 
-init, apply = make_pade_ae_jastrow()
-params2 = init()
-Jastrow_ae = apply(ae, charges, params2)
+#init, apply = make_pade_ae_jastrow()
+#params2 = init()
+#Jastrow_ae = apply(ae, charges, params2)
 
 
 def get_jastrow():

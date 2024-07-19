@@ -97,6 +97,8 @@ def make_ainet_features(natoms: int = 2, nelectrons: int = 4, ndim: int = 3) -> 
         We need use two streams for ae and ee. And it is different from FermiNet. Because our convolution layer has
         a different structure.For simplicity, we only use the full connected layer.
         Maybe later, we will spend some time to rewrite this part."""
+        print("natoms", natoms)
+        print("ndim", ndim)
         return (natoms * ndim, nelectrons * ndim), {}
 
     def apply(ae, ee) -> Tuple[jnp.ndarray, jnp.ndarray]:
@@ -107,14 +109,6 @@ def make_ainet_features(natoms: int = 2, nelectrons: int = 4, ndim: int = 3) -> 
 
     return FeatureLayer(init=init, apply=apply)
 
-pos = jnp.array([1, 1, 1, 1, 0.5, 0.5, 0.5, 0.5, 0.5, 0.5, 1, 0.5])
-atoms = jnp.array([[0, 0, 0], [1, 1, 1]])
-ae, ee = construct_input_features(pos, atoms, ndim=3)
-feature_layer = make_ainet_features(natoms=3, nelectrons=4, ndim=3)
-ae_features, ee_features = feature_layer.apply(ae, ee)
-print("ae_features", ae_features)
-print("ee_features", ee_features)
-
 
 def construct_symmetric_features(ae_features: jnp.ndarray, ee_features: jnp.ndarray, nelectrons: int) -> jnp.ndarray:
     """here, we dont spit spin up and spin down electrons, so this function is not necessary."""
@@ -124,11 +118,12 @@ def construct_symmetric_features(ae_features: jnp.ndarray, ee_features: jnp.ndar
     h = jnp.concatenate((ae_features, ee_features), axis=-1)
     return h
 
-h = construct_symmetric_features(ae_features, ee_features, nelectrons=4)
-print("h", h)
+#h = construct_symmetric_features(ae_features, ee_features, nelectrons=4)
 
-def make_ai_net_layers(nspins: Tuple[int, int], natoms: int, feature_layer) -> Tuple[InitLayersFn, ApplyLayersFn]:
+
+def make_ainet_layers(feature_layer) -> Tuple[InitLayersFn, ApplyLayersFn]:
     """
+    we already check the shape of input and output. It is working well.19/07/2024
     we have two streams ae and ee. So, the hidden layers must also have two parts.
     :param nspins:
     :param natoms:
@@ -140,9 +135,11 @@ def make_ai_net_layers(nspins: Tuple[int, int], natoms: int, feature_layer) -> T
         params = {}
         (num_one_features, num_two_features), params['input'] = feature_layer.init()
         key, subkey = jax.random.split(key)
-        nfeatures = num_one_features + num_two_features        
+        nfeatures = num_one_features + num_two_features
+        print("num_one_features, num_two_features", num_one_features, num_two_features)
+        print("nfeatures", nfeatures)
         layers = []
-        hidden_dims = jnp.array([16, 16, nfeatures])
+        hidden_dims = jnp.array([4, 4, nfeatures])
         """here, we have some problems. Please be careful about the input dimensions and output dimensions.
         Here, we only use one full connected. Therefore, the output dimensions should be the input for next layer."""
         dims_in = nfeatures
@@ -155,7 +152,8 @@ def make_ai_net_layers(nspins: Tuple[int, int], natoms: int, feature_layer) -> T
 
         params['linear_layer'] = layers
         output_dims = nfeatures
-
+        print("output_dims", output_dims)
+        print("params", params)
         return output_dims, params
 
     def apply_layer(params: Mapping[str, ParamTree], h_in: jnp.ndarray) -> jnp.ndarray:
@@ -163,9 +161,10 @@ def make_ai_net_layers(nspins: Tuple[int, int], natoms: int, feature_layer) -> T
         return h_next
 
     def apply(params, ae: jnp.ndarray, ee: jnp.ndarray, nelectrons: int = 4) -> jnp.ndarray:
-        ae_features, ee_features = feature_layer.apply(ae, ee, **params['input'])
-        nfeatures = 2 * 3 + 4 * 3
-        hidden_dims = jnp.ndarray([16, 16, nfeatures])
+        ae_features, ee_features = feature_layer.apply(ae, ee,)
+        (num_one_features, num_two_features), params['input'] = feature_layer.init()
+        nfeatures = num_one_features + num_two_features
+        hidden_dims = jnp.array([4, 4, nfeatures])
         h_in = construct_symmetric_features(ae_features, ee_features, nelectrons)
 
         for i in range(len(hidden_dims)):
@@ -173,12 +172,26 @@ def make_ai_net_layers(nspins: Tuple[int, int], natoms: int, feature_layer) -> T
             h_in = h
 
         h_to_orbitals = h
+        print("h_two_orbitals", h_to_orbitals)
         return h_to_orbitals
 
     return init, apply
 
 
-def make_orbitals(equivariant_layers: Tuple[InitLayersFn, ApplyLayersFn]) -> ...:
+pos = jnp.array([1, 1, 1, 1, 0.5, 0.5, 0.5, 0.5, 0.5, 0.5, 1, 0.5])
+atoms = jnp.array([[0, 0, 0], [1, 1, 1]])
+ae, ee = construct_input_features(pos, atoms, ndim=3)
+feature_layer1 = make_ainet_features(natoms=2, nelectrons=4, ndim=3)
+#ae_features, ee_features = feature_layer1.apply(ae, ee)
+#print("ae_features", ae_features)
+#print("ee_features", ee_features)
+init, apply = make_ainet_layers(feature_layer=feature_layer1)
+a = jax.random.PRNGKey(seed=1)
+output_dims, params = init(key=a)
+h_to_orbitals = apply(params=params, ae=ae, ee=ee,)
+
+"""this part is to be finished. 19/07/2024."""
+def make_orbitals(natoms: int, equivariant_layers: Tuple[InitLayersFn, ApplyLayersFn]) -> ...:
     """here, we need use complicated Jastrow factor. So this module could cost us some time. """
     equivariant_layers_init, equivariant_layers_apply = equivariant_layers
     """equivaiant_layers_init and equivariant_layers_apply are init, apply of make_ai_net_layers, separately, i.e. 
@@ -191,7 +204,24 @@ def make_orbitals(equivariant_layers: Tuple[InitLayersFn, ApplyLayersFn]) -> ...
         key, subkey = jax.random.split(key)
         params = {}
         dims_orbital_in, params['layers'] = equivariant_layers_init(subkey)
+        output_dims = dims_orbital_in
+        """Here, we should put the envelope function."""
+        params['envelope'] = envelope.init(...)
+        params['jastrow_ae'] = jastrow_ae_init()
+        params['jastrow_ee'] = jastrow_ee_init()
+        orbitals = []
+        key, subkey = jax.random.split(key)
+        orbitals.append(nnblocks.init_linear_layer(subkey, in_dim=dims_orbital_in, out_dim=1, include_bias=True))
+        params['orbital'] = orbitals
 
+        return params
+
+    def apply(params, pos: jnp.ndarray, spins: jnp.ndarray, atoms: jnp.ndarray, charges: jnp.ndarray) -> Sequence[jnp.ndarray]:
+        ae, ee = construct_input_features(pos, atoms, ndim=3)
+        h_to_orbitals = equivariant_layers_apply(params=params['layers'], ae=ae, ee=ee)
+        """here, we need add the envelope function. to be continued 19/07/2024"""
+        envelope_factor = envelope.apply()
+        h_to_orbitals = envelope_factor * h_to_orbitals
 
 
 

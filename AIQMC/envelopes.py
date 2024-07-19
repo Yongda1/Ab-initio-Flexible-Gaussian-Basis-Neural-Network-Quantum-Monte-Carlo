@@ -16,18 +16,25 @@ import jax
 import jax.numpy as jnp
 import attr
 from typing import Any, Mapping, Sequence, Union, Tuple
+from nn import construct_input_features
+
 
 class EnvelopType(enum.Enum):
-    Expand_high_angular_momentum_functions = enum.atuo
+    Expand_high_angular_momentum_functions = enum.auto
+
+
+class EnvelopeLabel(enum.Enum):
+    Gaussian = enum.auto()
+
 
 class EnvelopeInit(Protocol):
     def __call__(self, natom: int, output_dims: Union[int, Sequence[int]], ndim: int) \
             -> Union[Mapping[str, Any], Sequence[Mapping[str, Any]]]:
-        """Returns the evelope parameters"""
+        """Returns the envelope parameters"""
 
 
 class EnvelopeApply(Protocol):
-    def __call__(self, ae: jnp.ndarray, r_ae: jnp.ndarray, r_ee: jnp.ndarray, **kwargs: jnp.ndarray) -> jnp.ndarray:
+    def __call__(self, ae: jnp.ndarray, ee: jnp.ndarray, **kwargs: jnp.ndarray) -> jnp.ndarray:
         """Returns a multiplicative envelope to ensure boundary conditions are met."""
 
 
@@ -38,13 +45,10 @@ class Envelope:
 
 
 pos = jnp.array([1, 1, 1, 1, 0.5, 0.5, 0.5, 0.5, 0.5, 0.5, 1, 0.5])
-atoms = jnp.array([[0, 0, 0]])
-print(atoms.shape[1])
-ae, ee, r_ae, r_ee = construct_input_features(pos, atoms, ndim=3)
+atoms = jnp.array([[0, 0, 0], [1, 1, 1]])
+ae, ee = construct_input_features(pos, atoms, ndim=3)
 print("ae", ae)
 print("ee", ee)
-print("r_ae", r_ae)
-print("r_ee", r_ee)
 
 '''
 def make_GTO_envelope() -> Envelope:
