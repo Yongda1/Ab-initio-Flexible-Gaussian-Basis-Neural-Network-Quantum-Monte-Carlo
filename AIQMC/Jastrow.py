@@ -20,7 +20,8 @@ def _jastrow_ee(ee: jnp.ndarray, params: ParamTree, jastrow_fun: Callable[[jnp.n
      We take the 2 atoms, 4 electrons as the example i.e. spin configurations: up, up, down, down.
     Due to that the jnp.ndarray cannot take agruments as element.
     So we need think how to get parallel spin and anti_parallel spin.Meanwhile, we need be careful about batch version.
-    17/07/2024."""
+    17/07/2024.
+    The following part is not an universial method to split the spin configurations. I could leave this problem to strudents."""
     r_ees = jnp.linalg.norm(ee, axis=-1)
     #print("r_ees", r_ees)
     #print(r_ees[0][1], r_ees[2][3])

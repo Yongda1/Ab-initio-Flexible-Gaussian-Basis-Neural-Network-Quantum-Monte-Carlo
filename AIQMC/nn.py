@@ -11,7 +11,7 @@ import enum
 import functools
 from typing import Any, Iterable, Mapping, MutableMapping, Optional, Sequence, Tuple, Union
 import attr
-# from AIQMC import envelopes
+#from AIQMC import envelopes
 from AIQMC import nnblocks
 from AIQMC import Jastrow
 import jax
@@ -172,7 +172,7 @@ def make_ainet_layers(feature_layer) -> Tuple[InitLayersFn, ApplyLayersFn]:
             h_in = h
 
         h_to_orbitals = h
-        print("h_two_orbitals", h_to_orbitals)
+        print("h_to_orbitals", h_to_orbitals)
         return h_to_orbitals
 
     return init, apply
@@ -206,12 +206,12 @@ def make_orbitals(natoms: int, equivariant_layers: Tuple[InitLayersFn, ApplyLaye
         dims_orbital_in, params['layers'] = equivariant_layers_init(subkey)
         output_dims = dims_orbital_in
         """Here, we should put the envelope function."""
-        params['envelope'] = envelope.init(...)
+        params['envelope'] = envelopes.make_GTO_envelope().init()
         params['jastrow_ae'] = jastrow_ae_init()
         params['jastrow_ee'] = jastrow_ee_init()
         orbitals = []
         key, subkey = jax.random.split(key)
-        orbitals.append(nnblocks.init_linear_layer(subkey, in_dim=dims_orbital_in, out_dim=1, include_bias=True))
+        orbitals.append(nnblocks.init_linear_layer(subkey, in_dim=dims_orbital_in, out_dim=1, include_bias=False))
         params['orbital'] = orbitals
 
         return params
@@ -220,7 +220,7 @@ def make_orbitals(natoms: int, equivariant_layers: Tuple[InitLayersFn, ApplyLaye
         ae, ee = construct_input_features(pos, atoms, ndim=3)
         h_to_orbitals = equivariant_layers_apply(params=params['layers'], ae=ae, ee=ee)
         """here, we need add the envelope function. to be continued 19/07/2024"""
-        envelope_factor = envelope.apply()
+        envelope_factor = envelopes.make_GTO_envelope().apply()
         h_to_orbitals = envelope_factor * h_to_orbitals
 
 
