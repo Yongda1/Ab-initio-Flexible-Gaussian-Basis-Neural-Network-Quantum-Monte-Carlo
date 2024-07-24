@@ -11,7 +11,7 @@ import enum
 import functools
 from typing import Any, Iterable, Mapping, MutableMapping, Optional, Sequence, Tuple, Union
 import attr
-#from AIQMC import envelopes
+from AIQMC import envelopes
 from AIQMC import nnblocks
 from AIQMC import Jastrow
 import jax
@@ -191,11 +191,11 @@ output_dims, params = init(key=a)
 h_to_orbitals = apply(params=params, ae=ae, ee=ee,)
 
 """this part is to be finished. 19/07/2024."""
-def make_orbitals(natoms: int, equivariant_layers: Tuple[InitLayersFn, ApplyLayersFn]) -> ...:
-    """here, we need use complicated Jastrow factor. So this module could cost us some time. """
-    equivariant_layers_init, equivariant_layers_apply = equivariant_layers
-    """equivaiant_layers_init and equivariant_layers_apply are init, apply of make_ai_net_layers, separately, i.e. 
+def make_orbitals(natoms: int, nelectrons: int, num_angular: int, equivariant_layers: Tuple[InitLayersFn, ApplyLayersFn]) -> ...:
+    """equivaiant_layers_init and equivariant_layers_apply are init, apply of make_ai_net_layers, separately, i.e.
     it is interaction layers."""
+    equivariant_layers_init, equivariant_layers_apply = equivariant_layers
+    """"""
 
     jastrow_ae_init, jastrow_ae_apply, jastrow_ee_init, jastrow_ee_apply = Jastrow.get_jastrow
 
@@ -206,22 +206,28 @@ def make_orbitals(natoms: int, equivariant_layers: Tuple[InitLayersFn, ApplyLaye
         dims_orbital_in, params['layers'] = equivariant_layers_init(subkey)
         output_dims = dims_orbital_in
         """Here, we should put the envelope function."""
-        params['envelope'] = envelopes.make_GTO_envelope().init()
+        params['envelope'] = envelopes.make_GTO_envelope().init(natoms=2, nelectrons=4)
         params['jastrow_ae'] = jastrow_ae_init()
         params['jastrow_ee'] = jastrow_ee_init()
         orbitals = []
         key, subkey = jax.random.split(key)
-        orbitals.append(nnblocks.init_linear_layer(subkey, in_dim=dims_orbital_in, out_dim=1, include_bias=False))
+        """this out_dim should be the number of electrons."""
+        orbitals.append(nnblocks.init_linear_layer(subkey, in_dim=dims_orbital_in, out_dim=nelectrons, include_bias=False))
+        """we shrink this coe_angular into the parameters of the envelope functions."""
+        #coe_angular.append(nnblocks.init_linear_layer(key, in_dim=num_angular, out_dim=nelectrons, include_bias=False))
         params['orbital'] = orbitals
+        #params["ceo_angular"] = coe_angular
 
         return params
 
-    def apply(params, pos: jnp.ndarray, spins: jnp.ndarray, atoms: jnp.ndarray, charges: jnp.ndarray) -> Sequence[jnp.ndarray]:
+    def apply(params, pos: jnp.ndarray, atoms: jnp.ndarray):
         ae, ee = construct_input_features(pos, atoms, ndim=3)
         h_to_orbitals = equivariant_layers_apply(params=params['layers'], ae=ae, ee=ee)
-        """here, we need add the envelope function. to be continued 19/07/2024"""
-        envelope_factor = envelopes.make_GTO_envelope().apply()
-        h_to_orbitals = envelope_factor * h_to_orbitals
+        """the initial envelope function finished without the diffusion part.24/07/2024."""
+        envelope_factor = envelopes.make_GTO_envelope().apply(ae, xi=params['envelope'], natoms=2, nelectrons=4)
+        orbitals_first = [nnblocks.linear_layer(h, **p) for h, p in zip(h_to_orbitals, params['orbital'])]
+        """we need match the shape of orbitals.24/07/2024.Then we need debug the two functions."""
+        #h_to_orbitals = envelope_factor * h_to_orbitals
 
 
 

@@ -45,6 +45,7 @@ class Envelope:
     apply: EnvelopeApply
 
 '''
+'''
 pos = jnp.array([1, 1, 1, 1, 0.5, 0.5, 0.5, 0.5, 0.5, 0.5, 1, 0.5])
 atoms = jnp.array([[0, 0, 0], [0.2, 0.2, 0.2]])
 ae, ee = construct_input_features(pos, atoms, ndim=3)
@@ -52,41 +53,31 @@ print("ae", ae)
 print("ee", ee)
 m = jnp.arange(-1*2, 2+1)
 print("m", m)
-
+'''
 
 def make_GTO_envelope():
     """Create a Slater-type orbital envelop as we show in the slides."""
-    def init(natom: int, nelectrons: int, ndim: int, order: int,) -> Mapping[str, jnp.ndarray]:
+    def init(natoms: int, nelectrons: int,) -> Mapping[str, jnp.ndarray]:
         """first we need construct the angular momentum vector by specifying the order of polarization.
         0 means only s orbitals, i.e. the number of orbitals is 1.
         1 means p orbitals, i.e. the number of orbitals is 3.
         2 means d orbitals, i.e. the number of orbitals is 5.
         3 means f orbitals, i.e. the number of orbitals is 7.
-        we usually apply one order higher angular momentum function."""
-        n = jnp.arange(order+1)
-        print("n", n)
-        m = []
-        for i in n:
-            m.append(jnp.arange(-1*i, i+1))
-        print("m", m)
+        we usually apply one order higher angular momentum function.
+        This part is wrong. We need fix it."""
         """Here, we need confirm the size of the angular momentum vector by checking the order.
-        we use the orbitals up to f. So, we need 1 + 3 + 5 + 7.
+        we use the orbitals up to p. So, we need 1 + 3 .
         And this number must be same with the number of the parameters."""
-        num_Y_lm = 1 + 3 + 5 + 7
-        xi = jnp.ones(shape=(nelectrons, num_Y_lm))
+        num_Y_lm = 1 + 3
+        xi = jnp.ones(shape=(nelectrons, natoms, num_Y_lm))
         #print("xi", xi)
         return {"xi": xi}
 
-    def apply(ae: jnp.ndarray, atoms: jnp.ndarray, xi: jnp.ndarray, natoms: int, nelectrons: int) -> jnp.ndarray:
-        """the input for the apply function must be the r_effective. It should be scalar.
+    def apply(ae: jnp.ndarray, xi: jnp.ndarray, natoms: int, nelectrons: int) -> jnp.ndarray:
+        """the input for the apply function must be the r. It should be scalar.
         we need assign the electrons to atoms. Now, we have 4 electrons, each atom has two electrons.
         The number one and number three electrons belong to first_atom. The spin configuration is up up down down.
         """
-        electron_coordinates = ae[0][0] + atoms[0]
-        r_ae = jnp.linalg.norm(ae, axis=-1)
-        print("r_ae", r_ae)
-        print("ae", ae)
-        print("xi", xi)
         """we need convert the coordinates to spherical coordinates."""
         def to_spherical(x: jnp.ndarray):
             """Converts a cartesian coordinate (x, y, z) into a spherical one (radius, theta, phi)."""
@@ -96,15 +87,15 @@ def make_GTO_envelope():
             return jnp.array([radius, theta_, phi_])
 
         ae = jnp.reshape(ae, (natoms * nelectrons, 3))
-        print("ae", ae)
+        #print("ae", ae)
         """here, we used vmap to vectorize the function."""
         to_spherical1 = jax.vmap(to_spherical, axis_size=1, out_axes=0)
         spherical_coordinates = to_spherical1(ae)
-        print("spherical", spherical_coordinates)
+        #print("spherical", spherical_coordinates)
         theta_coordinates = spherical_coordinates[:, 1]
         phi_coordinates = spherical_coordinates[:, 2]
-        print("theta_coordinates", theta_coordinates)
-        print("phi_coordinates", phi_coordinates)
+        #print("theta_coordinates", theta_coordinates)
+        #print("phi_coordinates", phi_coordinates)
         """here, n is L, i.e. the angular momentum quantum number."""
         print(spherical_coordinates[0][1], spherical_coordinates[0][2])
         angular_value_00 = sph_harm(n=jnp.array([0]), m=jnp.array([0]), theta=theta_coordinates, phi=phi_coordinates)
@@ -115,14 +106,22 @@ def make_GTO_envelope():
         #print("angular_value", angular_value)
         angular_value = jnp.transpose(angular_value)
         print("-----------------------------")
-        print("angular_value", angular_value)
+        #print("angular_value", angular_value)
+        num_Y_lm = 1 + 3
+        angular_value = jnp.reshape(angular_value, (nelectrons, natoms, num_Y_lm))
+        temp = angular_value * xi["xi"]
+        print("temp", temp)
+        """here, the summation is over num_angular_momentum_function then over num_atoms"""
+        l_com_ang = jnp.sum(jnp.sum(angular_value * xi["xi"], axis=-1), axis=-1)
+        print("l_com_ang", l_com_ang)
 
-        return angular_value
+        return l_com_ang
 
     return init, apply
 
-
+'''
 init, apply = make_GTO_envelope()
-xi = init(natom=2, nelectrons=4, ndim=3, order=3)
+xi = init(natoms=2, nelectrons=4)
 print("xi", xi)
-output = apply(ae, atoms, xi, natoms=2, nelectrons=4, )
+output = apply(ae, xi, natoms=2, nelectrons=4)
+'''
