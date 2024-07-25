@@ -14,6 +14,10 @@ ParamTree = Union[jnp.ndarray, Iterable['ParamTree'], Mapping[Any, 'ParamTree']]
 #print("ae", ae)
 
 
+class JastrowType(enum.Enum):
+  """Available Jastrow factors."""
+  Pade = enum.auto()
+
 
 def _jastrow_ee(ee: jnp.ndarray, params: ParamTree, jastrow_fun: Callable[[jnp.ndarray, float, jnp.ndarray], jnp.ndarray]) -> jnp.ndarray:
     """Currently, we are sure that we will use the shape of ee array is nelectrons * nelectrons * 3.
@@ -36,7 +40,7 @@ def _jastrow_ee(ee: jnp.ndarray, params: ParamTree, jastrow_fun: Callable[[jnp.n
     r_ees_anti_parallel_set = r_ees_anti_parallel_set.at[2].set(r_ees[1][2])
     r_ees_anti_parallel_set = r_ees_anti_parallel_set.at[3].set(r_ees[1][3])
     #print("r_ees_anti_parallel_set", r_ees_anti_parallel_set)
-    Jastrow_temp = jastrow_fun(r_ees_parallel_reset, 0.25, params['ee_par'])
+    #Jastrow_temp = jastrow_fun(r_ees_parallel_reset, 0.25, params['ee_par'])
     #print("Jastrow_temp", Jastrow_temp)
     jastrow_ee_par = jnp.sum(jastrow_fun(r_ees_parallel_reset, 0.25, params['ee_par']))
     #print("jastrow_ee_par", jastrow_ee_par)
@@ -51,9 +55,9 @@ def make_pade_ee_jastrow() -> ...:
     def pade_ee_cusp_fun(r_ee: jnp.ndarray, cusp: float, alpha: jnp.ndarray) -> jnp.ndarray:
         #print("r_ee", r_ee)
         #print("alpha", alpha)
-        temp1 = r_ee/cusp
+        #temp1 = r_ee/cusp
         #print("temp1", temp1)
-        temp2 = 1 + alpha * r_ee
+        #temp2 = 1 + alpha * r_ee
         #print("temp2", temp2)
         return r_ee/cusp * (1/(jnp.abs(1 + alpha * r_ee)))
 
@@ -77,6 +81,7 @@ def make_pade_ee_jastrow() -> ...:
 def _jastrow_ae(r_ae: jnp.ndarray, charges: jnp.array, params: ParamTree, jastrow_fun: Callable[[jnp.ndarray, float, jnp.ndarray], jnp.ndarray]) -> jnp.ndarray:
     """we also need the format of r_ae and charges to do the summation. To be continued."""
     jastrow_ae = jnp.sum(jastrow_fun(r_ae, charges, params['ae']))
+    return jastrow_ae
 
 
 def make_pade_ae_jastrow() -> ...:
@@ -114,7 +119,7 @@ def make_pade_ae_jastrow() -> ...:
 #Jastrow_ae = apply(ae, charges, params2)
 
 
-def get_jastrow():
-        jastrow_ee_init, jastrow_ee_apply = make_pade_ee_jastrow()
-        jastrow_ae_init, jastrow_ae_apply = make_pade_ae_jastrow()
-        return jastrow_ae_init, jastrow_ae_apply, jastrow_ee_init, jastrow_ee_apply
+def get_jastrow(jastrow: JastrowType) -> ...:
+    jastrow_ee_init, jastrow_ee_apply = make_pade_ee_jastrow()
+    jastrow_ae_init, jastrow_ae_apply = make_pade_ae_jastrow()
+    return jastrow_ae_init, jastrow_ae_apply, jastrow_ee_init, jastrow_ee_apply

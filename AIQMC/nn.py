@@ -57,6 +57,7 @@ class FeatureLayer:
     init: FeatureInit
     apply: FeatureApply
 
+
 class InitLayersFn(Protocol):
     def __call__(self, key:chex.PRNGKey) -> Tuple[int, ParamTree]:
         """Returns output dim and initizalized parameters for the interaction layers."""
@@ -81,9 +82,9 @@ def construct_input_features(pos: jnp.ndarray, atoms: jnp.ndarray, ndim: int = 3
         atoms: atom positions. Shape(natoms, ndim)
     """
     ae = jnp.reshape(pos, [-1, 1, ndim]) - atoms[None, ...]
-    print("ae", ae)
+    #print("ae", ae)
     ee = jnp.reshape(pos, [1, -1, ndim]) - jnp.reshape(pos, [-1, 1, ndim])
-    print("ee", ee)
+    #print("ee", ee)
     # here, we flat array to delete 0 distance.notes, this array is only working for C atom which has 4 electrons.
     #ee = jnp.reshape(jnp.delete(jnp.reshape(ee, [-1, ndim]), jnp.array([0, 5, 10, 15]), axis=0), [-1, 3, ndim])
     #ae_ee = jnp.concatenate((ae, ee), axis=1)
@@ -97,8 +98,8 @@ def make_ainet_features(natoms: int = 2, nelectrons: int = 4, ndim: int = 3) -> 
         We need use two streams for ae and ee. And it is different from FermiNet. Because our convolution layer has
         a different structure.For simplicity, we only use the full connected layer.
         Maybe later, we will spend some time to rewrite this part."""
-        print("natoms", natoms)
-        print("ndim", ndim)
+        #print("natoms", natoms)
+        #print("ndim", ndim)
         return (natoms * ndim, nelectrons * ndim), {}
 
     def apply(ae, ee) -> Tuple[jnp.ndarray, jnp.ndarray]:
@@ -136,8 +137,8 @@ def make_ainet_layers(feature_layer) -> Tuple[InitLayersFn, ApplyLayersFn]:
         (num_one_features, num_two_features), params['input'] = feature_layer.init()
         key, subkey = jax.random.split(key)
         nfeatures = num_one_features + num_two_features
-        print("num_one_features, num_two_features", num_one_features, num_two_features)
-        print("nfeatures", nfeatures)
+        #print("num_one_features, num_two_features", num_one_features, num_two_features)
+        #print("nfeatures", nfeatures)
         layers = []
         hidden_dims = jnp.array([4, 4, nfeatures])
         """here, we have some problems. Please be careful about the input dimensions and output dimensions.
@@ -152,8 +153,8 @@ def make_ainet_layers(feature_layer) -> Tuple[InitLayersFn, ApplyLayersFn]:
 
         params['linear_layer'] = layers
         output_dims = nfeatures
-        print("output_dims", output_dims)
-        print("params", params)
+        #print("output_dims", output_dims)
+        #print("params", params)
         return output_dims, params
 
     def apply_layer(params: Mapping[str, ParamTree], h_in: jnp.ndarray) -> jnp.ndarray:
@@ -172,32 +173,21 @@ def make_ainet_layers(feature_layer) -> Tuple[InitLayersFn, ApplyLayersFn]:
             h_in = h
 
         h_to_orbitals = h
-        print("h_to_orbitals", h_to_orbitals)
+        #print("h_to_orbitals", h_to_orbitals)
         return h_to_orbitals
 
     return init, apply
 
 
-pos = jnp.array([1, 1, 1, 1, 0.5, 0.5, 0.5, 0.5, 0.5, 0.5, 1, 0.5])
-atoms = jnp.array([[0, 0, 0], [1, 1, 1]])
-ae, ee = construct_input_features(pos, atoms, ndim=3)
-feature_layer1 = make_ainet_features(natoms=2, nelectrons=4, ndim=3)
-#ae_features, ee_features = feature_layer1.apply(ae, ee)
-#print("ae_features", ae_features)
-#print("ee_features", ee_features)
-init, apply = make_ainet_layers(feature_layer=feature_layer1)
-a = jax.random.PRNGKey(seed=1)
-output_dims, params = init(key=a)
-h_to_orbitals = apply(params=params, ae=ae, ee=ee,)
 
 """this part is to be finished. 19/07/2024."""
-def make_orbitals(natoms: int, nelectrons: int, num_angular: int, equivariant_layers: Tuple[InitLayersFn, ApplyLayersFn]) -> ...:
+def make_orbitals(natoms: int, nelectrons: int, num_angular: int, equivariant_layers: Tuple[InitLayersFn, ApplyLayersFn],) -> ...:
     """equivaiant_layers_init and equivariant_layers_apply are init, apply of make_ai_net_layers, separately, i.e.
     it is interaction layers."""
     equivariant_layers_init, equivariant_layers_apply = equivariant_layers
-    """"""
-
-    jastrow_ae_init, jastrow_ae_apply, jastrow_ee_init, jastrow_ee_apply = Jastrow.get_jastrow
+    """we need rewrite the Jastrow part as a class.24/07/2024."""
+    jastrow_ae_init, jastrow_ae_apply, jastrow_ee_init, jastrow_ee_apply = Jastrow.get_jastrow(jastrow="Pade")
+    envelope = envelopes.make_GTO_envelope()
 
     def init(key: chex.PRNGKey) -> ParamTree:
         """Returns initial random parameters for creating orbitals."""
@@ -206,7 +196,7 @@ def make_orbitals(natoms: int, nelectrons: int, num_angular: int, equivariant_la
         dims_orbital_in, params['layers'] = equivariant_layers_init(subkey)
         output_dims = dims_orbital_in
         """Here, we should put the envelope function."""
-        params['envelope'] = envelopes.make_GTO_envelope().init(natoms=2, nelectrons=4)
+        params['envelope'] = envelope.init(natoms=2, nelectrons=4)
         params['jastrow_ae'] = jastrow_ae_init()
         params['jastrow_ee'] = jastrow_ee_init()
         orbitals = []
@@ -217,6 +207,8 @@ def make_orbitals(natoms: int, nelectrons: int, num_angular: int, equivariant_la
         #coe_angular.append(nnblocks.init_linear_layer(key, in_dim=num_angular, out_dim=nelectrons, include_bias=False))
         params['orbital'] = orbitals
         #params["ceo_angular"] = coe_angular
+        print("params", params)
+        print("params_envelope", params['envelope'])
 
         return params
 
@@ -224,11 +216,34 @@ def make_orbitals(natoms: int, nelectrons: int, num_angular: int, equivariant_la
         ae, ee = construct_input_features(pos, atoms, ndim=3)
         h_to_orbitals = equivariant_layers_apply(params=params['layers'], ae=ae, ee=ee)
         """the initial envelope function finished without the diffusion part.24/07/2024."""
-        envelope_factor = envelopes.make_GTO_envelope().apply(ae, xi=params['envelope'], natoms=2, nelectrons=4)
-        orbitals_first = [nnblocks.linear_layer(h, **p) for h, p in zip(h_to_orbitals, params['orbital'])]
+        xi = params['envelope'][0]
+        print("type of xi", type(xi))
+        envelope_factor = envelope.apply(ae, xi=params['envelope'][0]['xi'], natoms=2, nelectrons=4)
+        print("envelope_factor", envelope_factor)
+
+        orbitals_first = [nnblocks.linear_layer_no_b(h, **p) for h, p in zip(h_to_orbitals, params['orbital'])]
+        print("orbitals_first", orbitals_first)
+
         """we need match the shape of orbitals.24/07/2024.Then we need debug the two functions."""
         #h_to_orbitals = envelope_factor * h_to_orbitals
 
+    return init, apply
+
+
+pos = jnp.array([1, 1, 1, 1, 0.5, 0.5, 0.5, 0.5, 0.5, 0.5, 1, 0.5])
+atoms = jnp.array([[0, 0, 0], [0.2, 0.2, 0.2]])
+ae, ee = construct_input_features(pos, atoms, ndim=3)
+feature_layer1 = make_ainet_features(natoms=2, nelectrons=4, ndim=3)
+#ae_features, ee_features = feature_layer1.apply(ae, ee)
+#print("ae_features", ae_features)
+#print("ee_features", ee_features)
+equivariant_layers = make_ainet_layers(feature_layer=feature_layer1)
+a = jax.random.PRNGKey(seed=1)
+#output_dims, params = init(key=a)
+#h_to_orbitals = apply(params=params, ae=ae, ee=ee,)
+init, apply = make_orbitals(natoms=2, nelectrons=4, num_angular=4, equivariant_layers=equivariant_layers)
+parameters = init(a)
+initialization = apply(params=parameters, pos=pos, atoms=atoms)
 
 
 #def make_ai_net(nspins: Tuple[int, int], charges: jnp.ndarray, ndim: int=3, determinants: int=16, hidden_dims= (8, 8, 8)):
