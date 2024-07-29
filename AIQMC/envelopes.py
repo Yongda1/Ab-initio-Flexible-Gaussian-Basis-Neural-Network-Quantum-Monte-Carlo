@@ -9,7 +9,6 @@ Actually, this part is extremely important. Because our orbitals constructed fro
   We can get r easily by multiplying a vector w. 18/07/2024.
   So, we can begin to deal with angular momentum functions in the envelope function."""
 import enum
-
 import numpy as np
 from typing_extensions import Protocol
 import jax
@@ -18,6 +17,7 @@ import attr
 from typing import Any, Mapping, Sequence, Union, Tuple
 #from nn import construct_input_features
 from jax.scipy.special import sph_harm
+
 
 
 class EnvelopType(enum.Enum):
@@ -39,8 +39,18 @@ class Envelope:
     init: EnvelopeInit
     apply: EnvelopeApply
 
-
 '''
+def construct_input_features(pos: jnp.ndarray, atoms: jnp.ndarray, ndim: int = 3) \
+        -> Tuple[jnp.ndarray, jnp.ndarray]:
+    """Construct inputs to AINet from raw electron and atomic positions.
+    Here, we assume that the electron spin is up and down along the axis=0 in array pos.
+    So, the pairwise distance ae also follows this order.
+        pos: electron positions, Shape(nelectrons * dim)
+        atoms: atom positions. Shape(natoms, ndim)
+    """
+    ae = jnp.reshape(pos, [-1, 1, ndim]) - atoms[None, ...]
+    ee = jnp.reshape(pos, [1, -1, ndim]) - jnp.reshape(pos, [-1, 1, ndim])
+    return ae, ee
 pos = jnp.array([1, 1, 1, 1, 0.5, 0.5, 0.5, 0.5, 0.5, 0.5, 1, 0.5])
 atoms = jnp.array([[0, 0, 0], [0.2, 0.2, 0.2]])
 ae, ee = construct_input_features(pos, atoms, ndim=3)
@@ -64,13 +74,16 @@ def make_GTO_envelope():
         we use the orbitals up to p. So, we need 1 + 3 .
         And this number must be same with the number of the parameters."""
         num_Y_lm = 1 + 3
-        xi = jnp.ones(shape=(nelectrons, natoms, num_Y_lm))
+        xi = jnp.ones(shape=(num_Y_lm * natoms, nelectrons))
         params = []
-        params.append({'xi': xi})
+        for _ in jnp.arange(nelectrons):
+            params.append({'xi': xi})
         #print("xi", xi)
+        #print('shape of xi', jnp.shape(xi))
+        #print('params', params)
         return params
 
-    def apply(ae: jnp.ndarray, xi: jnp.ndarray, natoms: int, nelectrons: int) -> jnp.ndarray:
+    def apply(ae: jnp.ndarray, params, natoms: int, nelectrons: int) -> jnp.ndarray:
         """the input for the apply function must be the r. It should be scalar.
         we need assign the electrons to atoms. Now, we have 4 electrons, each atom has two electrons.
         The number one and number three electrons belong to first_atom. The spin configuration is up up down down.
@@ -94,7 +107,7 @@ def make_GTO_envelope():
         #print("theta_coordinates", theta_coordinates)
         #print("phi_coordinates", phi_coordinates)
         """here, n is L, i.e. the angular momentum quantum number."""
-        print(spherical_coordinates[0][1], spherical_coordinates[0][2])
+        #print(spherical_coordinates[0][1], spherical_coordinates[0][2])
         angular_value_00 = sph_harm(n=jnp.array([0]), m=jnp.array([0]), theta=theta_coordinates, phi=phi_coordinates)
         angular_value_1_1 = sph_harm(n=jnp.array([1]), m=jnp.array([-1]), theta=theta_coordinates, phi=phi_coordinates)
         angular_value_10 = sph_harm(n=jnp.array([1]), m=jnp.array([0]), theta=theta_coordinates, phi=phi_coordinates)
@@ -104,12 +117,18 @@ def make_GTO_envelope():
         angular_value = jnp.transpose(angular_value)
         print("-----------------------------")
         #print("angular_value", angular_value)
+        #print("angular_value", angular_value)
         num_Y_lm = 1 + 3
         angular_value = jnp.reshape(angular_value, (nelectrons, natoms, num_Y_lm))
-        temp = angular_value * xi
-        print("temp", temp)
-        """here, the summation is over num_angular_momentum_function then over num_atoms"""
-        l_com_ang = jnp.sum(jnp.sum(angular_value * xi, axis=-1), axis=-1)
+        #print("angular_value", angular_value)
+        #temp = angular_value * xi
+        #print("temp", temp)
+        #print("shape of angular_value", jnp.shape(angular_value))
+        #print('shape of xi', jnp.shape(xi))
+        #print('type of xi', type(xi))
+        #print(xi[0])
+        l_com_ang = [jnp.dot(jnp.reshape(ang, (1, -1)), jnp.array(x['xi'])) for ang, x in zip(angular_value, params)]
+        #l_com_ang = jnp.sum(jnp.sum(angular_value * xi, axis=-1), axis=-1)
         print("l_com_ang", l_com_ang)
 
         return l_com_ang
@@ -117,8 +136,8 @@ def make_GTO_envelope():
     return Envelope(init=init, apply=apply)
 
 '''
-init, apply = make_GTO_envelope()
-xi = init(natoms=2, nelectrons=4)
+envelope = make_GTO_envelope()
+xi = envelope.init(natoms=2, nelectrons=4)
 print("xi", xi)
-output = apply(ae, xi, natoms=2, nelectrons=4)
+output = envelope.apply(ae, xi, natoms=2, nelectrons=4)
 '''

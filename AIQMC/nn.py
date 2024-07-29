@@ -200,32 +200,64 @@ def make_orbitals(natoms: int, nelectrons: int, num_angular: int, equivariant_la
         params['jastrow_ae'] = jastrow_ae_init()
         params['jastrow_ee'] = jastrow_ee_init()
         orbitals = []
-        key, subkey = jax.random.split(key)
+
         """this out_dim should be the number of electrons."""
-        orbitals.append(nnblocks.init_linear_layer(subkey, in_dim=dims_orbital_in, out_dim=nelectrons, include_bias=False))
-        """we shrink this coe_angular into the parameters of the envelope functions."""
-        #coe_angular.append(nnblocks.init_linear_layer(key, in_dim=num_angular, out_dim=nelectrons, include_bias=False))
+        for _ in jnp.arange(nelectrons):
+            key, subkey = jax.random.split(key)
+            orbitals.append(nnblocks.init_linear_layer(subkey, in_dim=dims_orbital_in, out_dim=nelectrons, include_bias=False))
+        """we also add the coefficients for the first orbitals part. We need think what the in_dim and out_dim are.26/07/20204."""
+        #coe_orbitals = []
+        #coe_orbitals.append(nnblocks.init_linear_layer(key, in_dim=natoms, out_dim=nelectrons, include_bias=False))
         params['orbital'] = orbitals
-        #params["ceo_angular"] = coe_angular
+        #params['ceo_orbitals'] = coe_orbitals
         print("params", params)
-        print("params_envelope", params['envelope'])
+        #print("params_envelope", params['envelope'])
 
         return params
 
     def apply(params, pos: jnp.ndarray, atoms: jnp.ndarray):
         ae, ee = construct_input_features(pos, atoms, ndim=3)
         h_to_orbitals = equivariant_layers_apply(params=params['layers'], ae=ae, ee=ee)
+        #print("h_to_orbitals", h_to_orbitals)
+        #print("params[orbital]", params['orbital'])
         """the initial envelope function finished without the diffusion part.24/07/2024."""
-        xi = params['envelope'][0]
-        print("type of xi", type(xi))
-        envelope_factor = envelope.apply(ae, xi=params['envelope'][0]['xi'], natoms=2, nelectrons=4)
+        #xi = params['envelope']
+        #print("type of xi", type(xi))
+        envelope_factor = envelope.apply(ae, params=params['envelope'], natoms=2, nelectrons=4)
         print("envelope_factor", envelope_factor)
-
-        orbitals_first = [nnblocks.linear_layer_no_b(h, **p) for h, p in zip(h_to_orbitals, params['orbital'])]
+        #h_to_orbitals = jnp.reshape(h_to_orbitals, (nelectrons, 1, -1))
+        #print("h_to_orbitals_modified", h_to_orbitals)
+        #for h, p in zip(h_to_orbitals, params['orbital']):
+        #    print("h", h)
+        #    print("p", p)
+        #print("params[orbitals]", params['orbital'])
+        orbitals_first = jnp.array([nnblocks.linear_layer_no_b(h, **p) for h, p in zip(h_to_orbitals, params['orbital'])])
         print("orbitals_first", orbitals_first)
-
-        """we need match the shape of orbitals.24/07/2024.Then we need debug the two functions."""
+        """we need match the shape of orbitals.24/07/2024.Then we need debug the two functions.
+        we need add r^l * e^(-r^2) on the orbitals_first. then times by envelope_factor.
+        we need think about the output dimensions. then consider how to construct orbitals.
+        Currently, we have more problems about how to think the orbitals. 29/07/2024.
+        whatever, we can start to construct the matrix now.
+        Before, we made a mistake about the orbitals. So, here we have to rewrite the envelope part. 
+        We have 16 elements in the matrix. We also need 16 corresponding elements in the envelope functions."""
+        envelope_factor = jnp.reshape(jnp.array(envelope_factor), (nelectrons, nelectrons))
+        print('envelope_factor', envelope_factor)
+        orbitals_end = jnp.array([a * b for a, b in zip(orbitals_first, envelope_factor)])
+        print('orbitals_end', orbitals_end)
+        orbitals_end = jnp.transpose(orbitals_end)
+        print('orbitals_end', orbitals_end)
         #h_to_orbitals = envelope_factor * h_to_orbitals
+        #print(jnp.shape(orbitals_first))
+        #orbitals_first = jnp.reshape(jnp.array(orbitals_first), (-1))
+        #temp1 = orbitals_first * orbitals_first
+        #print(temp1)
+        #orbitals_end = orbitals_first * jnp.exp(orbitals_first * orbitals_first) * envelope_factor
+        """let's add Jastrow here. We need use the deter property, k^n det(A) = det(kA). 
+        We have some bugs here.29/07/2024, please solve it tommorrow."""
+        jastrow = jnp.exp(jastrow_ae_apply(r_ae=ae, charges=jnp.array([[[2], [2]], [[2], [2]], [[2], [2]], [[2], [2]]]),
+                                           params=params['jastrow_ae'])/nelectrons +
+                          jastrow_ee_apply(ee=ee, params=params['jastrow_ee'])/nelectrons)
+        print('jastrow', jastrow)
 
     return init, apply
 

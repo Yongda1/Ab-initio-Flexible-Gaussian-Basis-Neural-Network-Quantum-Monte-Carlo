@@ -89,18 +89,7 @@ def make_pade_ae_jastrow() -> ...:
     In this case, we have two atoms. Each atom has two electrons."""
 
     def pade_ae_cusp_fun(r: jnp.ndarray, charges: jnp.array, beta: jnp.ndarray, ) -> jnp.ndarray:
-        #print("ae", r)
-        #print("charges", charges)
-        #print("beta", beta)
-        #temp2 = charges * 2
         beta = jnp.reshape(beta, (4, 2, 1))
-        #print("beta", beta)
-        #print(temp2)
-        #temp1 = jnp.float_power((2 * charges), 1/4)
-        #print(temp1)
-        #print("charges", charges)
-        #temp3 = temp1 * r * beta
-        #print(temp3)
         return -1 * jnp.float_power((2 * charges), (3/4)) * (1 - jnp.exp(-1 * jnp.float_power((-2 * charges), 1/4) * r * beta))/(2 * beta)
 
     def init() -> Mapping[str, jnp.ndarray]:
