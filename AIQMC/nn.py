@@ -13,7 +13,7 @@ from typing import Any, Iterable, Mapping, MutableMapping, Optional, Sequence, T
 import attr
 from AIQMC import envelopes
 from AIQMC import nnblocks
-from AIQMC import Jastrow
+#from AIQMC import Jastrow
 import jax
 import chex
 import jax.numpy as jnp
