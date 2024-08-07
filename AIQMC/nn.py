@@ -13,7 +13,7 @@ from typing import Any, Iterable, Mapping, MutableMapping, Optional, Sequence, T
 import attr
 from AIQMC import envelopes
 from AIQMC import nnblocks
-#from AIQMC import Jastrow
+from AIQMC import Jastrow
 import jax
 import chex
 import jax.numpy as jnp
@@ -197,7 +197,7 @@ def make_orbitals(natoms: int, nelectrons: int, num_angular: int, equivariant_la
         output_dims = dims_orbital_in
         """Here, we should put the envelope function."""
         params['envelope'] = envelope.init(natoms=2, nelectrons=4)
-        params['jastrow_ae'] = jastrow_ae_init()
+        params['jastrow_ae'] = jastrow_ae_init(nelectron=4, charges=jnp.array([2, 2]))
         params['jastrow_ee'] = jastrow_ee_init()
         orbitals = []
 
@@ -253,11 +253,18 @@ def make_orbitals(natoms: int, nelectrons: int, num_angular: int, equivariant_la
         #print(temp1)
         #orbitals_end = orbitals_first * jnp.exp(orbitals_first * orbitals_first) * envelope_factor
         """let's add Jastrow here. We need use the deter property, k^n det(A) = det(kA). 
-        We have some bugs here.29/07/2024, please solve it tommorrow."""
-        jastrow = jnp.exp(jastrow_ae_apply(r_ae=ae, charges=jnp.array([[[2], [2]], [[2], [2]], [[2], [2]], [[2], [2]]]),
+        We have some bugs here.29/07/2024, please solve it tommorrow.
+        we already solve it. The bug is from the sign in the one-body Jastrow."""
+        temp1 = jastrow_ae_apply(ae=ae, nelectron=4, charges=jnp.array([2, 2]), params=params['jastrow_ae']) / nelectrons
+        print('temp1', temp1)
+        jastrow = jnp.exp(jastrow_ae_apply(ae=ae, nelectron=4, charges=jnp.array([2, 2]),
                                            params=params['jastrow_ae'])/nelectrons +
-                          jastrow_ee_apply(ee=ee, params=params['jastrow_ee'])/nelectrons)
+                          jastrow_ee_apply(ee=ee, nelectron=4, params=params['jastrow_ee'])/nelectrons)
         print('jastrow', jastrow)
+        """here, we only have one determinant. Notes: currently, the wave_function is a determinant.
+        Today, we finished the construction of the wave function as the single determinant 07.08.2024."""
+        wave_function = jastrow*orbitals_end
+        return wave_function
 
     return init, apply
 

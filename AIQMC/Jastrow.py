@@ -5,7 +5,7 @@ import jax.numpy as jnp
 #from nn import construct_input_features
 import numpy as np
 
-
+'''
 def construct_input_features(pos: jnp.ndarray, atoms: jnp.ndarray, ndim: int = 3) \
         -> Tuple[jnp.ndarray, jnp.ndarray]:
     """Construct inputs to AINet from raw electron and atomic positions.
@@ -22,7 +22,8 @@ def construct_input_features(pos: jnp.ndarray, atoms: jnp.ndarray, ndim: int = 3
 pos = jnp.array([1, 1, 1, 1, 0.5, 0.5, 0.5, 0.5, 0.5, 0.5, 1, 0.5])
 atoms = jnp.array([[0, 0, 0], [0.2, 0.2, 0.2]])
 ae, ee = construct_input_features(pos, atoms, ndim=3)
-charges = jnp.array([2, 2])
+charges = jnp.array([2, 2])'''
+
 ParamTree = Union[jnp.ndarray, Iterable['ParamTree'], Mapping[Any, 'ParamTree']]
 
 
@@ -32,7 +33,8 @@ class JastrowType(enum.Enum):
 
 
 def _jastrow_ee(ee: jnp.ndarray, params: ParamTree, nelectron: int, jastrow_fun: Callable[[jnp.ndarray, float, jnp.ndarray], jnp.ndarray]) -> jnp.ndarray:
-    """we need develope the method to spit the spin configurations. 01.08.2024"""
+    """we need develope the method to spit the spin configurations. 01.08.2024.
+    We already found the method for spliting the spin configurations. 07.08.2024."""
     r_ees = jnp.linalg.norm(ee, axis=-1)
     #print('r_ee', r_ees)
     n_spin_up = int(nelectron/2)
@@ -75,18 +77,18 @@ def make_pade_ee_jastrow() -> ...:
 
     return init, apply
 
-
+'''
 print('ee', ee)
 init, apply = make_pade_ee_jastrow()
 params1 = init()
 print('params', params1)
 Jastrow_ee = apply(ee, nelectron=4, params=params1)
+'''
 
-
-"""to be continued 17/7/2024"""
-def _jastrow_ae(r_ae: jnp.ndarray, nelectron: int, charges: jnp.array, params: ParamTree, jastrow_fun: Callable[[jnp.ndarray, int, jnp.ndarray, jnp.ndarray], jnp.ndarray]) -> jnp.ndarray:
+def _jastrow_ae(ae: jnp.ndarray, nelectron: int, charges: jnp.array, params: ParamTree, jastrow_fun: Callable[[jnp.ndarray, int, jnp.ndarray, jnp.ndarray], jnp.ndarray]) -> jnp.ndarray:
     """we also need the format of r_ae and charges to do the summation. To be continued."""
-    jastrow_ae = jnp.sum(jastrow_fun(r_ae, nelectron, charges, params['ae']))
+    jastrow_ae = jnp.sum(jastrow_fun(ae, nelectron, charges, params['ae']))
+    print('jastrow_ae', jastrow_ae)
     return jastrow_ae
 
 
@@ -95,7 +97,7 @@ def make_pade_ae_jastrow() -> ...:
     In this case, we have two atoms. Each atom has two electrons."""
 
     def pade_ae_cusp_fun(ae: jnp.ndarray, nelectron: int, charges: jnp.array, beta: jnp.ndarray) -> jnp.ndarray:
-        print('r_ae', ae)
+        #print('r_ae', ae)
         r_ae = jnp.linalg.norm(ae, axis=-1)
         print('r_ae', r_ae)
         natoms = len(charges)
@@ -103,7 +105,9 @@ def make_pade_ae_jastrow() -> ...:
         print('charges', charges)
         'now, we need replicate the charge array.'
         beta = jnp.reshape(beta, (nelectron, natoms))
-        return -1 * jnp.float_power((2 * charges), (3/4)) * (1 - jnp.exp(-1 * jnp.float_power((-2 * charges), 1/4) * r_ae * beta))/(2 * beta)
+        print('beta', beta)
+        print('value_Jastrow_ae', -1 * jnp.float_power((2 * charges), (3/4)) * (1 - jnp.exp(-1 * jnp.float_power((2 * charges), 1/4) * r_ae * beta))/(2 * beta))
+        return -1 * jnp.float_power((2 * charges), (3/4)) * (1 - jnp.exp(-1 * jnp.float_power((2 * charges), 1/4) * r_ae * beta))/(2 * beta)
 
     def init(nelectron: int, charges: jnp.ndarray) -> Mapping[str, jnp.ndarray]:
         params = {}
@@ -115,12 +119,12 @@ def make_pade_ae_jastrow() -> ...:
     
     return init, apply
 
-
+'''
 init, apply = make_pade_ae_jastrow()
 params2 = init(nelectron=4, charges=charges)
 print('params2', params2)
 Jastrow_ae = apply(ae, nelectron=4, charges=charges, params=params2)
-
+'''
 
 def get_jastrow(jastrow: JastrowType) -> ...:
     jastrow_ee_init, jastrow_ee_apply = make_pade_ee_jastrow()
