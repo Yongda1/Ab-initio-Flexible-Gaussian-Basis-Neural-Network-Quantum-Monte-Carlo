@@ -66,6 +66,24 @@ class ApplyLayersFn(Protocol):
     def __call__(self, params, ae: jnp.ndarray, ee: jnp.ndarray, nelectrons: int = 4) -> jnp.ndarray:
         """Forward evaluation of the interaction layers."""
 
+class InitAINet(Protocol):
+    def __call__(self, key:chex.PRNGKey) -> ParamTree:
+        """Return initialized parameters for the network."""
+
+class OrbitalsAILike(Protocol):
+    def __call__(self, params: ParamTree, pos: jnp.ndarray, atoms: jnp.ndarray, charges: jnp.ndarray) -> Sequence[jnp.ndarray]:
+        """Forward evaluation of the AINet up to the orbitals."""
+
+class AINetLike(Protocol):
+    def __call__(self, params: ParamTree, pos: jnp.ndarray, atoms: jnp.ndarray, charges: jnp.ndarray) -> Tuple[jnp.ndarray, jnp.ndarray]:
+        """Return the sign and log magnitude of the wavefunction.
+        Here, we also need add the spin configuration information into the input array."""
+
+@attr.s(auto_attribs=True)
+class Network:
+    init: InitAINet
+    apply: AINetLike
+    orbitals: OrbitalsAILike
 
 """Let us finish the first function for constructing input features. 
 We do not need the norm of r_ae and r_ee vectors as input features, 
@@ -215,7 +233,7 @@ def make_orbitals(natoms: int, nelectrons: int, num_angular: int, equivariant_la
 
         return params
 
-    def apply(params, pos: jnp.ndarray, atoms: jnp.ndarray):
+    def apply(params, pos: jnp.ndarray, atoms: jnp.ndarray, charges: jnp.ndarray):
         ae, ee = construct_input_features(pos, atoms, ndim=3)
         h_to_orbitals = equivariant_layers_apply(params=params['layers'], ae=ae, ee=ee)
         #print("h_to_orbitals", h_to_orbitals)
@@ -255,18 +273,38 @@ def make_orbitals(natoms: int, nelectrons: int, num_angular: int, equivariant_la
         """let's add Jastrow here. We need use the deter property, k^n det(A) = det(kA). 
         We have some bugs here.29/07/2024, please solve it tommorrow.
         we already solve it. The bug is from the sign in the one-body Jastrow."""
-        temp1 = jastrow_ae_apply(ae=ae, nelectron=4, charges=jnp.array([2, 2]), params=params['jastrow_ae']) / nelectrons
-        print('temp1', temp1)
-        jastrow = jnp.exp(jastrow_ae_apply(ae=ae, nelectron=4, charges=jnp.array([2, 2]),
+        #temp1 = jastrow_ae_apply(ae=ae, nelectron=4, charges=jnp.array([2, 2]), params=params['jastrow_ae']) / nelectrons
+        #print('temp1', temp1)
+        jastrow = jnp.exp(jastrow_ae_apply(ae=ae, nelectron=4, charges=charges,
                                            params=params['jastrow_ae'])/nelectrons +
                           jastrow_ee_apply(ee=ee, nelectron=4, params=params['jastrow_ee'])/nelectrons)
         print('jastrow', jastrow)
         """here, we only have one determinant. Notes: currently, the wave_function is a determinant.
         Today, we finished the construction of the wave function as the single determinant 07.08.2024."""
         wave_function = jastrow*orbitals_end
+        print('wave_function', wave_function)
         return wave_function
 
     return init, apply
+
+
+def make_ai_net(charges: jnp.ndarray, ndim: int=3, full_det: bool = True) -> Network:
+    """Creates functions for initializing parameters and evaluating AInet.
+    07.08.2024 we still have some problems about this module ,for example, """
+    feature_layer1 = make_ainet_features(natoms=2, nelectrons=4, ndim=3)
+    equivariant_layers = make_ainet_layers(feature_layer=feature_layer1)
+    orbitals_init, orbitals_apply = make_orbitals(natoms=2, nelectrons=4, num_angular=4, equivariant_layers=equivariant_layers)
+
+    def init(key: chex.PRNGKey) -> ParamTree:
+        key, subkey = jax.random.split(key, num=2)
+        return orbitals_init(subkey)
+
+    def apply(params, pos:jnp.ndarray, atoms: jnp.ndarray, charges: jnp.ndarray) -> Tuple[jnp.ndarray, jnp.ndarray]:
+        orbitals = orbitals_apply(params, pos, atoms, charges)
+        """logdet_matmul function still has problems. We need slove it later."""
+        return nnblocks.logdet_matmul(orbitals)
+
+    return Network(init=init, apply=apply, orbitals=orbitals_apply)
 
 
 pos = jnp.array([1, 1, 1, 1, 0.5, 0.5, 0.5, 0.5, 0.5, 0.5, 1, 0.5])
@@ -283,9 +321,3 @@ a = jax.random.PRNGKey(seed=1)
 init, apply = make_orbitals(natoms=2, nelectrons=4, num_angular=4, equivariant_layers=equivariant_layers)
 parameters = init(a)
 initialization = apply(params=parameters, pos=pos, atoms=atoms)
-
-
-#def make_ai_net(nspins: Tuple[int, int], charges: jnp.ndarray, ndim: int=3, determinants: int=16, hidden_dims= (8, 8, 8)):
-    #natoms = charges.shape[0]
-    #feature_layer = make_ainet_features(natoms, nspins, ndim)
-    #equivariant_layers = make_ai_net_layers(nspins, charges.shape[0])
