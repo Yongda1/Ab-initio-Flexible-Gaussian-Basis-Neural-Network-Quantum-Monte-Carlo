@@ -288,7 +288,7 @@ def make_orbitals(natoms: int, nelectrons: int, num_angular: int, equivariant_la
     return init, apply
 
 
-def make_ai_net(charges: jnp.ndarray, ndim: int=3, full_det: bool = True) -> Network:
+def make_ai_net(charges: jnp.ndarray, ndim: int = 3, full_det: bool = True) -> Network:
     """Creates functions for initializing parameters and evaluating AInet.
     07.08.2024 we still have some problems about this module ,for example, """
     feature_layer1 = make_ainet_features(natoms=2, nelectrons=4, ndim=3)
@@ -301,7 +301,7 @@ def make_ai_net(charges: jnp.ndarray, ndim: int=3, full_det: bool = True) -> Net
 
     def apply(params, pos:jnp.ndarray, atoms: jnp.ndarray, charges: jnp.ndarray) -> Tuple[jnp.ndarray, jnp.ndarray]:
         orbitals = orbitals_apply(params, pos, atoms, charges)
-        """logdet_matmul function still has problems. We need slove it later."""
+        """logdet_matmul function still has problems. We need solve it later.12.08.2024.!!!"""
         return nnblocks.logdet_matmul(orbitals)
 
     return Network(init=init, apply=apply, orbitals=orbitals_apply)
@@ -320,4 +320,5 @@ a = jax.random.PRNGKey(seed=1)
 #h_to_orbitals = apply(params=params, ae=ae, ee=ee,)
 init, apply = make_orbitals(natoms=2, nelectrons=4, num_angular=4, equivariant_layers=equivariant_layers)
 parameters = init(a)
-initialization = apply(params=parameters, pos=pos, atoms=atoms)
+initialization = apply(params=parameters, pos=pos, atoms=atoms, charges=jnp.array([2, 2]))
+Network1 = make_ai_net(charges=jnp.array([2, 2]), ndim=3, full_det=True)
