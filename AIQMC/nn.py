@@ -228,7 +228,7 @@ def make_orbitals(natoms: int, nelectrons: int, num_angular: int, equivariant_la
         #coe_orbitals.append(nnblocks.init_linear_layer(key, in_dim=natoms, out_dim=nelectrons, include_bias=False))
         params['orbital'] = orbitals
         #params['ceo_orbitals'] = coe_orbitals
-        print("params", params)
+        #print("params", params)
         #print("params_envelope", params['envelope'])
 
         return params
@@ -299,14 +299,14 @@ def make_ai_net(charges: jnp.ndarray, ndim: int = 3, full_det: bool = True) -> N
         key, subkey = jax.random.split(key, num=2)
         return orbitals_init(subkey)
 
-    def apply(params, pos:jnp.ndarray, atoms: jnp.ndarray, charges: jnp.ndarray) -> Tuple[jnp.ndarray, jnp.ndarray]:
+    def apply(params, pos: jnp.ndarray, atoms: jnp.ndarray, charges: jnp.ndarray) -> Tuple[jnp.ndarray, jnp.ndarray]:
         orbitals = orbitals_apply(params, pos, atoms, charges)
         """logdet_matmul function still has problems. We need solve it later.12.08.2024.!!!"""
         return nnblocks.logdet_matmul(orbitals)
 
     return Network(init=init, apply=apply, orbitals=orbitals_apply)
 
-
+'''
 pos = jnp.array([1, 1, 1, 1, 0.5, 0.5, 0.5, 0.5, 0.5, 0.5, 1, 0.5])
 atoms = jnp.array([[0, 0, 0], [0.2, 0.2, 0.2]])
 ae, ee = construct_input_features(pos, atoms, ndim=3)
@@ -322,3 +322,4 @@ init, apply = make_orbitals(natoms=2, nelectrons=4, num_angular=4, equivariant_l
 parameters = init(a)
 initialization = apply(params=parameters, pos=pos, atoms=atoms, charges=jnp.array([2, 2]))
 Network1 = make_ai_net(charges=jnp.array([2, 2]), ndim=3, full_det=True)
+'''
