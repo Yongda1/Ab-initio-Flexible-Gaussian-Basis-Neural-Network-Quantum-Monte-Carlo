@@ -8,6 +8,7 @@ from absl import logging
 import chex
 from AIQMC import envelopes
 from AIQMC import nn
+#from AIQMC import mcstep
 import jax
 from jax.experimental import multihost_utils
 import jax.numpy as jnp
@@ -92,7 +93,7 @@ class Step(Protocol):
 
 def main(batch_size=4, structure=jnp.array([[10, 0, 0],
                        [0, 10, 0],
-                       [0, 0, 10]]), atoms=jnp.array([[0, 0, 0], [0.2, 0.2, 0.2]]), charges=jnp.array([2, 2])):
+                       [0, 0, 10]]), atoms=jnp.array([[0, 0, 0], [0.2, 0.2, 0.2]]), charges=jnp.array([2, 2]), nelectrons=4, ndim=3):
     num_devices = jax.local_device_count() #the amount of GPU per host
     num_hosts = jax.device_count() // num_devices #the amount of host
     print("num_devices", num_devices)
@@ -132,11 +133,20 @@ def main(batch_size=4, structure=jnp.array([[10, 0, 0],
     If we have to introduce the complex number later, we can use two envelope layers, one as real part, the other one as imaginary part.
     So the output dimensions of envelope layer will be two times. 16.08.2024.'''
     signed_network = network.apply
+    logabs_network = lambda *args, **kwargs: signed_network(*args, **kwargs)[1]
+    "notes: how many 0 in the in_axes? It depends on the input parameters."
+    batch_network = jax.vmap(logabs_network, in_axes=(None, 0, 0, 0), out_axes=0)
+
+    "for the complex wave function, we need a new function." \
+    "This is correct. no problem. 19.08.2024."
+    def log_network(*args, **kwargs):
+        phase, mag = signed_network(*args, **kwargs)
+        return mag + 1.j * phase
 
     pos, spins = init_electrons(subkey, structure=structure, atoms=atoms, charges=charges, electrons=jnp.array([[1, 0], [1, 0]]), batch_size=host_batch_size, init_width=0.5)
     print("pos", pos)
     print("spins", spins)
-    print("data_sahpe+", data_shape+(-1,))
+    print("data_shape +", data_shape+(-1,))
     """this operation means add one extra dimension to the array."""
     pos = jnp.reshape(pos, data_shape+(-1,))
     print("pos", pos)
@@ -149,7 +159,11 @@ def main(batch_size=4, structure=jnp.array([[10, 0, 0],
     data = nn.AINetData(positions=pos, spins=spins, atoms=batch_atoms, charges=batch_charges)
     """here, we have one problem about the format of pos, spins, batch_atoms, batch_charges.
     These formats can be easily changed in nn.py. so, before we do this, we need know which format should be used in the loss function 16.08.2024."""
-    print("data.positions", data.positions)
+    print("data.positions", data.positions.shape)
+    "currently, we dont need check points. So, we ignore this part."
+    #Main training
+    #Construct MC step
+    #mc_step = mcstep.make_mc_step()
 
 
 
