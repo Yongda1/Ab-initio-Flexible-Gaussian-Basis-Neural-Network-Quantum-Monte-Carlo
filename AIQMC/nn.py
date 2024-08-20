@@ -36,7 +36,7 @@ class LogAINetLike(Protocol):
 
     def __call__(self, params: ParamTree,
                  electrons: jnp.ndarray, spins: jnp.ndarray, atoms: jnp.ndarray, charges: jnp.ndarray) -> jnp.ndarray:
-        """Retruns the log magnitude of the wavefunction."""
+        """Returns the log magnitude of the wavefunction."""
 
 
 class FeatureInit(Protocol):

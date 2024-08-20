@@ -53,11 +53,9 @@ def init_electrons(key, structure: jnp.ndarray, atoms: jnp.ndarray, charges: jnp
     electrons_positions_batch = jnp.reshape(jnp.array(electrons_positions_batch), (batch_size, len(charges), -1, 3))
     key, subkey = jax.random.split(key, num=2)
     electrons_positions_batch += (jax.random.normal(subkey, shape=electrons_positions_batch.shape) * init_width)
-    print(electrons_positions_batch)
-    print("electrons", electrons)
+    electrons_positions_batch = jnp.reshape(electrons_positions_batch, (batch_size, 12))
     "we need think about this. We need assign the spin configurations to electrons.12.08.2024."
     electrons = jnp.repeat(electrons, batch_size, axis=0)
-    print(electrons)
     return electrons_positions_batch, electrons
 
 
@@ -144,26 +142,28 @@ def main(batch_size=4, structure=jnp.array([[10, 0, 0],
         return mag + 1.j * phase
 
     pos, spins = init_electrons(subkey, structure=structure, atoms=atoms, charges=charges, electrons=jnp.array([[1, 0], [1, 0]]), batch_size=host_batch_size, init_width=0.5)
-    print("pos", pos)
-    print("spins", spins)
-    print("data_shape +", data_shape+(-1,))
+    #print("host_batch_size", host_batch_size)
+    #print("batch_pos", pos)
+    #print("spins", spins)
+    #print("data_shape +", data_shape+(-1,))
     """this operation means add one extra dimension to the array."""
     pos = jnp.reshape(pos, data_shape+(-1,))
-    print("pos", pos)
+    #print("pos", pos)
     """here, we need be sure that the array pos must be compatible with the input of AInet and hamiltonian."""
     pos = kfac_jax.utils.broadcast_all_local_devices(pos)
-    print("pos", pos)
+    #print("pos", pos)
     spins = jnp.reshape(spins, data_shape+(-1,))
     spins = kfac_jax.utils.broadcast_all_local_devices(spins)
-    print("spins", spins)
+    #print("spins", spins)
     data = nn.AINetData(positions=pos, spins=spins, atoms=batch_atoms, charges=batch_charges)
     """here, we have one problem about the format of pos, spins, batch_atoms, batch_charges.
     These formats can be easily changed in nn.py. so, before we do this, we need know which format should be used in the loss function 16.08.2024."""
-    print("data.positions", data.positions.shape)
+    #print("data.positions", data.positions.shape)
     "currently, we dont need check points. So, we ignore this part."
     #Main training
     #Construct MC step
     #mc_step = mcstep.make_mc_step()
+    return network, params, data
 
 
 
