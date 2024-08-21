@@ -89,53 +89,55 @@ class Step(Protocol):
 """we can start the main function first, the solve every module we need in the calculation."""
 
 
-def main(batch_size=4, structure=jnp.array([[10, 0, 0],
+def main(batch_size=4, structure = jnp.array([[10, 0, 0],
                        [0, 10, 0],
                        [0, 0, 10]]), atoms=jnp.array([[0, 0, 0], [0.2, 0.2, 0.2]]), charges=jnp.array([2, 2]), nelectrons=4, ndim=3):
     num_devices = jax.local_device_count() #the amount of GPU per host
     num_hosts = jax.device_count() // num_devices #the amount of host
-    print("num_devices", num_devices)
-    print("num_hosts", num_hosts)
+    #print("num_devices", num_devices)
+    #print("num_hosts", num_hosts)
     logging.info('Start QMC with $i devices per host, across %i hosts.', num_devices, num_hosts)
     if batch_size % (num_devices * num_hosts) != 0:
         raise ValueError('Batch size must be divisible by number of devices!')
     host_batch_size = batch_size // num_hosts # how many configurations we put on one host
     device_batch_size = host_batch_size // num_devices # how many configurations we put on one GPU
     data_shape = (num_devices, device_batch_size)
-    print("data_shape", data_shape)
+    #print("data_shape", data_shape)
     """we continue tommorrow, 14.08.2024.
     Here, we use [None, ...] to enlarge one dimension of the array 'atoms'. """
     batch_atoms = jnp.tile(atoms[None, ...], [device_batch_size, 1, 1])
-    print("batch_atoms", batch_atoms)
+    #print("batch_atoms", batch_atoms)
     batch_atoms = kfac_jax.utils.replicate_all_local_devices(batch_atoms)
-    print("batch_atoms", batch_atoms)
+    #print("batch_atoms", batch_atoms)
     batch_charges = jnp.tile(charges[None, ...], [device_batch_size, 1])
-    print("batch_charges", batch_charges)
+    #print("batch_charges", batch_charges)
     batch_charges = kfac_jax.utils.replicate_all_local_devices(batch_charges)
-    print("batch_charges", batch_charges)
+    #print("batch_charges", batch_charges)
     seed = jnp.asarray([1e6 * time.time()])
     seed = int(multihost_utils.broadcast_one_to_all(seed)[0])
     key = jax.random.PRNGKey(seed)
-    print("key", key)
+    #print("key", key)
     feature_layer1 = nn.make_ainet_features(natoms=2, nelectrons=4, ndim=3)
     """we already write the envelope function in the nn.py."""
     network = nn.make_ai_net(charges=jnp.array([2, 2]), ndim=3, full_det=True)
     key, subkey = jax.random.split(key)
     params = network.init(subkey)
-    print("params", params)
-    params = kfac_jax.utils.replicate_all_local_devices(params)
-    print("params", params)
+    #print("params", params)
+    batch_params = kfac_jax.utils.replicate_all_local_devices(params)
+    #print("params", params)
     '''here, we have one problem about complex number orbitals. So far, we have not deal with it.
     16.08.2024, we solve the complex number problem later.
     For the complex number problem, we dont need change any part of the nn.py. Because we have angular momentum functions to generate complex orbitals naturally.
     If we have to introduce the complex number later, we can use two envelope layers, one as real part, the other one as imaginary part.
     So the output dimensions of envelope layer will be two times. 16.08.2024.'''
     signed_network = network.apply
-    logabs_network = lambda *args, **kwargs: signed_network(*args, **kwargs)[1]
+    #logabs_network = lambda *args, **kwargs: signed_network(*args, **kwargs)[1]
     "notes: how many 0 in the in_axes? It depends on the input parameters."
-    batch_network = jax.vmap(logabs_network, in_axes=(None, 0, 0, 0), out_axes=0)
+    "Notes: here, batch_network is a function but not a class."
+    """we have more problems about this batch calculation at 21.08.2021."""
+    batch_network = jax.vmap(signed_network, in_axes=(None, 0, None, None), out_axes=0)
 
-    "for the complex wave function, we need a new function." \
+    "for the complex wave function, we need a new function."
     "This is correct. no problem. 19.08.2024."
     def log_network(*args, **kwargs):
         phase, mag = signed_network(*args, **kwargs)
@@ -147,15 +149,22 @@ def main(batch_size=4, structure=jnp.array([[10, 0, 0],
     #print("spins", spins)
     #print("data_shape +", data_shape+(-1,))
     """this operation means add one extra dimension to the array."""
-    pos = jnp.reshape(pos, data_shape+(-1,))
+    batch_pos = jnp.reshape(pos, data_shape+(-1,))
     #print("pos", pos)
     """here, we need be sure that the array pos must be compatible with the input of AInet and hamiltonian."""
-    pos = kfac_jax.utils.broadcast_all_local_devices(pos)
+    batch_pos = kfac_jax.utils.broadcast_all_local_devices(batch_pos)
     #print("pos", pos)
     spins = jnp.reshape(spins, data_shape+(-1,))
     spins = kfac_jax.utils.broadcast_all_local_devices(spins)
     #print("spins", spins)
-    data = nn.AINetData(positions=pos, spins=spins, atoms=batch_atoms, charges=batch_charges)
+    print("batch_pos", batch_pos)
+    #batch_pos = jnp.reshape(batch_pos, (4, -1))
+    print("batch_atoms", batch_atoms)
+    print("batch_charges", batch_charges)
+    test_output = batch_network(batch_params, batch_pos, atoms, charges)
+    """here, we confirm the single stream version is working well."""
+    #test_output_no_batch = signed_network(params=params, pos=batch_pos[0][1], atoms=atoms, charges=charges)
+    data = nn.AINetData(positions=batch_pos, spins=spins, atoms=batch_atoms, charges=batch_charges)
     """here, we have one problem about the format of pos, spins, batch_atoms, batch_charges.
     These formats can be easily changed in nn.py. so, before we do this, we need know which format should be used in the loss function 16.08.2024."""
     #print("data.positions", data.positions.shape)
@@ -163,7 +172,7 @@ def main(batch_size=4, structure=jnp.array([[10, 0, 0],
     #Main training
     #Construct MC step
     #mc_step = mcstep.make_mc_step()
-    return network, params, data
+    return network, batch_network, params, data
 
 
 

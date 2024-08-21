@@ -115,7 +115,7 @@ def make_GTO_envelope():
         angular_value = jnp.array([angular_value_00, angular_value_1_1, angular_value_10, angular_value_11])
         #print("angular_value", angular_value)
         angular_value = jnp.transpose(angular_value)
-        print("-----------------------------")
+        #print("-----------------------------")
         #print("angular_value", angular_value)
         #print("angular_value", angular_value)
         num_Y_lm = 1 + 3
@@ -129,7 +129,7 @@ def make_GTO_envelope():
         #print(xi[0])
         l_com_ang = [jnp.dot(jnp.reshape(ang, (1, -1)), jnp.array(x['xi'])) for ang, x in zip(angular_value, params)]
         #l_com_ang = jnp.sum(jnp.sum(angular_value * xi, axis=-1), axis=-1)
-        print("l_com_ang", l_com_ang)
+        #print("l_com_ang", l_com_ang)
 
         return l_com_ang
 

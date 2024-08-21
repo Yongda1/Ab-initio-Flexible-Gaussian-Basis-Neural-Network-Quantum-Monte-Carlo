@@ -46,7 +46,8 @@ def slogdet(x):
 
 def logdet_matmul(xs: Sequence[jnp.ndarray], w: Optional[jnp.ndarray] = None) -> Tuple[jnp.ndarray, jnp.ndarray]:
     """return sum_i w_i D_i
-    today, we need solve this problem. Here ,we also use long exp sum trick 19.08.2024."""
+    today, we need solve this problem. Here ,we also use long exp sum trick 19.08.2024.
+    notes: this function is only working for multi-determinants"""
     phase_in = []
     logabsdet = []
     for x in xs:

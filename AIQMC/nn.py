@@ -100,6 +100,8 @@ def construct_input_features(pos: jnp.ndarray, atoms: jnp.ndarray, ndim: int = 3
         atoms: atom positions. Shape(natoms, ndim)
     """
     ae = jnp.reshape(pos, [-1, 1, ndim]) - atoms[None, ...]
+    print('-----------------')
+    print("pos", pos)
     #print("ae", ae)
     ee = jnp.reshape(pos, [1, -1, ndim]) - jnp.reshape(pos, [-1, 1, ndim])
     #print("ee", ee)
@@ -242,7 +244,7 @@ def make_orbitals(natoms: int, nelectrons: int, num_angular: int, equivariant_la
         #xi = params['envelope']
         #print("type of xi", type(xi))
         envelope_factor = envelope.apply(ae, params=params['envelope'], natoms=2, nelectrons=4)
-        print("envelope_factor", envelope_factor)
+        #print("envelope_factor", envelope_factor)
         #h_to_orbitals = jnp.reshape(h_to_orbitals, (nelectrons, 1, -1))
         #print("h_to_orbitals_modified", h_to_orbitals)
         #for h, p in zip(h_to_orbitals, params['orbital']):
@@ -250,7 +252,7 @@ def make_orbitals(natoms: int, nelectrons: int, num_angular: int, equivariant_la
         #    print("p", p)
         #print("params[orbitals]", params['orbital'])
         orbitals_first = jnp.array([nnblocks.linear_layer_no_b(h, **p) for h, p in zip(h_to_orbitals, params['orbital'])])
-        print("orbitals_first", orbitals_first)
+        #print("orbitals_first", orbitals_first)
         """we need match the shape of orbitals.24/07/2024.Then we need debug the two functions.
         we need add r^l * e^(-r^2) on the orbitals_first. then times by envelope_factor.
         we need think about the output dimensions. then consider how to construct orbitals.
@@ -259,11 +261,11 @@ def make_orbitals(natoms: int, nelectrons: int, num_angular: int, equivariant_la
         Before, we made a mistake about the orbitals. So, here we have to rewrite the envelope part. 
         We have 16 elements in the matrix. We also need 16 corresponding elements in the envelope functions."""
         envelope_factor = jnp.reshape(jnp.array(envelope_factor), (nelectrons, nelectrons))
-        print('envelope_factor', envelope_factor)
+        #print('envelope_factor', envelope_factor)
         orbitals_end = jnp.array([a * b for a, b in zip(orbitals_first, envelope_factor)])
-        print('orbitals_end', orbitals_end)
+        #print('orbitals_end', orbitals_end)
         orbitals_end = jnp.transpose(orbitals_end)
-        print('orbitals_end', orbitals_end)
+        #print('orbitals_end', orbitals_end)
         #h_to_orbitals = envelope_factor * h_to_orbitals
         #print(jnp.shape(orbitals_first))
         #orbitals_first = jnp.reshape(jnp.array(orbitals_first), (-1))
@@ -278,11 +280,11 @@ def make_orbitals(natoms: int, nelectrons: int, num_angular: int, equivariant_la
         jastrow = jnp.exp(jastrow_ae_apply(ae=ae, nelectron=4, charges=charges,
                                            params=params['jastrow_ae'])/nelectrons +
                           jastrow_ee_apply(ee=ee, nelectron=4, params=params['jastrow_ee'])/nelectrons)
-        print('jastrow', jastrow)
+        #print('jastrow', jastrow)
         """here, we only have one determinant. Notes: currently, the wave_function is a determinant.
         Today, we finished the construction of the wave function as the single determinant 07.08.2024."""
         wave_function = jastrow*orbitals_end
-        print('wave_function', wave_function)
+        #print('wave_function', wave_function)
         return wave_function
 
     return init, apply
@@ -302,7 +304,12 @@ def make_ai_net(charges: jnp.ndarray, ndim: int = 3, full_det: bool = True) -> N
     def apply(params, pos: jnp.ndarray, atoms: jnp.ndarray, charges: jnp.ndarray) -> Tuple[jnp.ndarray, jnp.ndarray]:
         orbitals = orbitals_apply(params, pos, atoms, charges)
         """logdet_matmul function still has problems. We need solve it later.12.08.2024.!!!"""
-        return nnblocks.logdet_matmul(orbitals)
+        print("params", params)
+        print("pos", pos)
+        print("atoms", atoms)
+        print("charges", charges)
+        print("orbitals", orbitals)
+        return nnblocks.slogdet(orbitals)
 
     return Network(init=init, apply=apply, orbitals=orbitals_apply)
 

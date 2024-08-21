@@ -52,8 +52,8 @@ def _jastrow_ee(ee: jnp.ndarray, params: ParamTree, nelectron: int, jastrow_fun:
     r_ees_anti_parallel = jnp.ravel(iu[:n_spin_up, -n_spin_up:])[jnp.nonzero(jnp.ravel(iu[:n_spin_up, -n_spin_up:]))]
     jastrow_ee_par = jnp.sum(jastrow_fun(r_ees_parallel, 0.25, params['ee_par']))
     jastrow_ee_anti = jnp.sum(jastrow_fun(r_ees_anti_parallel, 0.5, params['ee_anti']))
-    print('jastrow_ee_par', jastrow_ee_par)
-    print('jastrow_ee_anti', jastrow_ee_anti)
+    #print('jastrow_ee_par', jastrow_ee_par)
+    #print('jastrow_ee_anti', jastrow_ee_anti)
 
     return jastrow_ee_anti + jastrow_ee_par
 
@@ -88,7 +88,7 @@ Jastrow_ee = apply(ee, nelectron=4, params=params1)
 def _jastrow_ae(ae: jnp.ndarray, nelectron: int, charges: jnp.array, params: ParamTree, jastrow_fun: Callable[[jnp.ndarray, int, jnp.ndarray, jnp.ndarray], jnp.ndarray]) -> jnp.ndarray:
     """we also need the format of r_ae and charges to do the summation. To be continued."""
     jastrow_ae = jnp.sum(jastrow_fun(ae, nelectron, charges, params['ae']))
-    print('jastrow_ae', jastrow_ae)
+    #print('jastrow_ae', jastrow_ae)
     return jastrow_ae
 
 
@@ -99,14 +99,14 @@ def make_pade_ae_jastrow() -> ...:
     def pade_ae_cusp_fun(ae: jnp.ndarray, nelectron: int, charges: jnp.array, beta: jnp.ndarray) -> jnp.ndarray:
         #print('r_ae', ae)
         r_ae = jnp.linalg.norm(ae, axis=-1)
-        print('r_ae', r_ae)
+        #print('r_ae', r_ae)
         natoms = len(charges)
         charges = jnp.reshape(jnp.repeat(charges, nelectron), (-1, natoms))
-        print('charges', charges)
+        #print('charges', charges)
         'now, we need replicate the charge array.'
         beta = jnp.reshape(beta, (nelectron, natoms))
-        print('beta', beta)
-        print('value_Jastrow_ae', -1 * jnp.float_power((2 * charges), (3/4)) * (1 - jnp.exp(-1 * jnp.float_power((2 * charges), 1/4) * r_ae * beta))/(2 * beta))
+        #print('beta', beta)
+        #print('value_Jastrow_ae', -1 * jnp.float_power((2 * charges), (3/4)) * (1 - jnp.exp(-1 * jnp.float_power((2 * charges), 1/4) * r_ae * beta))/(2 * beta))
         return -1 * jnp.float_power((2 * charges), (3/4)) * (1 - jnp.exp(-1 * jnp.float_power((2 * charges), 1/4) * r_ae * beta))/(2 * beta)
 
     def init(nelectron: int, charges: jnp.ndarray) -> Mapping[str, jnp.ndarray]:
