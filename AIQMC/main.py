@@ -36,8 +36,7 @@ pos = jnp.array([1, 1, 1, 1, 0.5, 0.5, 0.5, 0.5, 0.5, 0.5, 1, 0.5])
 
 
 def init_electrons(key, structure: jnp.ndarray, atoms: jnp.ndarray, charges: jnp.ndarray,
-                   electrons: jnp.ndarray, batch_size: int, init_width: float,
-                   core_electrons: Mapping[str, int] = {}) -> Tuple[jnp.ndarray, jnp.ndarray]:
+                   electrons: jnp.ndarray, batch_size: int, init_width: float) -> Tuple[jnp.ndarray, jnp.ndarray]:
     """Initializes electron positions around each atom.
     structure: the crystal structure, (lattice parameters, cell size).
     atoms: positions of the atoms.
@@ -131,12 +130,14 @@ def main(batch_size=4, structure = jnp.array([[10, 0, 0],
     If we have to introduce the complex number later, we can use two envelope layers, one as real part, the other one as imaginary part.
     So the output dimensions of envelope layer will be two times. 16.08.2024.'''
     signed_network = network.apply
-    #logabs_network = lambda *args, **kwargs: signed_network(*args, **kwargs)[1]
+    logabs_network = lambda *args, **kwargs: signed_network(*args, **kwargs)[1]
     "notes: how many 0 in the in_axes? It depends on the input parameters."
     "Notes: here, batch_network is a function but not a class."
     """we have more problems about this batch calculation at 21.08.2021."""
-    batch_network = jax.vmap(signed_network, in_axes=(None, 0, None, None), out_axes=0)
-
+    """The good news is that we probably know what is happening to the parallel control over the function logabs_network. 
+    The bad news is that i dont know how to solve it completely. Currently, I only use one way to make it work temporarily.
+    We need improve it later. 22.08.2024."""
+    batch_network = jax.vmap(logabs_network, in_axes=(None, 1, 1, 1), out_axes=0)
     "for the complex wave function, we need a new function."
     "This is correct. no problem. 19.08.2024."
     def log_network(*args, **kwargs):
@@ -144,27 +145,21 @@ def main(batch_size=4, structure = jnp.array([[10, 0, 0],
         return mag + 1.j * phase
 
     pos, spins = init_electrons(subkey, structure=structure, atoms=atoms, charges=charges, electrons=jnp.array([[1, 0], [1, 0]]), batch_size=host_batch_size, init_width=0.5)
-    #print("host_batch_size", host_batch_size)
-    #print("batch_pos", pos)
-    #print("spins", spins)
-    #print("data_shape +", data_shape+(-1,))
     """this operation means add one extra dimension to the array."""
     batch_pos = jnp.reshape(pos, data_shape+(-1,))
-    #print("pos", pos)
     """here, we need be sure that the array pos must be compatible with the input of AInet and hamiltonian."""
     batch_pos = kfac_jax.utils.broadcast_all_local_devices(batch_pos)
-    #print("pos", pos)
     spins = jnp.reshape(spins, data_shape+(-1,))
-    spins = kfac_jax.utils.broadcast_all_local_devices(spins)
-    #print("spins", spins)
+    batch_spins = kfac_jax.utils.broadcast_all_local_devices(spins)
     print("batch_pos", batch_pos)
-    #batch_pos = jnp.reshape(batch_pos, (4, -1))
     print("batch_atoms", batch_atoms)
     print("batch_charges", batch_charges)
-    test_output = batch_network(batch_params, batch_pos, atoms, charges)
-    """here, we confirm the single stream version is working well."""
+    """here, we tested the parallel calculation method. Currently, after our heavy effort, it is working well."""
+    #test_output_no_batch = logabs_network(params=params, pos=batch_pos[0][1], atoms=atoms, charges=charges)
+    #test_output = batch_network(batch_params, batch_pos, batch_atoms, batch_charges)
+    #jax.debug.print("test_output:{}", test_output)
     #test_output_no_batch = signed_network(params=params, pos=batch_pos[0][1], atoms=atoms, charges=charges)
-    data = nn.AINetData(positions=batch_pos, spins=spins, atoms=batch_atoms, charges=batch_charges)
+    data = nn.AINetData(positions=batch_pos, spins=batch_spins, atoms=batch_atoms, charges=batch_charges)
     """here, we have one problem about the format of pos, spins, batch_atoms, batch_charges.
     These formats can be easily changed in nn.py. so, before we do this, we need know which format should be used in the loss function 16.08.2024."""
     #print("data.positions", data.positions.shape)
@@ -172,7 +167,7 @@ def main(batch_size=4, structure = jnp.array([[10, 0, 0],
     #Main training
     #Construct MC step
     #mc_step = mcstep.make_mc_step()
-    return network, batch_network, params, data
+    return batch_network, batch_params, data
 
 
 

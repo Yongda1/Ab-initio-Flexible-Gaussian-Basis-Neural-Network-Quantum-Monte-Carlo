@@ -2,6 +2,7 @@
 import enum
 from typing import Any, Callable, Iterable, Mapping, Union, Tuple
 import jax.numpy as jnp
+import jax
 #from nn import construct_input_features
 import numpy as np
 
@@ -34,26 +35,33 @@ class JastrowType(enum.Enum):
 
 def _jastrow_ee(ee: jnp.ndarray, params: ParamTree, nelectron: int, jastrow_fun: Callable[[jnp.ndarray, float, jnp.ndarray], jnp.ndarray]) -> jnp.ndarray:
     """we need develope the method to spit the spin configurations. 01.08.2024.
-    We already found the method for spliting the spin configurations. 07.08.2024."""
+    We already found the method for spliting the spin configurations. 07.08.2024.
+    we need change the way of spliting the spin configurations.
+    Because we mentioned that the spin configurations should be input by hand.[[1, 0],[1, 0]] 22.08.2024."""
+    print("start Jsatrow part----------------")
+    #print('ee', ee)
+    #jax.debug.print("vmap_ee:{}", ee)
     r_ees = jnp.linalg.norm(ee, axis=-1)
-    #print('r_ee', r_ees)
+    #jax.debug.print("r_ees:{}", r_ees)
     n_spin_up = int(nelectron/2)
-    #print(n_spin_up)
+    indices_r_ee_parallel = jnp.arange(start=1, stop=nelectron, step=2)
+    indices_r_ee_anti_parallel = jnp.arange(start=2, stop=nelectron, step=2)
+    #jax.debug.print("indices_r_ee_spin_parallel:{}", indices_r_ee_anti_parallel)
     iu = jnp.triu(r_ees)
-    #print('iu', iu)
+    #jax.debug.print("iu:{}", iu)
+    r_ees_parallel = jnp.concatenate([jnp.diagonal(iu, offset=2)])
+    r_ees_anti_parallel = jnp.concatenate([jnp.diagonal(iu, offset=1), jnp.diagonal(iu, offset=3)])
+    #jax.debug.print("r_ees_parallel:{}", r_ees_parallel)
+    #jax.debug.print("r_ees_anti_paralle:{}", r_ees_anti_parallel)
     #print('spin_up', iu[:, :n_spin_up])
-    r_ees_parallel_up_up = jnp.ravel(iu[:, :n_spin_up])[jnp.nonzero(jnp.ravel(iu[:, :n_spin_up]))]
-    #print('r_ees_parallel_up_up', r_ees_parallel_up_up)
-    r_ees_parallel_down_down = jnp.ravel(iu[-n_spin_up:, :])[jnp.nonzero(iu[-n_spin_up, :])]
-    #print('r_ees_parallel_down_down', r_ees_parallel_down_down)
-    r_ees_parallel = jnp.concatenate([r_ees_parallel_up_up, r_ees_parallel_down_down])
-    #print("r_ees_paralles_reset", r_ees_parallel_reset)
-    #print('anti_parallel', iu[:n_spin_up, -n_spin_up:])
-    r_ees_anti_parallel = jnp.ravel(iu[:n_spin_up, -n_spin_up:])[jnp.nonzero(jnp.ravel(iu[:n_spin_up, -n_spin_up:]))]
+    #r_ees_parallel_up_up = jnp.ravel(iu[:, :n_spin_up])[jnp.nonzero(jnp.ravel(iu[:, :n_spin_up]))]
+    #r_ees_parallel_down_down = jnp.ravel(iu[-n_spin_up:, :])[jnp.nonzero(iu[-n_spin_up, :])]
+    #r_ees_parallel = jnp.concatenate([r_ees_parallel_up_up, r_ees_parallel_down_down])
+    #r_ees_anti_parallel = jnp.ravel(iu[:n_spin_up, -n_spin_up:])[jnp.nonzero(jnp.ravel(iu[:n_spin_up, -n_spin_up:]))]
     jastrow_ee_par = jnp.sum(jastrow_fun(r_ees_parallel, 0.25, params['ee_par']))
     jastrow_ee_anti = jnp.sum(jastrow_fun(r_ees_anti_parallel, 0.5, params['ee_anti']))
-    #print('jastrow_ee_par', jastrow_ee_par)
-    #print('jastrow_ee_anti', jastrow_ee_anti)
+    jax.debug.print('jastrow_ee_par:{}', jastrow_ee_par)
+    jax.debug.print('jastrow_ee_anti:{}', jastrow_ee_anti)
 
     return jastrow_ee_anti + jastrow_ee_par
 

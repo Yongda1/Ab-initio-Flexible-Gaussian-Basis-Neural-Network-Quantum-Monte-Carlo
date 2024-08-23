@@ -1,15 +1,19 @@
 import jax
 import jax.numpy as jnp
 
-def linear_layer(x: jnp.ndarray, w: jnp.ndarray, b: jnp.ndarray) -> jnp.ndarray:
-    """Evaluates a linear layer, xw+b. Here."""
-    y = jnp.dot(x, w) + b
+xs =jnp.arange(5.)
+z = jnp.arange(5.)
+def f(x, z):
+    print('x', x)
+    jax.debug.print("vmap_x: {}", x)
+    jax.debug.print("z: {}", z)
+    y = jnp.sin(x) + jnp.sin(z)
+    jax.debug.print("y: {}", y)
     return y
-
-def linear_layer_no_b(x: jnp.ndarray, w: jnp.ndarray) -> jnp.ndarray:
-    """Evaluates a linear layer, xw. Here."""
-    y = jnp.dot(x, w)
-    return y
-
-vmap_linear_layer = jax.vmap(linear_layer, in_axes=(0, None, None), out_axes=0)
-vmap_linearlayer_no_b = jax.vmap(linear_layer_no_b, in_axes=(0, None), out_axes=0)
+jax.vmap(f)(xs, z)
+# Prints: x: 0.0
+#         x: 1.0
+#         x: 2.0
+#         y: 0.0
+#         y: 0.841471
+#         y: 0.9092974

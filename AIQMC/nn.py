@@ -100,14 +100,19 @@ def construct_input_features(pos: jnp.ndarray, atoms: jnp.ndarray, ndim: int = 3
         atoms: atom positions. Shape(natoms, ndim)
     """
     ae = jnp.reshape(pos, [-1, 1, ndim]) - atoms[None, ...]
-    print('-----------------')
-    print("pos", pos)
+    #print('-----------------')
+    #print("pos", pos)
     #print("ae", ae)
+    print("___________construct_input_features")
+    #jax.debug.print("vmap_pos:{}", pos)
+    #jax.debug.print("vmap_atoms:{}", atoms)
     ee = jnp.reshape(pos, [1, -1, ndim]) - jnp.reshape(pos, [-1, 1, ndim])
     #print("ee", ee)
     # here, we flat array to delete 0 distance.notes, this array is only working for C atom which has 4 electrons.
     #ee = jnp.reshape(jnp.delete(jnp.reshape(ee, [-1, ndim]), jnp.array([0, 5, 10, 15]), axis=0), [-1, 3, ndim])
     #ae_ee = jnp.concatenate((ae, ee), axis=1)
+    #jax.debug.print("vmap_ae:{}", ae)
+    #jax.debug.print("vmap_ee:{}", ee)
     return ae, ee
 
 
@@ -136,7 +141,10 @@ def construct_symmetric_features(ae_features: jnp.ndarray, ee_features: jnp.ndar
     ee_features = jnp.reshape(ee_features, [nelectrons, -1])
     #print("ee", ee)
     #print("ae", ae)
+    #jax.debug.print("vmap_ee_feature_reshape:{}", ee_features)
+    #jax.debug.print("vmap_ae_feature_reshape:{}", ae_features)
     h = jnp.concatenate((ae_features, ee_features), axis=-1)
+    #jax.debug.print("vmap_h:{}", h)
     return h
 
 #h = construct_symmetric_features(ae_features, ee_features, nelectrons=4)
@@ -174,21 +182,26 @@ def make_ainet_layers(feature_layer) -> Tuple[InitLayersFn, ApplyLayersFn]:
         params['linear_layer'] = layers
         output_dims = nfeatures
         #print("output_dims", output_dims)
-        #print("params", params)
+        #jax.debug.print("params[ae_ee]:{}", params)
         return output_dims, params
 
     def apply_layer(params: Mapping[str, ParamTree], h_in: jnp.ndarray) -> jnp.ndarray:
-        h_next = jnp.tanh(nnblocks.linear_layer(h_in, **params['ae_ee']))
+        #jax.debug.print("**params['ae_ee']:{}", **params['ae_ee'])
+        h_next = jnp.tanh(nnblocks.linear_layer(h_in, w=params['ae_ee']['w'], b=params['ae_ee']['b']))
         return h_next
 
     def apply(params, ae: jnp.ndarray, ee: jnp.ndarray, nelectrons: int = 4) -> jnp.ndarray:
         ae_features, ee_features = feature_layer.apply(ae, ee,)
+        #jax.debug.print("vmap_ae_features:{}", ae_features)
+        #jax.debug.print("vmap_ee_features:{}", ee_features)
         (num_one_features, num_two_features), params['input'] = feature_layer.init()
         nfeatures = num_one_features + num_two_features
         hidden_dims = jnp.array([4, 4, nfeatures])
         h_in = construct_symmetric_features(ae_features, ee_features, nelectrons)
-
+        #jax.debug.print("vmap_h_in:{}", h_in)
+        """here, please notice that with calculating more iterations, the dimension of h will be added one more."""
         for i in range(len(hidden_dims)):
+            #jax.debug.print("linear_layer[i]:{}", params['linear_layer'][i])
             h = apply_layer(params['linear_layer'][i], h_in=h_in)
             h_in = h
 
@@ -236,23 +249,16 @@ def make_orbitals(natoms: int, nelectrons: int, num_angular: int, equivariant_la
         return params
 
     def apply(params, pos: jnp.ndarray, atoms: jnp.ndarray, charges: jnp.ndarray):
+
         ae, ee = construct_input_features(pos, atoms, ndim=3)
+        print("---------orbitals_apply")
+        #jax.debug.print("vmap_ae:{}", ae)
+        #jax.debug.print("vmap_ee:{}", ee)
         h_to_orbitals = equivariant_layers_apply(params=params['layers'], ae=ae, ee=ee)
-        #print("h_to_orbitals", h_to_orbitals)
-        #print("params[orbital]", params['orbital'])
+        #jax.debug.print("h_to_orbitals:{}", h_to_orbitals)
         """the initial envelope function finished without the diffusion part.24/07/2024."""
-        #xi = params['envelope']
-        #print("type of xi", type(xi))
         envelope_factor = envelope.apply(ae, params=params['envelope'], natoms=2, nelectrons=4)
-        #print("envelope_factor", envelope_factor)
-        #h_to_orbitals = jnp.reshape(h_to_orbitals, (nelectrons, 1, -1))
-        #print("h_to_orbitals_modified", h_to_orbitals)
-        #for h, p in zip(h_to_orbitals, params['orbital']):
-        #    print("h", h)
-        #    print("p", p)
-        #print("params[orbitals]", params['orbital'])
         orbitals_first = jnp.array([nnblocks.linear_layer_no_b(h, **p) for h, p in zip(h_to_orbitals, params['orbital'])])
-        #print("orbitals_first", orbitals_first)
         """we need match the shape of orbitals.24/07/2024.Then we need debug the two functions.
         we need add r^l * e^(-r^2) on the orbitals_first. then times by envelope_factor.
         we need think about the output dimensions. then consider how to construct orbitals.
@@ -302,13 +308,20 @@ def make_ai_net(charges: jnp.ndarray, ndim: int = 3, full_det: bool = True) -> N
         return orbitals_init(subkey)
 
     def apply(params, pos: jnp.ndarray, atoms: jnp.ndarray, charges: jnp.ndarray) -> Tuple[jnp.ndarray, jnp.ndarray]:
-        orbitals = orbitals_apply(params, pos, atoms, charges)
+
         """logdet_matmul function still has problems. We need solve it later.12.08.2024.!!!"""
-        print("params", params)
-        print("pos", pos)
-        print("atoms", atoms)
-        print("charges", charges)
-        print("orbitals", orbitals)
+        #jax.debug.print("params", params)
+        pos = jnp.reshape(pos, (-1))
+        atoms = jnp.reshape(atoms, (2, 3))
+        charges = jnp.reshape(charges, (-1))
+        #jax.debug.print("vmap_input_pos:{}", pos)
+        #jax.debug.print("vmap_input_atoms:{}", atoms)
+        #jax.debug.print("vmap_input_charges:{}", charges)
+        """the shape of orbitals is not correct. We can solve this problem tomorrow.22.08.2024."""
+        orbitals = orbitals_apply(params, pos, atoms, charges)
+        #jax.debug.print("orbitals:{}", orbitals)
+        orbitals = jnp.reshape(orbitals, (-1, 4))
+        jax.debug.print("orbitals:{}", orbitals)
         return nnblocks.slogdet(orbitals)
 
     return Network(init=init, apply=apply, orbitals=orbitals_apply)
