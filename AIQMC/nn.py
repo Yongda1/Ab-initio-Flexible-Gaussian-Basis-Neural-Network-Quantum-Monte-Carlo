@@ -113,7 +113,13 @@ def construct_input_features(pos: jnp.ndarray, atoms: jnp.ndarray, ndim: int = 3
     #ae_ee = jnp.concatenate((ae, ee), axis=1)
     #jax.debug.print("vmap_ae:{}", ae)
     #jax.debug.print("vmap_ee:{}", ee)
-    return ae, ee
+    ee_no_diag = jnp.reshape(ee, (-1, 3))
+    #jax.debug.print("ee:{}", ee)
+    ee_no_diag = jnp.delete(ee_no_diag, jnp.arange(0, len(ee_no_diag), len(ee)+1), 0)
+    #jax.debug.print("ee:{}", ee)
+    ee_no_diag = jnp.reshape(ee_no_diag, (len(ee), len(ee)-1, ndim))
+    #jax.debug.print("ee_no_diag:{}", ee_no_diag)
+    return ae, ee_no_diag
 
 
 def make_ainet_features(natoms: int = 2, nelectrons: int = 4, ndim: int = 3) -> FeatureLayer:
@@ -125,7 +131,7 @@ def make_ainet_features(natoms: int = 2, nelectrons: int = 4, ndim: int = 3) -> 
         Maybe later, we will spend some time to rewrite this part."""
         #print("natoms", natoms)
         #print("ndim", ndim)
-        return (natoms * ndim, nelectrons * ndim), {}
+        return (natoms * ndim, (nelectrons-1) * ndim), {}
 
     def apply(ae, ee) -> Tuple[jnp.ndarray, jnp.ndarray]:
         ae_features = ae

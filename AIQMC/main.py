@@ -30,9 +30,9 @@ def _assign_spin_configuration(nalpha: int, nbeta: int, batch_size: int=1) -> jn
 structure = jnp.array([[10, 0, 0],
                        [0, 10, 0],
                        [0, 0, 10]])
-atoms = jnp.array([[0, 0, 0], [0.2, 0.2, 0.2]])
+atoms = jnp.array([[1, 1, 1], [0.2, 0.2, 0.2]])
 charges = jnp.array([2, 2])
-pos = jnp.array([1, 1, 1, 1, 0.5, 0.5, 0.5, 0.5, 0.5, 0.5, 1, 0.5])
+pos = jnp.array([1.5, 1.5, 1.5, 2, 0.5, 0.5, 0.5, 0.5, 0.5, 0.5, 2, 0.5])
 
 
 def init_electrons(key, structure: jnp.ndarray, atoms: jnp.ndarray, charges: jnp.ndarray,
@@ -130,6 +130,7 @@ def main(batch_size=4, structure = jnp.array([[10, 0, 0],
     If we have to introduce the complex number later, we can use two envelope layers, one as real part, the other one as imaginary part.
     So the output dimensions of envelope layer will be two times. 16.08.2024.'''
     signed_network = network.apply
+    phase_network = lambda *args, **kwargs: signed_network(*args, **kwargs)[0]
     logabs_network = lambda *args, **kwargs: signed_network(*args, **kwargs)[1]
     "notes: how many 0 in the in_axes? It depends on the input parameters."
     "Notes: here, batch_network is a function but not a class."
@@ -137,6 +138,7 @@ def main(batch_size=4, structure = jnp.array([[10, 0, 0],
     """The good news is that we probably know what is happening to the parallel control over the function logabs_network. 
     The bad news is that i dont know how to solve it completely. Currently, I only use one way to make it work temporarily.
     We need improve it later. 22.08.2024."""
+    phase_network = jax.vmap(phase_network, in_axes=(None, 1, 1, 1), out_axes=0)
     batch_network = jax.vmap(logabs_network, in_axes=(None, 1, 1, 1), out_axes=0)
     "for the complex wave function, we need a new function."
     "This is correct. no problem. 19.08.2024."
@@ -144,7 +146,7 @@ def main(batch_size=4, structure = jnp.array([[10, 0, 0],
         phase, mag = signed_network(*args, **kwargs)
         return mag + 1.j * phase
 
-    pos, spins = init_electrons(subkey, structure=structure, atoms=atoms, charges=charges, electrons=jnp.array([[1, 0], [1, 0]]), batch_size=host_batch_size, init_width=0.5)
+    pos, spins = init_electrons(subkey, structure=structure, atoms=atoms, charges=charges, electrons=jnp.array([[1, 0], [1, 0]]), batch_size=host_batch_size, init_width=0.1)
     """this operation means add one extra dimension to the array."""
     batch_pos = jnp.reshape(pos, data_shape+(-1,))
     """here, we need be sure that the array pos must be compatible with the input of AInet and hamiltonian."""
@@ -167,7 +169,7 @@ def main(batch_size=4, structure = jnp.array([[10, 0, 0],
     #Main training
     #Construct MC step
     #mc_step = mcstep.make_mc_step()
-    return batch_network, batch_params, data
+    return signed_network, phase_network, logabs_network, batch_network, batch_params, data
 
 
 
