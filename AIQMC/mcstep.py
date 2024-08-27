@@ -51,7 +51,9 @@ def walkers_update(params: nn.ParamTree, batch_phase:nn.LogAINetLike, batch_f: n
 
     """26.08.2024, here we meet one problem about complex number. which one do we need calculate \partial log(|\psi|) or \partial log(\psi)
     as O(r).
-    we need figure this out later."""
+    we need figure this out later.
+    27.08.2024, now we are sure that \partial log(\psi) should be used, i.e. quantum velocity. Therefore, we dont need 
+    the gradient of phase currently. Our strategy for calculating the gradient of positions is still working."""
     primal_1, dgrad_f_1 = jax.linearize(grad_f_closure, x1)
     jax.debug.print("x1:{}", x1)
     gauss = np.random.normal(scale=tstep, size=(jnp.shape(x1)))
@@ -76,9 +78,14 @@ def walkers_update(params: nn.ParamTree, batch_phase:nn.LogAINetLike, batch_f: n
     ratio = phase_2*jnp.exp(value_1)/(phase_1*jnp.exp(value_2))
     """26.08.2024, we have more problem about the calculation of the ratio. We continue tomorrow."""
     ratio = jnp.square(jnp.abs(ratio))
+    "here, the shape of the array is number of batch_size, the number of electrons and the dimensions."
+    t_probability = jnp.sum(jnp.sum(jnp.reshape(t_probability, (4, 4, 3)), axis=-1), axis=-1)
+    jax.debug.print("ratio:{}", ratio)
+    jax.debug.print("t_probability:{}", t_probability)
+    ratio = ratio*t_probability
     jax.debug.print("ratio:{}", ratio)
     """26.08.2024, here we need calculate the accept index according the array 'ratio'."""
-    #accept_index =
+    """now, we need do the funtion of walkers accepting. 27.08.2024."""
 
 
 
