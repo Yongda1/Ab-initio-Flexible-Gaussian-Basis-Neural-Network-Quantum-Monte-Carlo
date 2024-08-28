@@ -8,7 +8,7 @@ from absl import logging
 import chex
 from AIQMC import envelopes
 from AIQMC import nn
-#from AIQMC import mcstep
+from AIQMC import mcstep
 import jax
 from jax.experimental import multihost_utils
 import jax.numpy as jnp
@@ -166,11 +166,11 @@ def main(batch_size=4, structure = jnp.array([[10, 0, 0],
     These formats can be easily changed in nn.py. so, before we do this, we need know which format should be used in the loss function 16.08.2024."""
     #print("data.positions", data.positions.shape)
     "currently, we dont need check points. So, we ignore this part."
-    #Main training
+    '''--------------Main training-------------'''
     #Construct MC step
-    #mc_step = mcstep.make_mc_step()
-    return signed_network, phase_network, logabs_network, batch_network, batch_params, data
-
+    mc_step = mcstep.make_mc_step(phase_network, batch_network, signed_network)
+    '''Construct loss and optimizer, local energy calculation. we are gonna deal with it at 28.08.2024.'''
+    local_energy = make_local_energy()
 
 
 output = main()

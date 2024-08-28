@@ -100,26 +100,21 @@ def construct_input_features(pos: jnp.ndarray, atoms: jnp.ndarray, ndim: int = 3
         atoms: atom positions. Shape(natoms, ndim)
     """
     ae = jnp.reshape(pos, [-1, 1, ndim]) - atoms[None, ...]
-    #print('-----------------')
-    #print("pos", pos)
-    #print("ae", ae)
     print("___________construct_input_features")
-    #jax.debug.print("vmap_pos:{}", pos)
-    #jax.debug.print("vmap_atoms:{}", atoms)
     ee = jnp.reshape(pos, [1, -1, ndim]) - jnp.reshape(pos, [-1, 1, ndim])
     #print("ee", ee)
     # here, we flat array to delete 0 distance.notes, this array is only working for C atom which has 4 electrons.
-    #ee = jnp.reshape(jnp.delete(jnp.reshape(ee, [-1, ndim]), jnp.array([0, 5, 10, 15]), axis=0), [-1, 3, ndim])
-    #ae_ee = jnp.concatenate((ae, ee), axis=1)
-    #jax.debug.print("vmap_ae:{}", ae)
-    #jax.debug.print("vmap_ee:{}", ee)
-    ee_no_diag = jnp.reshape(ee, (-1, 3))
-    #jax.debug.print("ee:{}", ee)
-    ee_no_diag = jnp.delete(ee_no_diag, jnp.arange(0, len(ee_no_diag), len(ee)+1), 0)
-    #jax.debug.print("ee:{}", ee)
-    ee_no_diag = jnp.reshape(ee_no_diag, (len(ee), len(ee)-1, ndim))
-    #jax.debug.print("ee_no_diag:{}", ee_no_diag)
-    return ae, ee_no_diag
+    jax.debug.print("vmap_ee:{}", ee)
+    #ee = jnp.log(-1 * ee)
+    #n = ee.shape[0]
+    """In this way, the neural network can be run successfully. However, we need a better way to solve it."""
+    ee = ee + 1
+    #r_ee = (jnp.linalg.norm(ee + jnp.eye(n)[..., None], axis=-1) * (1.0 - jnp.eye(n)))
+    jax.debug.print("vmap_ee_1:{}", ee)
+    #ae = jnp.log(ae)
+    """problem here, this function cannot be jit. 28.08.2024.
+    we add the log function here to solve this problem."""
+    return ae, ee
 
 
 def make_ainet_features(natoms: int = 2, nelectrons: int = 4, ndim: int = 3) -> FeatureLayer:
@@ -131,7 +126,7 @@ def make_ainet_features(natoms: int = 2, nelectrons: int = 4, ndim: int = 3) -> 
         Maybe later, we will spend some time to rewrite this part."""
         #print("natoms", natoms)
         #print("ndim", ndim)
-        return (natoms * ndim, (nelectrons-1) * ndim), {}
+        return (natoms * ndim, (nelectrons) * ndim), {}
 
     def apply(ae, ee) -> Tuple[jnp.ndarray, jnp.ndarray]:
         ae_features = ae
