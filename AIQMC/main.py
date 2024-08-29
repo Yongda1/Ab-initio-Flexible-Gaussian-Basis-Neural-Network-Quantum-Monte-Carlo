@@ -170,7 +170,8 @@ def main(batch_size=4, structure = jnp.array([[10, 0, 0],
     #Construct MC step
     mc_step = mcstep.make_mc_step(phase_network, batch_network, signed_network)
     '''Construct loss and optimizer, local energy calculation. we are gonna deal with it at 28.08.2024.'''
-    local_energy = make_local_energy()
+    #local_energy = make_local_energy()
+    return signed_network, data, batch_params
 
 
 output = main()

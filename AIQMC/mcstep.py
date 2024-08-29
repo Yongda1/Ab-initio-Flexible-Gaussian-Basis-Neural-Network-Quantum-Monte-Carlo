@@ -74,6 +74,7 @@ def walkers_update(params: nn.ParamTree, batch_phase:nn.LogAINetLike, batch_f: n
     gauss = np.random.normal(scale=tstep, size=(jnp.shape(x1)))
     primal_1 = jnp.reshape(primal_1, (jnp.shape(x1)))
     #jax.debug.print("reshape_primal:{}", primal_1)
+    """29.08.2024, we need think how to add minus velocity into this movement."""
     x2 = x1 + gauss + primal_1*tstep
     #jax.debug.print("x2:{}", x2)
     primal_2, dgrad_f_1 = jax.linearize(grad_f_closure, x2)
@@ -124,7 +125,7 @@ def make_mc_step(phasenetwork, batchnetwork, signednetwork, nsteps=10):
             return walkers_update(params, phasenetwork, batchnetwork, signednetwork, *x, tstep=0.1, i=i)
 
         new_data, key = lax.fori_loop(lower=0, upper=nsteps, body_fun=step_fn, init_val=(data, key))
-        jax.debug.print("new_data:{}", new_data)
+        #jax.debug.print("new_data:{}", new_data)
         return new_data, key
 
     return mcmc_step

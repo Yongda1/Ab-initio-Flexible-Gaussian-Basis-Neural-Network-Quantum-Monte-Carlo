@@ -104,13 +104,13 @@ def construct_input_features(pos: jnp.ndarray, atoms: jnp.ndarray, ndim: int = 3
     ee = jnp.reshape(pos, [1, -1, ndim]) - jnp.reshape(pos, [-1, 1, ndim])
     #print("ee", ee)
     # here, we flat array to delete 0 distance.notes, this array is only working for C atom which has 4 electrons.
-    jax.debug.print("vmap_ee:{}", ee)
+    #jax.debug.print("vmap_ee:{}", ee)
     #ee = jnp.log(-1 * ee)
     #n = ee.shape[0]
     """In this way, the neural network can be run successfully. However, we need a better way to solve it."""
     ee = ee + 1
     #r_ee = (jnp.linalg.norm(ee + jnp.eye(n)[..., None], axis=-1) * (1.0 - jnp.eye(n)))
-    jax.debug.print("vmap_ee_1:{}", ee)
+    #jax.debug.print("vmap_ee_1:{}", ee)
     #ae = jnp.log(ae)
     """problem here, this function cannot be jit. 28.08.2024.
     we add the log function here to solve this problem."""
@@ -322,7 +322,7 @@ def make_ai_net(charges: jnp.ndarray, ndim: int = 3, full_det: bool = True) -> N
         orbitals = orbitals_apply(params, pos, atoms, charges)
         #jax.debug.print("orbitals:{}", orbitals)
         orbitals = jnp.reshape(orbitals, (-1, 4))
-        jax.debug.print("orbitals:{}", orbitals)
+        #jax.debug.print("orbitals:{}", orbitals)
         return nnblocks.slogdet(orbitals)
 
     return Network(init=init, apply=apply, orbitals=orbitals_apply)
