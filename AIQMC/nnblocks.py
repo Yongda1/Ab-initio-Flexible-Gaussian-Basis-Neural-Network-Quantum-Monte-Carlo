@@ -47,7 +47,7 @@ def slogdet(x):
     """computes sign and log of determinants of matrices
     different from Ferminet, we only consider the determinants which have more rows and columns."""
     sign, logabsdet = jnp.linalg.slogdet(x)
-    return sign, logabsdet
+    return sign, logabsdet, jnp.angle(sign)
 
 
 def logdet_matmul(xs: Sequence[jnp.ndarray], w: Optional[jnp.ndarray] = None) -> Tuple[jnp.ndarray, jnp.ndarray]:
