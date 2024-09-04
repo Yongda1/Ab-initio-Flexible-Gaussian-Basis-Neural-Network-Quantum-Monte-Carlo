@@ -109,11 +109,47 @@ def potential_electron_electron(r_ee: jnp.array, batch_size: int) -> jnp.array:
     #jax.debug.print("energy:{}", jnp.sum(1.0 / r_ee, axis=1))
     return jnp.sum(1.0 / r_ee, axis=1)
 
-def potential_electron_nuclear(ee: jnp.array) -> jnp.array:
+def potential_electron_nuclear(r_ae: jnp.array, charges: jnp.array, batch_size: int) -> jnp.array:
     """electron-atom interaction energy"""
+    #jax.debug.print("r_ae:{}", r_ae)
+    #jax.debug.print("charges:{}", charges)
+    Energy = 1/r_ae * charges
+    #jax.debug.print("Energy:{}", Energy)
+    #Energy = jnp.sum(jnp.sum(Energy, axis=-1), axis=-1)
+    #jax.debug.print("Energy:{}", Energy)
+    return jnp.sum(jnp.sum(Energy, axis=-1), axis=-1)
 
-def potential_nuclear_nuclear(ee: jnp.array) -> jnp.array:
+def potential_nuclear_nuclear(atoms: jnp.array, charges: jnp.array, batch_size: int) -> jnp.array:
     """atom-atom interaction energy"""
+    #jax.debug.print("atoms:{}", atoms)
+    #jax.debug.print("charges:{}", charges)
+    atoms1 = jnp.reshape(atoms, (batch_size, 2, 1, 3)) #2 is the number of atoms. 3 is dimension.
+    #jax.debug.print("atoms1:{}", atoms1)
+    atoms2 = jnp.reshape(atoms, (batch_size, 1, 2, 3))
+    #jax.debug.print("atoms2:{}", atoms2)
+    r_aa = atoms1 - atoms2
+    #jax.debug.print("r_aa:{}", r_aa)
+    r_aa = jnp.linalg.norm(r_aa, axis=-1)
+    #jax.debug.print("r_aa:{}", r_aa)
+    indices = jnp.nonzero(jnp.triu(r_aa))
+    r_aa = r_aa[indices]
+    r_aa = jnp.reshape(r_aa, (batch_size, -1))
+    #jax.debug.print("r_aa:{}", r_aa)
+    charges = jnp.reshape(charges, (batch_size, 2))
+    #jax.debug.print("charges:{}", charges)
+    charges1 = jnp.reshape(charges, (batch_size, 2, 1))
+    charges2 = jnp.reshape(charges, (batch_size, 1, 2))
+    #jax.debug.print("charges1:{}", charges1)
+    #jax.debug.print("charges2:{}", charges2)
+    cc = charges1*charges2
+    #jax.debug.print("a:{}", cc)
+    cc = cc[jnp.nonzero(jnp.triu(cc, k=1))]
+    cc = jnp.reshape(cc, (batch_size, -1))
+    #jax.debug.print("cc:{}", cc)
+    energy = cc * (1/r_aa)
+    #jax.debug.print("energy:{}", energy)
+    return energy
+    
 
 
 def local_energy(f: nn.AINetLike, complex_number: bool = True) -> LocalEnergy:
@@ -140,8 +176,12 @@ def local_energy(f: nn.AINetLike, complex_number: bool = True) -> LocalEnergy:
         r_ee = jnp.linalg.norm(ee, axis=-1)
         jax.debug.print("r_ae:{}", r_ae)
         jax.debug.print("r_ee:{}", r_ee)
-        potential = potential_electron_electron(r_ee, batch_size=batch_size)
+        potential_E_ee = potential_electron_electron(r_ee, batch_size=batch_size)
+        potential_E_ae = potential_electron_nuclear(r_ae, data.charges, batch_size=batch_size)
+        potential_E_aa = potential_nuclear_nuclear(data.atoms, data.charges, batch_size=batch_size)
         kinetic = ke(batchparams, data)
+        total_energy = kinetic + potential_E_ee + potential_E_ae + potential_E_aa
+        return total_energy
     return _e_l
 
 
