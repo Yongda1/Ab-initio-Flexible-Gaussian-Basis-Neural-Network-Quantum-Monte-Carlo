@@ -12,7 +12,7 @@ r_ae = jnp.array([[[0.21824889, 0.3565338], [0.1946077, 0.32006422], [0.4780831,
                  [[0.35471296, 0.65752304], [0.08244702, 0.36039594], [0.48147705, 0.13537169], [0.1520589, 0.22781217]],
                  [[0.08920264, 0.26871547], [0.20597123, 0.25272587], [0.23355496, 0.22838382], [0.32041857, 0.20322587]]])
 
-ae=[[[[-0.05045887, -0.05971689,  0.06463739], [-0.25045887, -0.2597169,  -0.13536263]],
+ae=jnp.array([[[[-0.05045887, -0.05971689,  0.06463739], [-0.25045887, -0.2597169,  -0.13536263]],
      [[ 0.07916525, -0.05145506,  0.09662296], [-0.12083475, -0.25145507, -0.10337704]],
      [[ 0.07315412, 0.01910421, 0.0914843 ], [-0.12684588, -0.18089579, -0.1085157]],
      [[ 0.21733882, 0.19526899, 0.16549167], [ 0.01733881, -0.00473101, -0.03450833]]],
@@ -27,7 +27,7 @@ ae=[[[[-0.05045887, -0.05971689,  0.06463739], [-0.25045887, -0.2597169,  -0.135
     [[[-0.11490166, -0.15279403, -0.11633499], [-0.31490165, -0.35279405, -0.316335]],
      [[ 0.09555221, -0.11339962,  0.12491734], [-0.10444779, -0.3133996,  -0.07508266]],
      [[ 0.18371007,  0.3944462,   0.14370795], [-0.01628993,  0.19444619, -0.05629206]],
-     [[ 0.28625673,  0.31620038,  0.12505463], [0.08625673,  0.11620037, -0.07494538]]]]
+     [[ 0.28625673,  0.31620038,  0.12505463], [0.08625673,  0.11620037, -0.07494538]]]])
 
 
 
@@ -86,22 +86,61 @@ def get_v_l(r_ae: jnp.array, rn_local: jnp.array,
     return local_part_pp_energy
 
 
+def generate_quadrature_grids():
+    """generate quadrature grids from Mitas, Shirley, and Ceperley."""
+    """Generate in Cartesian grids for octahedral symmetry.
+    We are not going to give more options for users, so just default 50 integration points."""
+    octpts = jnp.mgrid[-1:2, -1:2, -1:2].reshape(3, -1).T
+    jax.debug.print("octpts:{}", octpts)
+    nonzero_count = jnp.count_nonzero(octpts, axis=1)
+    jax.debug.print("nonzero_count:{}", nonzero_count)
+    OA = octpts[nonzero_count == 1]
+    OB = octpts[nonzero_count == 2] / jnp.sqrt(2)
+    OC = octpts[nonzero_count == 3] / jnp.sqrt(3)
+    jax.debug.print("OA:{}", OA)
+    jax.debug.print("OB:{}", OB)
+    jax.debug.print("OC:{}", OC)
+    d1 = OC * jnp.sqrt(3 / 11)
+    jax.debug.print("d1:{}", d1)
+    OD1 = jnp.transpose(jnp.concatenate((jnp.reshape(d1[:, 0], (1, -1)), jnp.reshape(d1[:, 1], (1, -1)), jnp.reshape(d1[:, 2] * 3, (1, -1))), axis=0))
+    OD2 = jnp.transpose(jnp.concatenate((jnp.reshape(d1[:, 0], (1, -1)), jnp.reshape(d1[:, 1] * 3, (1, -1)), jnp.reshape(d1[:, 2], (1, -1))), axis=0))
+    OD3 = jnp.transpose(jnp.concatenate((jnp.reshape(d1[:, 0] * 3, (1, -1)), jnp.reshape(d1[:, 1], (1, -1)), jnp.reshape(d1[:, 2], (1, -1))), axis=0))
+    jax.debug.print("OD1:{}", OD1)
+    jax.debug.print("OD2:{}", OD2)
+    jax.debug.print("OD3:{}", OD3)
+    OD = jnp.concatenate((OD1, OD2, OD3), axis=0)
+    jax.debug.print("OD:{}", OD)
+    #coordinates = jnp.stack((OA, OB, OC, OD), axis=1)
+
+    weights = jnp.array([[4/315], [64/2835], [27/1280], [14641/725760]])
+    return OA, OB, OC, OD, weights
+
+
+output2 = generate_quadrature_grids()
+jax.debug.print("output2:{}", output2)
+
 def P_l(x, l):
-    """we should be aware that judgement."""
+    """we should be aware of judgement."""
 
 
-def get_P_l(ae:jnp.array, ):
-    """We need think more about this part. 06.09.2024."""
+def get_P_l(ae: jnp.array, number_integration_points: int, batch_size: int):
+    """We need think more about this part. 06.09.2024.Here, we need generate the 12 coordinates of integration points."""
 
 
-def get_v_nonlocal(rn_non_local: jnp.array, non_local_coefficient: jnp.array, non_local_exponent: jnp.array,):
+
+
+def get_v_nonlocal(ae: jnp.array, rn_non_local: jnp.array, non_local_coefficient: jnp.array, non_local_exponent: jnp.array):
     """evaluate the nonlocal part pp energy. 06.09.2024."""
+    jax.debug.print("ae:{}", ae)
+    jax.debug.print("rn_non_local:{}", rn_non_local)
+    jax.debug.print("non_local_coefficient:{}", non_local_coefficient)
+    jax.debug.print("non_local_exponent:{}", non_local_exponent)
     
 
-output = get_v_l(r_ae=r_ae, rn_local=rn_local, local_coefficient=local_coefficient,
-                 local_exponent=local_exponent, symbols=['C', 'C'], batch_size=4)
+#output = get_v_l(r_ae=r_ae, rn_local=rn_local, local_coefficient=local_coefficient,
+#                local_exponent=local_exponent, symbols=['C', 'C'], batch_size=4)
 
-outpu1 = get_v_nonlocal(rn_non_local=rn_non_local, non_local_coefficient=nonlocal_coefficient, non_local_exponent=nonlocal_exponent)
+#outpu1 = get_v_nonlocal(ae=ae, rn_non_local=rn_non_local, non_local_coefficient=nonlocal_coefficient, non_local_exponent=nonlocal_exponent)
 
 
 def ecp_ea(r_ae: jnp.array, batch_size: int, charges: jnp.array, symbols: Sequence[str], quad_degree: int=4, ecp: str='ccecp', complex_output: bool=True,):
