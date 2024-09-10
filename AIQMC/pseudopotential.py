@@ -1,11 +1,13 @@
 """Evaluates the pseudopotential Hamiltonian on a wavefunction. 04.09.2024."""
 
 from typing import Sequence
+
+import chex
 import jax
 from jax import lax
 import jax.numpy as jnp
 import numpy as np
-
+from jax.scipy.spatial.transform import Rotation
 
 r_ae = jnp.array([[[0.21824889, 0.3565338], [0.1946077, 0.32006422], [0.4780831,  0.138754], [0.41992992, 0.19055614]],
                  [[0.16530964, 0.29526055], [0.15191387, 0.22501956], [0.3564806, 0.05262673], [0.45009968, 0.16455044]],
@@ -91,37 +93,73 @@ def generate_quadrature_grids():
     """Generate in Cartesian grids for octahedral symmetry.
     We are not going to give more options for users, so just default 50 integration points."""
     octpts = jnp.mgrid[-1:2, -1:2, -1:2].reshape(3, -1).T
-    jax.debug.print("octpts:{}", octpts)
+    #jax.debug.print("octpts:{}", octpts)
     nonzero_count = jnp.count_nonzero(octpts, axis=1)
-    jax.debug.print("nonzero_count:{}", nonzero_count)
+    #jax.debug.print("nonzero_count:{}", nonzero_count)
     OA = octpts[nonzero_count == 1]
     OB = octpts[nonzero_count == 2] / jnp.sqrt(2)
     OC = octpts[nonzero_count == 3] / jnp.sqrt(3)
-    jax.debug.print("OA:{}", OA)
-    jax.debug.print("OB:{}", OB)
-    jax.debug.print("OC:{}", OC)
+    #jax.debug.print("OA:{}", OA)
+    #jax.debug.print("OB:{}", OB)
+    #jax.debug.print("OC:{}", OC)
     d1 = OC * jnp.sqrt(3 / 11)
-    jax.debug.print("d1:{}", d1)
+    #jax.debug.print("d1:{}", d1)
     OD1 = jnp.transpose(jnp.concatenate((jnp.reshape(d1[:, 0], (1, -1)), jnp.reshape(d1[:, 1], (1, -1)), jnp.reshape(d1[:, 2] * 3, (1, -1))), axis=0))
     OD2 = jnp.transpose(jnp.concatenate((jnp.reshape(d1[:, 0], (1, -1)), jnp.reshape(d1[:, 1] * 3, (1, -1)), jnp.reshape(d1[:, 2], (1, -1))), axis=0))
     OD3 = jnp.transpose(jnp.concatenate((jnp.reshape(d1[:, 0] * 3, (1, -1)), jnp.reshape(d1[:, 1], (1, -1)), jnp.reshape(d1[:, 2], (1, -1))), axis=0))
-    jax.debug.print("OD1:{}", OD1)
-    jax.debug.print("OD2:{}", OD2)
-    jax.debug.print("OD3:{}", OD3)
+    #jax.debug.print("OD1:{}", OD1)
+    #jax.debug.print("OD2:{}", OD2)
+    #jax.debug.print("OD3:{}", OD3)
     OD = jnp.concatenate((OD1, OD2, OD3), axis=0)
-    jax.debug.print("OD:{}", OD)
+    #jax.debug.print("OD:{}", OD)
     #coordinates = jnp.stack((OA, OB, OC, OD), axis=1)
-
     weights = jnp.array([[4/315], [64/2835], [27/1280], [14641/725760]])
     return OA, OB, OC, OD, weights
 
 
-output2 = generate_quadrature_grids()
-jax.debug.print("output2:{}", output2)
+#output2 = generate_quadrature_grids()
+#jax.debug.print("output2:{}", output2)
+
+def get_rot(batch_size: int, key: chex.PRNGKey):
+    key, subkey = jax.random.split(key)
+    """here, we dont use random.Rotation. Because this function is not working currently."""
+    rot = jax.random.orthogonal(key=key, n=3, shape=(batch_size,))
+    #jax.debug.print("rot:{}", rot)
+    OA, OB, OC, OD, weights = generate_quadrature_grids()
+    #jax.debug.print("OA:{}", OA)
+    #OA = jnp.reshape(OA, (6, 1, 3))
+    #jax.debug.print("OA:{}", OA)
+    #rot = jnp.reshape(rot, (1, batch_size, 3, 3))
+    #jax.debug.print("rot:{}", rot)
+    """actually, I dont understand how to use jnp.einsum, but currently it is working."""
+    Points_OA = jnp.einsum('jkl,ik->jil', rot, OA,)
+    Points_OB = jnp.einsum('jkl,ik->jil', rot, OB,)
+    Points_OC = jnp.einsum('jkl,ik->jil', rot, OC, )
+    Points_OD = jnp.einsum('jkl,ik->jil', rot, OD, )
+    #jax.debug.print("Points_OD:{}", Points_OD)
+    return Points_OA, Points_OB, Points_OC, Points_OD, weights
+
+
+
+
+key = jax.random.PRNGKey(seed=1)
+output3 = get_rot(4, key=key)
+jax.debug.print("output3:{}", output3)
 
 def P_l(x, l):
     """we should be aware of judgement."""
-
+    if l == 0:
+        return np.ones(x.shape)
+    elif l == 1:
+        return x
+    elif l == 2:
+        return 0.5 * (3 * x * x - 1)
+    elif l == 3:
+        return 0.5 * (5 * x * x * x - 3 * x)
+    elif l == 4:
+        return 0.125 * (35 * x * x * x * x - 30 * x * x + 3)
+    else:
+        raise NotImplementedError(f"Legendre functions for l>4 not implemented {l}")
 
 def get_P_l(ae: jnp.array, number_integration_points: int, batch_size: int):
     """We need think more about this part. 06.09.2024.Here, we need generate the 12 coordinates of integration points."""
