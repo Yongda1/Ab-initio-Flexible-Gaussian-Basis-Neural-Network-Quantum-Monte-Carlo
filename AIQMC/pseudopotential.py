@@ -121,6 +121,7 @@ def generate_quadrature_grids():
 #jax.debug.print("output2:{}", output2)
 
 def get_rot(batch_size: int, key: chex.PRNGKey):
+    """actually, here, we generate the normal rotation matrix to """
     key, subkey = jax.random.split(key)
     """here, we dont use random.Rotation. Because this function is not working currently."""
     rot = jax.random.orthogonal(key=key, n=3, shape=(batch_size,))
@@ -142,9 +143,9 @@ def get_rot(batch_size: int, key: chex.PRNGKey):
 
 
 
-key = jax.random.PRNGKey(seed=1)
-output3 = get_rot(4, key=key)
-jax.debug.print("output3:{}", output3)
+
+#Points_OA, Points_OB, Points_OC, Points_OD, weights = get_rot(4, key=key)
+#jax.debug.print("output3:{}", output3)
 
 def P_l(x, l):
     """we should be aware of judgement."""
@@ -161,10 +162,24 @@ def P_l(x, l):
     else:
         raise NotImplementedError(f"Legendre functions for l>4 not implemented {l}")
 
-def get_P_l(ae: jnp.array, number_integration_points: int, batch_size: int):
-    """We need think more about this part. 06.09.2024.Here, we need generate the 12 coordinates of integration points."""
+def get_P_l(r_ae: jnp.array, batch_size: int, key: chex.PRNGKey):
+    """We need think more about this part. 06.09.2024.
+    Here, we need generate the 50 coordinates of integration points.11.09.2024."""
+    Points_OA, Points_OB, Points_OC, Points_OD, weights = get_rot(batch_size, key=key)
+    jax.debug.print("r_ae:{}", r_ae)
+    #jax.debug.print("Points_OA:{}", Points_OA)
+    """then, we need generate first 6 points of the OA array from the radius r_ea.
+    we should be aware that the Points_OA is the array including the points on the normal sphere. So, if we 
+    need all the cartesian coordinates of these points, we just need multiply the coordinates by the radius."""
+    Points_OA = jnp.reshape(Points_OA, (batch_size, 1, 1, 6, 3))
+    jax.debug.print("Points_OA:{}", Points_OA)
+    """we need match the shape of r_ae and Points_OA to generate these points.11.09.2024.
+    we need a long time to solve this problem."""
+    r_ae = jnp.reshape(r_ae, (batch_size, 4, 2, 1))# 4 is the number of electrons. 2 is the number of atoms.
+    jax.debug.print("r_ae:{}", r_ae)
 
-
+key = jax.random.PRNGKey(seed=1)
+output4 = get_P_l(r_ae=r_ae, batch_size=4, key=key)
 
 
 def get_v_nonlocal(ae: jnp.array, rn_non_local: jnp.array, non_local_coefficient: jnp.array, non_local_exponent: jnp.array):
