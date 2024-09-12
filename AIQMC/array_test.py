@@ -14,8 +14,12 @@ import numpy as np
 #print(gauss)
 #forward = np.sum(gauss**2, axis=1)
 #print(forward)
+#a = jnp.array([[2], [3]])
+#b = jnp.array([[1, 2, 3]])
+#c = jnp.power(a, b)
+#print(c)
 a = jnp.array([[2], [3]])
-b = jnp.array([[1, 2, 3]])
-c = jnp.power(a, b)
+b = jnp.array([[[3, 3], [4, 4]], [[3, 3], [4, 4]]])
+c = a * b
 print(c)
 

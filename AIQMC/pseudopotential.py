@@ -127,11 +127,6 @@ def get_rot(batch_size: int, key: chex.PRNGKey):
     rot = jax.random.orthogonal(key=key, n=3, shape=(batch_size,))
     #jax.debug.print("rot:{}", rot)
     OA, OB, OC, OD, weights = generate_quadrature_grids()
-    #jax.debug.print("OA:{}", OA)
-    #OA = jnp.reshape(OA, (6, 1, 3))
-    #jax.debug.print("OA:{}", OA)
-    #rot = jnp.reshape(rot, (1, batch_size, 3, 3))
-    #jax.debug.print("rot:{}", rot)
     """actually, I dont understand how to use jnp.einsum, but currently it is working."""
     Points_OA = jnp.einsum('jkl,ik->jil', rot, OA,)
     Points_OB = jnp.einsum('jkl,ik->jil', rot, OB,)
@@ -141,45 +136,79 @@ def get_rot(batch_size: int, key: chex.PRNGKey):
     return Points_OA, Points_OB, Points_OC, Points_OD, weights
 
 
+def P_l_0(x):
+    """we should be aware of judgement. now, we need rewrite this part to make it run efficiently on GPU.
+    l = 0"""
+    return jnp.ones(x.shape)
 
 
+def P_l_1(x):
+    return x
 
-#Points_OA, Points_OB, Points_OC, Points_OD, weights = get_rot(4, key=key)
-#jax.debug.print("output3:{}", output3)
 
-def P_l(x, l):
-    """we should be aware of judgement."""
-    if l == 0:
-        return np.ones(x.shape)
-    elif l == 1:
-        return x
-    elif l == 2:
-        return 0.5 * (3 * x * x - 1)
-    elif l == 3:
-        return 0.5 * (5 * x * x * x - 3 * x)
-    elif l == 4:
-        return 0.125 * (35 * x * x * x * x - 30 * x * x + 3)
-    else:
-        raise NotImplementedError(f"Legendre functions for l>4 not implemented {l}")
+def P_l_2(x):
+    return 0.5 * (3 * x * x - 1)
 
-def get_P_l(r_ae: jnp.array, batch_size: int, key: chex.PRNGKey):
+
+def P_l_3(x):
+    return 0.5 * (5 * x * x * x - 3 * x)
+
+
+def P_l_4(x):
+    return 0.125 * (35 * x * x * x * x - 30 * x * x + 3)
+
+
+def get_summation_legrend(r_ae:jnp.array, Points: jnp.array, number_points: int, batch_size:int, nelectrons: int, natoms: int, weights: jnp.array):
+    r_ae_O = jnp.reshape(jnp.repeat(jnp.reshape(r_ae, (batch_size, -1, 1)), number_points, axis=-1), (-1, number_points, 1))  # 12 is the number of OB points.
+    Points_O = jnp.reshape(jnp.repeat(Points, nelectrons * natoms, axis=0), (-1, number_points, 3))
+    r_rot_coord_O = r_ae_O * Points_O
+    r_rot_coord_O = jnp.reshape(r_rot_coord_O, (batch_size, nelectrons, natoms, number_points, 3))
+    cos_theta_O = r_rot_coord_O[:, :, :, :, 0] / jnp.reshape(r_ae_O, (batch_size, nelectrons, natoms, number_points))
+    # jax.debug.print("cos_theta_OB:{}", cos_theta_OB)
+    l_list_O = jnp.repeat(jnp.reshape(jnp.repeat(l_list, batch_size, axis=0), (batch_size, -1, 1)), natoms * number_points, axis=-1)
+    l_list_O = jnp.reshape(l_list_O, (jnp.shape(cos_theta_O)))
+    P_l_value_O = (2 * l_list_O + 1) * P_l_0(cos_theta_O) * weights
+    #jax.debug.print("P_l_value_OC:{}", P_l_value_OC)
+    return P_l_value_O
+
+
+def get_P_l(r_ae: jnp.array, batch_size: int, nelectrons: int, natoms: int, key: chex.PRNGKey, l_list: jnp.array):
     """We need think more about this part. 06.09.2024.
     Here, we need generate the 50 coordinates of integration points.11.09.2024."""
     Points_OA, Points_OB, Points_OC, Points_OD, weights = get_rot(batch_size, key=key)
-    jax.debug.print("r_ae:{}", r_ae)
-    #jax.debug.print("Points_OA:{}", Points_OA)
     """then, we need generate first 6 points of the OA array from the radius r_ea.
     we should be aware that the Points_OA is the array including the points on the normal sphere. So, if we 
     need all the cartesian coordinates of these points, we just need multiply the coordinates by the radius."""
-    Points_OA = jnp.reshape(Points_OA, (batch_size, 1, 1, 6, 3))
-    jax.debug.print("Points_OA:{}", Points_OA)
     """we need match the shape of r_ae and Points_OA to generate these points.11.09.2024.
-    we need a long time to solve this problem."""
-    r_ae = jnp.reshape(r_ae, (batch_size, 4, 2, 1))# 4 is the number of electrons. 2 is the number of atoms.
-    jax.debug.print("r_ae:{}", r_ae)
+    we need a long time to solve this problem.
+    12.09.2024, for convenience, we only show how to do OA points summation."""
+    r_ae_OA = jnp.reshape(r_ae, (batch_size, -1, 1))
+    r_ae_OA = jnp.repeat(r_ae_OA, 6, axis=-1) # 6 is the number of points in OA.
+    r_ae_OA = jnp.reshape(r_ae_OA, (-1, 6, 1))
+    #jax.debug.print("r_ae_OA:{}", r_ae_OA)
+    Points_OA = jnp.repeat(Points_OA, nelectrons*natoms, axis=0)
+    Points_OA = jnp.reshape(Points_OA, (-1, 6, 3))
+    r_rot_coord_OA = r_ae_OA * Points_OA
+    r_rot_coord_OA = jnp.reshape(r_rot_coord_OA, (batch_size, nelectrons, natoms, 6, 3))
+    cos_theta_OA = r_rot_coord_OA[:, :, :, :, 0]/jnp.reshape(r_ae_OA, (batch_size, nelectrons, natoms, 6))
+    l_list_OA = jnp.repeat(jnp.reshape(jnp.repeat(l_list, batch_size, axis=0), (batch_size, -1, 1)), natoms*6, axis=-1)
+    l_list_OA = jnp.reshape(l_list_OA, (jnp.shape(cos_theta_OA)))
+    #jax.debug.print("l_list:{}", l_list)
+    P_l_value_OA = (2*l_list_OA + 1) * P_l_0(cos_theta_OA) * weights[0]
+    P_l_value_OB = get_summation_legrend(r_ae=r_ae, Points=Points_OB, number_points=12, batch_size=4, nelectrons=4, natoms=2, weights=weights[1])
+    P_l_value_OC = get_summation_legrend(r_ae=r_ae, Points=Points_OC, number_points=8, batch_size=4, nelectrons=4, natoms=2, weights=weights[2])
+    P_l_value_OD = get_summation_legrend(r_ae=r_ae, Points=Points_OD, number_points=24, batch_size=4, nelectrons=4, natoms=2, weights=weights[3])
+    #jax.debug.print("P_l_value_0D:{}", P_l_value_OD)
+    P_l_value_total = jnp.sum(P_l_value_OA, axis=-1) + jnp.sum(P_l_value_OB, axis=-1) + jnp.sum(P_l_value_OC, axis=-1) + jnp.sum(P_l_value_OD, axis=-1)
+    #jax.debug.print("P_l_value_total:{}", P_l_value_total)
+    return P_l_value_total
+
+
+
 
 key = jax.random.PRNGKey(seed=1)
-output4 = get_P_l(r_ae=r_ae, batch_size=4, key=key)
+l_list = jnp.array([[0, 0, 0, 0]])
+output4 = get_P_l(r_ae=r_ae, batch_size=4, nelectrons=4, natoms=2, key=key, l_list=l_list)
 
 
 def get_v_nonlocal(ae: jnp.array, rn_non_local: jnp.array, non_local_coefficient: jnp.array, non_local_exponent: jnp.array):
