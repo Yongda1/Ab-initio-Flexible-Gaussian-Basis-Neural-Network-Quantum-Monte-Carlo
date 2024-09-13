@@ -6,19 +6,22 @@ import chex
 import jax
 from jax import lax
 import jax.numpy as jnp
-import numpy as np
-from jax.scipy.spatial.transform import Rotation
+from AIQMC import main
+from AIQMC import nn
+
+signednetwork, data, batchparams, batchphase, batchnetwork = main.main()
+print("data.positions", data.positions)
 
 r_ae = jnp.array([[[0.21824889, 0.3565338], [0.1946077, 0.32006422], [0.4780831,  0.138754], [0.41992992, 0.19055614]],
                  [[0.16530964, 0.29526055], [0.15191387, 0.22501956], [0.3564806, 0.05262673], [0.45009968, 0.16455044]],
                  [[0.35471296, 0.65752304], [0.08244702, 0.36039594], [0.48147705, 0.13537169], [0.1520589, 0.22781217]],
                  [[0.08920264, 0.26871547], [0.20597123, 0.25272587], [0.23355496, 0.22838382], [0.32041857, 0.20322587]]])
 
-ae=jnp.array([[[[-0.05045887, -0.05971689,  0.06463739], [-0.25045887, -0.2597169,  -0.13536263]],
+ae = jnp.array([[[[-0.05045887, -0.05971689,  0.06463739], [-0.25045887, -0.2597169,  -0.13536263]],
      [[ 0.07916525, -0.05145506,  0.09662296], [-0.12083475, -0.25145507, -0.10337704]],
      [[ 0.07315412, 0.01910421, 0.0914843 ], [-0.12684588, -0.18089579, -0.1085157]],
      [[ 0.21733882, 0.19526899, 0.16549167], [ 0.01733881, -0.00473101, -0.03450833]]],
-    [[[ 0.0466635, 0.01833163, -0.10274688], [-0.1533365,  -0.18166837, -0.3027469 ]],
+    [[[ 0.0466635, 0.01833163, -0.10274688], [-0.1533365,  -0.18166837, -0.3027469]],
      [[-0.12950271, -0.06703701, 0.10728339], [-0.3295027, -0.267037,   -0.09271661]],
      [[ 0.24344115, 0.26252785,  0.21634525], [ 0.04344115, 0.06252785,  0.01634525]],
      [[ 0.08412638, 0.14403898, 0.22974347], [-0.11587363, -0.05596103, 0.02974346]]],
@@ -130,8 +133,8 @@ def get_rot(batch_size: int, key: chex.PRNGKey):
     """actually, I dont understand how to use jnp.einsum, but currently it is working."""
     Points_OA = jnp.einsum('jkl,ik->jil', rot, OA,)
     Points_OB = jnp.einsum('jkl,ik->jil', rot, OB,)
-    Points_OC = jnp.einsum('jkl,ik->jil', rot, OC, )
-    Points_OD = jnp.einsum('jkl,ik->jil', rot, OD, )
+    Points_OC = jnp.einsum('jkl,ik->jil', rot, OC,)
+    Points_OD = jnp.einsum('jkl,ik->jil', rot, OD,)
     #jax.debug.print("Points_OD:{}", Points_OD)
     return Points_OA, Points_OB, Points_OC, Points_OD, weights
 
@@ -158,11 +161,13 @@ def P_l_4(x):
     return 0.125 * (35 * x * x * x * x - 30 * x * x + 3)
 
 
-def get_summation_legrend(r_ae:jnp.array, Points: jnp.array, number_points: int, batch_size:int, nelectrons: int, natoms: int, weights: jnp.array):
+def get_summation_legrend(r_ae: jnp.array, Points: jnp.array, number_points: int,
+                          batch_size: int, nelectrons: int, natoms: int, weights: jnp.array,):
     r_ae_O = jnp.reshape(jnp.repeat(jnp.reshape(r_ae, (batch_size, -1, 1)), number_points, axis=-1), (-1, number_points, 1))  # 12 is the number of OB points.
     Points_O = jnp.reshape(jnp.repeat(Points, nelectrons * natoms, axis=0), (-1, number_points, 3))
     r_rot_coord_O = r_ae_O * Points_O
     r_rot_coord_O = jnp.reshape(r_rot_coord_O, (batch_size, nelectrons, natoms, number_points, 3))
+    #jax.debug.print("r_rot_coord_0:{}", r_rot_coord_O)
     cos_theta_O = r_rot_coord_O[:, :, :, :, 0] / jnp.reshape(r_ae_O, (batch_size, nelectrons, natoms, number_points))
     # jax.debug.print("cos_theta_OB:{}", cos_theta_OB)
     l_list_O = jnp.repeat(jnp.reshape(jnp.repeat(l_list, batch_size, axis=0), (batch_size, -1, 1)), natoms * number_points, axis=-1)
@@ -172,7 +177,7 @@ def get_summation_legrend(r_ae:jnp.array, Points: jnp.array, number_points: int,
     return P_l_value_O
 
 
-def get_P_l(r_ae: jnp.array, batch_size: int, nelectrons: int, natoms: int, key: chex.PRNGKey, l_list: jnp.array):
+def get_P_l(f: nn.AINetLike, data: nn.AINetData, r_ae: jnp.array, batch_size: int, nelectrons: int, natoms: int, key: chex.PRNGKey, l_list: jnp.array):
     """We need think more about this part. 06.09.2024.
     Here, we need generate the 50 coordinates of integration points.11.09.2024."""
     Points_OA, Points_OB, Points_OC, Points_OD, weights = get_rot(batch_size, key=key)
@@ -190,6 +195,24 @@ def get_P_l(r_ae: jnp.array, batch_size: int, nelectrons: int, natoms: int, key:
     Points_OA = jnp.reshape(Points_OA, (-1, 6, 3))
     r_rot_coord_OA = r_ae_OA * Points_OA
     r_rot_coord_OA = jnp.reshape(r_rot_coord_OA, (batch_size, nelectrons, natoms, 6, 3))
+    jax.debug.print("r_rot_coord_OA:{}", r_rot_coord_OA)
+    #jax.debug.print("data.atoms:{}", data.atoms)
+    coord_atoms = jnp.reshape(data.atoms, (batch_size, natoms, 3))
+    coord_atoms = jnp.repeat(coord_atoms, 6, axis=1)
+    coord_atoms = jnp.repeat(coord_atoms, nelectrons, axis=0)
+    coord_atoms = jnp.reshape(coord_atoms, (batch_size, nelectrons, natoms, 6, 3))
+    jax.debug.print("coord_atoms:{}", coord_atoms)
+    pos_integration_points = coord_atoms + r_rot_coord_OA
+    jax.debug.print("pos_integration_points:{}", pos_integration_points)
+    jax.debug.print("data.positions:{}", data.positions)
+    x_denominator = jnp.reshape(data.positions, (batch_size, nelectrons, 3))
+    jax.debug.print("x_denominator:{}", x_denominator)
+    """here, we outline the problems explicitly. For OA points, every atom needs 6 integration points. This means, for the system with two atoms,
+    we need 12 integration points to evaluate the non-local part for one electron. Therefore, we need replace the coordinates of the electron by the coordiantes of 
+    12 integration points. However, if we really just replace the electron coordinate 12 times, this must cost a lot. And the codes cannot run efficiently.
+    13.09.2024."""
+
+
     cos_theta_OA = r_rot_coord_OA[:, :, :, :, 0]/jnp.reshape(r_ae_OA, (batch_size, nelectrons, natoms, 6))
     l_list_OA = jnp.repeat(jnp.reshape(jnp.repeat(l_list, batch_size, axis=0), (batch_size, -1, 1)), natoms*6, axis=-1)
     l_list_OA = jnp.reshape(l_list_OA, (jnp.shape(cos_theta_OA)))
@@ -208,7 +231,7 @@ def get_P_l(r_ae: jnp.array, batch_size: int, nelectrons: int, natoms: int, key:
 
 key = jax.random.PRNGKey(seed=1)
 l_list = jnp.array([[0, 0, 0, 0]])
-output4 = get_P_l(r_ae=r_ae, batch_size=4, nelectrons=4, natoms=2, key=key, l_list=l_list)
+output4 = get_P_l(f=signednetwork, data=data, r_ae=r_ae, batch_size=4, nelectrons=4, natoms=2, key=key, l_list=l_list)
 
 
 def get_v_nonlocal(ae: jnp.array, rn_non_local: jnp.array, non_local_coefficient: jnp.array, non_local_exponent: jnp.array):
