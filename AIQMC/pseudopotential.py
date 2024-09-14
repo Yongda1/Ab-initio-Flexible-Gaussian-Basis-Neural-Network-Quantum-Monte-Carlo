@@ -211,6 +211,8 @@ def get_P_l(f: nn.AINetLike, data: nn.AINetData, r_ae: jnp.array, batch_size: in
     we need 12 integration points to evaluate the non-local part for one electron. Therefore, we need replace the coordinates of the electron by the coordiantes of 
     12 integration points. However, if we really just replace the electron coordinate 12 times, this must cost a lot. And the codes cannot run efficiently.
     13.09.2024."""
+    """14.09.2024, we have to compare the computational cost between all electron calculation and pseudopotential calculation.
+    And if we want to make this method be general, we need think more about the input and output parameters.!!!"""
 
 
     cos_theta_OA = r_rot_coord_OA[:, :, :, :, 0]/jnp.reshape(r_ae_OA, (batch_size, nelectrons, natoms, 6))
