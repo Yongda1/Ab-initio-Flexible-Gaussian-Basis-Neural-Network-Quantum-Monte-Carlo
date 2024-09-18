@@ -177,7 +177,7 @@ def get_summation_legrend(r_ae: jnp.array, Points: jnp.array, number_points: int
     return P_l_value_O
 
 
-def get_P_l(f: nn.AINetLike, data: nn.AINetData, r_ae: jnp.array, batch_size: int, nelectrons: int, natoms: int, key: chex.PRNGKey, l_list: jnp.array):
+def get_P_l(batch_network: nn.AINetLike, batch_phase: nn.LogAINetLike, batchparams: nn.ParamTree, data: nn.AINetData, r_ae: jnp.array, batch_size: int, nelectrons: int, natoms: int, key: chex.PRNGKey, l_list: jnp.array):
     """We need think more about this part. 06.09.2024.
     Here, we need generate the 50 coordinates of integration points.11.09.2024."""
     Points_OA, Points_OB, Points_OC, Points_OD, weights = get_rot(batch_size, key=key)
@@ -195,13 +195,13 @@ def get_P_l(f: nn.AINetLike, data: nn.AINetData, r_ae: jnp.array, batch_size: in
     Points_OA = jnp.reshape(Points_OA, (-1, 6, 3))
     r_rot_coord_OA = r_ae_OA * Points_OA
     r_rot_coord_OA = jnp.reshape(r_rot_coord_OA, (batch_size, nelectrons, natoms, 6, 3))
-    jax.debug.print("r_rot_coord_OA:{}", r_rot_coord_OA)
+    #jax.debug.print("r_rot_coord_OA:{}", r_rot_coord_OA)
     #jax.debug.print("data.atoms:{}", data.atoms)
     coord_atoms = jnp.reshape(data.atoms, (batch_size, natoms, 3))
     coord_atoms = jnp.repeat(coord_atoms, 6, axis=1)
     coord_atoms = jnp.repeat(coord_atoms, nelectrons, axis=0)
     coord_atoms = jnp.reshape(coord_atoms, (batch_size, nelectrons, natoms, 6, 3))
-    jax.debug.print("coord_atoms:{}", coord_atoms)
+    #jax.debug.print("coord_atoms:{}", coord_atoms)
     pos_integration_points = coord_atoms + r_rot_coord_OA
     jax.debug.print("pos_integration_points:{}", pos_integration_points)
     jax.debug.print("data.positions:{}", data.positions)
@@ -213,6 +213,46 @@ def get_P_l(f: nn.AINetLike, data: nn.AINetData, r_ae: jnp.array, batch_size: in
     13.09.2024."""
     """14.09.2024, we have to compare the computational cost between all electron calculation and pseudopotential calculation.
     And if we want to make this method be general, we need think more about the input and output parameters.!!!"""
+    """currently, we first finished the 6 points part, i.e. OA points.
+    Here, we dont get ideas to make the run to be parallel on GPU. Currently, we only solve it by using loops. We know it is slow. We will improve it later."""
+    #jax.debug.print("x_denominator:{}", x_denominator[:, 0])
+    #jax.debug.print("the shape of pos_integration_points:{}", jnp.shape(pos_integration_points))
+    #jax.debug.print("pos_integration_points:{}", pos_integration_points[:, :, 0])
+    """problem is larger than we are thinking. we need make a plan about how to do it. 18.09.2024."""
+    jax.debug.print("pos:{}", data.positions)
+    #batch_network_value_wavefunction = jax.vmap(f, in_axes=(None, 1, 1, 1), out_axes=0)
+    ratio_denominator_real_part = batch_network(batchparams, data.positions, data.atoms, data.charges)
+    ratio_denominator_img_part = batchphase(batchparams, data.positions, data.atoms, data.charges)
+    jax.debug.print("ratio_denominator_real:{}", ratio_denominator_real_part)
+    jax.debug.print("ratio_denominator_img:{}", ratio_denominator_img_part)
+    ratio_denominator = ratio_denominator_img_part * jnp.exp(ratio_denominator_real_part)
+    """the following part is tempoary plan."""
+    ratio = []
+    for i in range(len(pos_integration_points)):#batch dimension
+        for j in range(len(pos_integration_points[i])): #electrons dimension
+            for k in range(len(pos_integration_points[i][j])): #atoms dimension
+                print("----------------")
+                for m in range(len(pos_integration_points[i][j][k])):
+                    #jax.debug.print("pos_integration_points:{}", pos_integration_points[i][j][k][m])
+                    x_numerator = x_denominator.at[i, j].set(pos_integration_points[i][j][k][m])
+                    #jax.debug.print("x_numerator:{}", x_numerator)
+                    x_numerator = jnp.reshape(x_numerator, (1, batch_size, -1))
+                    #jax.debug.print("x_numerator:{}", x_numerator)
+                    ratio_numerator_real = batch_network(batchparams, x_numerator, data.atoms, data.charges)
+                    ratio_numerator_img = batchphase(batchparams, x_numerator, data.atoms, data.charges)
+                    #jax.debug.print("ratio_numerator_real:{}", ratio_numerator_real)
+                    #jax.debug.print("ratio_numerator_img:{}", ratio_numerator_img)
+                    ratio_numerator = ratio_numerator_img*jnp.exp(ratio_numerator_real)
+                    ratio.append(ratio_numerator/ratio_denominator)
+                    #ratio = jnp.array(ratio_numerator)/jnp.array(ratio_denominator)
+                    #jax.debug.print("ratio:{}", ratio)
+
+
+    ratio = jnp.reshape(jnp.array(ratio), (batch_size, nelectrons, natoms, 6, batch_size)) - (1+ 1.j * 0)#this line could has problems.
+    jax.debug.print("ratio:{}", ratio)
+    ratio = jnp.sum(jnp.sum(ratio, axis=-1), axis=-1)
+    jax.debug.print("ratio:{}", ratio)
+    """to be continued. It is a complex number. 18.09.2024."""
 
 
     cos_theta_OA = r_rot_coord_OA[:, :, :, :, 0]/jnp.reshape(r_ae_OA, (batch_size, nelectrons, natoms, 6))
@@ -220,12 +260,15 @@ def get_P_l(f: nn.AINetLike, data: nn.AINetData, r_ae: jnp.array, batch_size: in
     l_list_OA = jnp.reshape(l_list_OA, (jnp.shape(cos_theta_OA)))
     #jax.debug.print("l_list:{}", l_list)
     P_l_value_OA = (2*l_list_OA + 1) * P_l_0(cos_theta_OA) * weights[0]
+    jax.debug.print("P_l_value_OA:{}", P_l_value_OA)
+    value_OA = jnp.sum(P_l_value_OA, axis=-1) * ratio
+    jax.debug.print("value_OA:{}", value_OA)
     P_l_value_OB = get_summation_legrend(r_ae=r_ae, Points=Points_OB, number_points=12, batch_size=4, nelectrons=4, natoms=2, weights=weights[1])
     P_l_value_OC = get_summation_legrend(r_ae=r_ae, Points=Points_OC, number_points=8, batch_size=4, nelectrons=4, natoms=2, weights=weights[2])
     P_l_value_OD = get_summation_legrend(r_ae=r_ae, Points=Points_OD, number_points=24, batch_size=4, nelectrons=4, natoms=2, weights=weights[3])
     #jax.debug.print("P_l_value_0D:{}", P_l_value_OD)
     P_l_value_total = jnp.sum(P_l_value_OA, axis=-1) + jnp.sum(P_l_value_OB, axis=-1) + jnp.sum(P_l_value_OC, axis=-1) + jnp.sum(P_l_value_OD, axis=-1)
-    #jax.debug.print("P_l_value_total:{}", P_l_value_total)
+    jax.debug.print("P_l_value_total:{}", P_l_value_total)
     return P_l_value_total
 
 
@@ -233,7 +276,8 @@ def get_P_l(f: nn.AINetLike, data: nn.AINetData, r_ae: jnp.array, batch_size: in
 
 key = jax.random.PRNGKey(seed=1)
 l_list = jnp.array([[0, 0, 0, 0]])
-output4 = get_P_l(f=signednetwork, data=data, r_ae=r_ae, batch_size=4, nelectrons=4, natoms=2, key=key, l_list=l_list)
+output4 = get_P_l(batch_network=batchnetwork, batch_phase=batchphase, batchparams=batchparams, data=data, r_ae=r_ae,
+                  batch_size=4, nelectrons=4, natoms=2, key=key, l_list=l_list)
 
 
 def get_v_nonlocal(ae: jnp.array, rn_non_local: jnp.array, non_local_coefficient: jnp.array, non_local_exponent: jnp.array):

@@ -8,7 +8,7 @@ from absl import logging
 import chex
 from AIQMC import envelopes
 from AIQMC import nn
-from AIQMC import mcstep
+#from AIQMC import mcstep
 import jax
 from jax.experimental import multihost_utils
 import jax.numpy as jnp
@@ -168,7 +168,7 @@ def main(batch_size=4, structure = jnp.array([[10, 0, 0],
     "currently, we dont need check points. So, we ignore this part."
     '''--------------Main training-------------'''
     #Construct MC step
-    mc_step = mcstep.make_mc_step(phase_network, batch_network, signed_network)
+    #mc_step = mcstep.make_mc_step(phase_network, batch_network, signed_network)
     '''Construct loss and optimizer, local energy calculation. we are gonna deal with it at 28.08.2024.'''
     #local_energy = make_local_energy()
     return signed_network, data, batch_params, phase_network, batch_network

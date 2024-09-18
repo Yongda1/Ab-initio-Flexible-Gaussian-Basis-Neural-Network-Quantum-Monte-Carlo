@@ -6,16 +6,16 @@ import jax
 from jax import lax
 from jax import numpy as jnp
 import numpy as np
-#from AIQMC import main
+from AIQMC import main
 from AIQMC.utils import utils
 """Tomorrow, we are going to finish the walkers moving part. But differently from FermiNet, we will use the traditional moving strategy.
 19.08.2024. no worry, everything will fine."""
-'''
-signednetwork, phasenetwork, logabsnetwork, batchnetwork, batchparams, data = main.main()
+
+signednetwork, data, batchparams, phasenetwork, batchnetwork = main.main()
 print("data.positions", data.positions)
 print("params", batchparams)
 key = jax.random.PRNGKey(seed=1)
-'''
+
 
 def walkers_accept(x1, x2, ratio, key):
     print("---------------------------")
@@ -88,8 +88,10 @@ def walkers_update(params: nn.ParamTree, batch_phase:nn.LogAINetLike, batch_f: n
     #jax.debug.print("t_probability:{}", t_probability)
     phase_1 = batch_phase(params, x1, data.atoms, data.charges)
     #jax.debug.print("phase_1:{}", phase_1)
+    jax.debug.print("x1:{}", x1)
     phase_2 = batch_phase(params, x2, data.atoms, data.charges)
     value_1 = batch_f(params, x1, data.atoms, data.charges)
+    jax.debug.print("value_1:{}", value_1)
     value_2 = batch_f(params, x2, data.atoms, data.charges)
     ratio = phase_2*jnp.exp(value_1)/(phase_1*jnp.exp(value_2))
     """26.08.2024, we have more problem about the calculation of the ratio. We continue tomorrow."""
@@ -131,5 +133,5 @@ def make_mc_step(phasenetwork, batchnetwork, signednetwork, nsteps=10):
     return mcmc_step
 
 
-#walker_move = make_mc_step(phasenetwork, batchnetwork, signednetwork, nsteps=10)
-#newdata, key = walker_move(params=batchparams, data=data, key=key)
+walker_move = make_mc_step(phasenetwork, batchnetwork, signednetwork, nsteps=10)
+newdata, key = walker_move(params=batchparams, data=data, key=key)
