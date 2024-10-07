@@ -3,7 +3,7 @@
 from typing import Any, Callable, Optional, Sequence, Tuple, Union
 import chex
 from AIQMC import nn
-from AIQMC import pseudopotential as pp
+#from AIQMC import pseudopotential as pp
 from AIQMC.utils import utils
 #import folx
 import jax
@@ -11,13 +11,13 @@ from jax import lax
 import jax.numpy as jnp
 import numpy as np
 from typing_extensions import Protocol
-from AIQMC import main
+#from AIQMC import main
 
 
-signednetwork, data, batchparams, batchphase, batchnetwork = main.main()
-print("data.positions", data.positions)
+#signednetwork, data, batchparams, batchphase, batchnetwork = main.main()
+#print("data.positions", data.positions)
 #print("params", batchparams)
-key = jax.random.PRNGKey(seed=1)
+#key = jax.random.PRNGKey(seed=1)
 
 
 Array = Union[jnp.ndarray, np.ndarray]
@@ -185,8 +185,8 @@ def local_energy(f: nn.AINetLike, complex_number: bool = True) -> LocalEnergy:
     return _e_l
 
 
-_e_l = local_energy(f=signednetwork, complex_number=True)
-output = _e_l(batch_size=4, ndim=3, batchparams=batchparams, key=key, data=data)
+#_e_l = local_energy(f=signednetwork, complex_number=True)
+#output = _e_l(batch_size=4, ndim=3, batchparams=batchparams, key=key, data=data)
 
 
 

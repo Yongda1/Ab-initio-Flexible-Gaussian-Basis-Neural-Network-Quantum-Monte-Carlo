@@ -8,7 +8,7 @@ from absl import logging
 import chex
 from AIQMC import envelopes
 from AIQMC import nn
-#from AIQMC import mcstep
+from AIQMC import mcstep
 import jax
 from jax.experimental import multihost_utils
 import jax.numpy as jnp
@@ -16,6 +16,7 @@ import kfac_jax
 import ml_collections
 import numpy as np
 import optax
+from hamiltonian import local_energy
 from typing_extensions import Protocol
 
 
@@ -168,10 +169,11 @@ def main(batch_size=4, structure = jnp.array([[10, 0, 0],
     "currently, we dont need check points. So, we ignore this part."
     '''--------------Main training-------------'''
     #Construct MC step
-    #mc_step = mcstep.make_mc_step(phase_network, batch_network, signed_network)
+    mc_step = mcstep.make_mc_step(phase_network, batch_network, signed_network)
     '''Construct loss and optimizer, local energy calculation. we are gonna deal with it at 28.08.2024.'''
-    #local_energy = make_local_energy()
-    return signed_network, data, batch_params, phase_network, batch_network
+    localenergy = local_energy(f=signed_network, complex_number=True) 
+    """so far, we have not constructed the pp module. Currently, we only execute all electrons calculation.  """
+    return signed_network, data, batch_params, phase_network, batch_network, mc_step, localenergy
 
 
 output = main()
