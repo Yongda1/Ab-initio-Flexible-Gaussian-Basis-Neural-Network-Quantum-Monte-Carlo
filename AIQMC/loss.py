@@ -50,12 +50,30 @@ def make_loss(network: nn.AINetLike, local_energy, data: nn.AINetData, complex_o
         return loss, AuxiliaryLossData(variance=variance, local_energy=e_l, grad_local_energy=None)
 
 
-    el = total_energy(params=batchparams, key=key, data=data)
+
     """here, we probably need redefine the differentiation rules for the mean value of total energy."""
     @total_energy.defjvp()
     def total_energy_jvp(primals, tangents):
         params, key, data = primals
+        loss, aux_data = total_energy(params=batchparams, key=key, data=data)
+        diff = aux_data.local_energy - loss
+        data = primals[2]
+        data_tangents = tangents[2]
+        primals = (primals[0], data.positions, data.atoms, data.charges)
+        tangents = (tangents[0], data_tangents.positions, data_tangents.atoms, data_tangents.charges)
+        psi_primal, psi_tangent = jax.jvp(batch_signed_network, primals, tangents)
+        clipped_el = diff + aux_data.local_energy
+        term1 = (jnp.dot(clipped_el, jnp.conjugate(psi_tangent)) + jnp.dot(jnp.conjugate(clipped_el), psi_tangent))
+        term2 = jnp.sum(aux_data.local_energy * psi_tangent.real)
+        kfac_jax.register_normal_predictive_distribution(psi_primal.real[:, None])
+        primals_out = loss.real, aux_data
+        """the following codes need to be rewrite 7/10/2024."""
+        device_batch_size = jnp.shape(aux_data.local_energy)
+        tangents_out = ((term1 - 2 * term2).real / device_batch_size)
+        """to be continued..."""
+        return primals_out, tangents_out
 
+    return total_energy
 
 
 
