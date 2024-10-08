@@ -70,7 +70,9 @@ def make_loss(network: nn.AINetLike, local_energy, data: nn.AINetData, complex_o
         """the following codes need to be rewrite 7/10/2024."""
         device_batch_size = jnp.shape(aux_data.local_energy)
         tangents_out = ((term1 - 2 * term2).real / device_batch_size)
-        """to be continued..."""
+        """to be continued...
+        we already checked the formula of real version and complex version. 08.10.2024.
+        we can finish this module after the conference."""
         return primals_out, tangents_out
 
     return total_energy
