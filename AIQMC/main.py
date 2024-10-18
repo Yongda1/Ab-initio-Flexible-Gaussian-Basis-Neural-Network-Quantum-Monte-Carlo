@@ -18,6 +18,7 @@ import numpy as np
 import optax
 from hamiltonian import local_energy
 from typing_extensions import Protocol
+from AIQMC import loss as qmc_loss_function
 
 
 def _assign_spin_configuration(nalpha: int, nbeta: int, batch_size: int=1) -> jnp.ndarray:
@@ -31,8 +32,8 @@ def _assign_spin_configuration(nalpha: int, nbeta: int, batch_size: int=1) -> jn
 structure = jnp.array([[10, 0, 0],
                        [0, 10, 0],
                        [0, 0, 10]])
-atoms = jnp.array([[1, 1, 1], [0.2, 0.2, 0.2]])
-charges = jnp.array([2, 2])
+atoms = jnp.array([[1.0, 1.0, 1.0], [0.2, 0.2, 0.2]])
+charges = jnp.array([2.0, 2.0])
 pos = jnp.array([1.5, 1.5, 1.5, 2, 0.5, 0.5, 0.5, 0.5, 0.5, 0.5, 2, 0.5])
 
 
@@ -48,7 +49,7 @@ def init_electrons(key, structure: jnp.ndarray, atoms: jnp.ndarray, charges: jnp
     for _ in range(batch_size):
         electron_positions = []
         for i in range(len(atoms)):
-            electron_positions.append(jnp.tile(atoms[i], charges[i]))
+            electron_positions.append(jnp.tile(atoms[i], int(charges[i])))
         electrons_positions_batch.append(electron_positions)
     electrons_positions_batch = jnp.reshape(jnp.array(electrons_positions_batch), (batch_size, len(charges), -1, 3))
     key, subkey = jax.random.split(key, num=2)
@@ -91,7 +92,7 @@ class Step(Protocol):
 
 def main(batch_size=4, structure = jnp.array([[10, 0, 0],
                        [0, 10, 0],
-                       [0, 0, 10]]), atoms=jnp.array([[0, 0, 0], [0.2, 0.2, 0.2]]), charges=jnp.array([2, 2]), nelectrons=4, ndim=3):
+                       [0, 0, 10]]), atoms=jnp.array([[0, 0, 0], [0.2, 0.2, 0.2]]), charges=jnp.array([2.0, 2.0]), nelectrons=4, ndim=3):
     num_devices = jax.local_device_count() #the amount of GPU per host
     num_hosts = jax.device_count() // num_devices #the amount of host
     #print("num_devices", num_devices)
@@ -147,7 +148,7 @@ def main(batch_size=4, structure = jnp.array([[10, 0, 0],
         phase, mag = signed_network(*args, **kwargs)
         return mag + 1.j * phase
 
-    pos, spins = init_electrons(subkey, structure=structure, atoms=atoms, charges=charges, electrons=jnp.array([[1, 0], [1, 0]]), batch_size=host_batch_size, init_width=0.1)
+    pos, spins = init_electrons(subkey, structure=structure, atoms=atoms, charges=charges, electrons=jnp.array([[1.0, 0.0], [1.0, 0.0]]), batch_size=host_batch_size, init_width=0.1)
     """this operation means add one extra dimension to the array."""
     batch_pos = jnp.reshape(pos, data_shape+(-1,))
     """here, we need be sure that the array pos must be compatible with the input of AInet and hamiltonian."""
@@ -173,6 +174,8 @@ def main(batch_size=4, structure = jnp.array([[10, 0, 0],
     '''Construct loss and optimizer, local energy calculation. we are gonna deal with it at 28.08.2024.'''
     localenergy = local_energy(f=signed_network, complex_number=True) 
     """so far, we have not constructed the pp module. Currently, we only execute all electrons calculation.  """
+    evaluate_loss = qmc_loss_function.make_loss(signed_network, local_energy, data=data, complex_output=True)
+    """18.10.2024, we will continue later."""
     return signed_network, data, batch_params, phase_network, batch_network, mc_step, localenergy
 
 
