@@ -128,7 +128,7 @@ def make_mc_step(phasenetwork, batchnetwork, signednetwork, nsteps=10):
 
         new_data, key = lax.fori_loop(lower=0, upper=nsteps, body_fun=step_fn, init_val=(data, key))
         #jax.debug.print("new_data:{}", new_data)
-        return new_data, key
+        return new_data
 
     return mcmc_step
 

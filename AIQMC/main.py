@@ -6,6 +6,8 @@ import time
 from typing import Optional, Mapping, Sequence, Tuple, Union
 from absl import logging
 import chex
+
+import curvature_tags_and_blocks
 from AIQMC import envelopes
 from AIQMC import nn
 from AIQMC import mcstep
@@ -19,6 +21,7 @@ import optax
 from hamiltonian import local_energy
 from typing_extensions import Protocol
 from AIQMC import loss as qmc_loss_function
+from AIQMC import constants
 
 
 def _assign_spin_configuration(nalpha: int, nbeta: int, batch_size: int=1) -> jnp.ndarray:
@@ -87,12 +90,29 @@ class Step(Protocol):
     Loss.py, hamiltonian.py, utils.py and pseudopotential.py form an entire part. So, next fews steps, we need move stepy by step."""
 
 
+
+def make_kfac_training_step(mc_step, damping:float, optimizer: kfac_jax.Optimizer, reset_if_nan: bool = False) -> Step:
+    """Factory to create training step for Kfac optimizers."""
+    mc_step = constants.pmap(mc_step, donate_argums=1)
+    shared_mom = kfac_jax.utils.replicate_all_local_devices(jnp.zeros([]))
+    shared_damping = kfac_jax.utils.replicate_all_local_devices(jnp.asarray(damping))
+    copy_tree = constants.pmap(functools.partial(jax.tree_util.tree_map, lambda x: (1.0 * x).astype(x.dtype)))
+
+    def step(data: nn.AINetData, params: nn.ParamTree, state: kfac_jax.Optimizer.State, key: chex.PRNGKey) -> StepResults:
+        mc_keys, loss_keys = kfac_jax.utils.p_split(key)
+        data = mc_step(params, data, mc_keys)
+        new_params, new_state, stats = optimizer.step(params=params, state=state, rng=loss_keys, batch=data, momentum=shared_mom, damping=shared_damping)
+        return data, new_params, new_state, stats['loss'], stats['aux']
+
+    return step
+
 """we can start the main function first, the solve every module we need in the calculation."""
 
 
 def main(batch_size=4, structure = jnp.array([[10, 0, 0],
                        [0, 10, 0],
-                       [0, 0, 10]]), atoms=jnp.array([[0, 0, 0], [0.2, 0.2, 0.2]]), charges=jnp.array([2.0, 2.0]), nelectrons=4, ndim=3):
+                       [0, 0, 10]]), atoms=jnp.array([[0, 0, 0], [0.2, 0.2, 0.2]]), charges=jnp.array([2.0, 2.0]), nelectrons=4, ndim=3,
+         iterations=10):
     num_devices = jax.local_device_count() #the amount of GPU per host
     num_hosts = jax.device_count() // num_devices #the amount of host
     #print("num_devices", num_devices)
@@ -176,7 +196,42 @@ def main(batch_size=4, structure = jnp.array([[10, 0, 0],
     """so far, we have not constructed the pp module. Currently, we only execute all electrons calculation.  """
     evaluate_loss = qmc_loss_function.make_loss(signed_network, local_energy, data=data, complex_output=True)
     """18.10.2024, we will continue later."""
-    return signed_network, data, batch_params, phase_network, batch_network, mc_step, localenergy
+    def learning_rate_schedule(t_: jnp.array, rate: float, delay: float, decay: float) -> jnp.array:
+        return rate * jnp.power(1.0/(1.0 + (t_/delay)), decay)
+
+    val_and_grad = jax.value_and_grad(evaluate_loss, argnums=0, has_aux=True)
+    optimizer = kfac_jax.Optimizer(
+                                    val_and_grad,
+                                    l2_reg=0.0,
+                                    norm_constraint=0.001,
+                                    value_func_has_aux=True,
+                                    value_func_has_rng=True,
+                                    learning_rate_schedule=learning_rate_schedule,
+                                    curvature_ema =0.95,
+                                    inverse_update_period=1,
+                                    min_damping=1.0e-4,
+                                    num_burnin_steps=0,
+                                    register_only_generic=False,
+                                    estimation_mode='fisher_exact',
+                                    multi_device=True,
+                                    pmap_axis_name=constants.PMAP_AXIS_NAME, #this line to be done
+                                    auto_register_kwargs=dict(graph_patterns=curvature_tags_and_blocks.GRAPH_PATTERN,)) #this line to be done!!! we need read the paper of Kfac.
 
 
-output = main()
+    sharded_key = kfac_jax.utils.make_different_rng_key_on_all_devices(key)
+    sharded_key, subkeys = kfac_jax.utils.p_split(sharded_key)
+    opt_state = optimizer.init(params, subkeys, data)
+    """the default option is Kfac."""
+    step = make_kfac_training_step(mc_step=mc_step, damping=0.001, optimizer=optimizer)
+    """main training loop"""
+    for t in range(0, iterations):
+        sharded_key, subkeys = kfac_jax.utils.p_split(sharded_key)
+        data, params, opt_state, loss, aux_data = step(data, params, opt_state, subkeys)
+
+
+
+
+    #return signed_network, data, batch_params, phase_network, batch_network, mc_step, localenergy
+
+
+#output = main()
