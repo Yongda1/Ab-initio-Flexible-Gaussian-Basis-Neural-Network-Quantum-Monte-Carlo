@@ -16,9 +16,9 @@ from jax.experimental import multihost_utils
 import jax.numpy as jnp
 import kfac_jax
 import optax
-from hamiltonian import local_energy
+#from hamiltonian import local_energy
 from typing_extensions import Protocol
-from AIQMC import loss as qmc_loss_function
+#from AIQMC import loss as qmc_loss_function
 from AIQMC import constants
 
 
@@ -187,14 +187,14 @@ def main(batch_size=4, structure = jnp.array([[10, 0, 0],
     "currently, we dont need check points. So, we ignore this part."
     '''--------------Main training-------------'''
     #Construct MC step
-    mc_step = mcstep.make_mc_step(phase_network, batch_network, signed_network)
+    #mc_step = mcstep.make_mc_step(phase_network, batch_network, signed_network)
     '''Construct loss and optimizer, local energy calculation. we are gonna deal with it at 28.08.2024.'''
     #localenergy = local_energy(f=signed_network, params=batch_params, complex_number=True)
     """so far, we have not constructed the pp module. Currently, we only execute all electrons calculation.  """
-    evaluate_loss = qmc_loss_function.make_loss(signed_network, local_energy=local_energy, params=batch_params, data=data, complex_output=True)
+    #evaluate_loss = qmc_loss_function.make_loss(signed_network, local_energy=local_energy, params=batch_params, data=data, complex_output=True)
     """18.10.2024, we will continue later."""
 
-
+    '''
     def learning_rate_schedule(t_: jnp.array, rate=0.05, delay=1.0, decay=10000) -> jnp.array:
         return rate * jnp.power(1.0/(1.0 + (t_/delay)), decay)
 
@@ -230,10 +230,10 @@ def main(batch_size=4, structure = jnp.array([[10, 0, 0],
         sharded_key, subkeys = kfac_jax.utils.p_split(sharded_key)
         data, batch_params, opt_state, loss, aux_data = step(data, batch_params, opt_state, subkeys)
 
+    '''
 
 
-
-    #return signed_network, data, batch_params, phase_network, batch_network, mc_step, local_energy
+    return signed_network, data, batch_params, phase_network, batch_network, #mc_step, local_energy
 
 
 output = main()
