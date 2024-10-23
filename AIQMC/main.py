@@ -15,8 +15,6 @@ import jax
 from jax.experimental import multihost_utils
 import jax.numpy as jnp
 import kfac_jax
-import ml_collections
-import numpy as np
 import optax
 from hamiltonian import local_energy
 from typing_extensions import Protocol
@@ -83,7 +81,6 @@ class Step(Protocol):
         """Performs one set of MCMC moves and an optimization step."""
 
 
-#def make_opt_update_step(evaluate_loss: qmc_loss_functions.LossFn, optimizer: optax.GradientTransformation) -> OptUpdate:
     """Returns an OptUpdate function for performing a parameter update.
     So far ,we have not solved the spin configuration problem yet. But we got one more task about writing the loss function.
     Let's go back to main.py 14.08.2024. We cannot finished all functions now. Because we need guarrante all input data format fixed and
@@ -115,8 +112,8 @@ def main(batch_size=4, structure = jnp.array([[10, 0, 0],
          iterations=10):
     num_devices = jax.local_device_count() #the amount of GPU per host
     num_hosts = jax.device_count() // num_devices #the amount of host
-    #print("num_devices", num_devices)
-    #print("num_hosts", num_hosts)
+    jax.debug.print("num_devices:{}", num_devices)
+    jax.debug.print("num_hosts:{}", num_hosts)
     logging.info('Start QMC with $i devices per host, across %i hosts.', num_devices, num_hosts)
     if batch_size % (num_devices * num_hosts) != 0:
         raise ValueError('Batch size must be divisible by number of devices!')
@@ -127,13 +124,13 @@ def main(batch_size=4, structure = jnp.array([[10, 0, 0],
     """we continue tommorrow, 14.08.2024.
     Here, we use [None, ...] to enlarge one dimension of the array 'atoms'. """
     batch_atoms = jnp.tile(atoms[None, ...], [device_batch_size, 1, 1])
-    #print("batch_atoms", batch_atoms)
+    #jax.debug.print("batch_atoms:{}", batch_atoms)
     batch_atoms = kfac_jax.utils.replicate_all_local_devices(batch_atoms)
-    #print("batch_atoms", batch_atoms)
+    jax.debug.print("batch_atoms:{}", batch_atoms)
     batch_charges = jnp.tile(charges[None, ...], [device_batch_size, 1])
-    #print("batch_charges", batch_charges)
+    #jax.debug.print("batch_charges:{}", batch_charges)
     batch_charges = kfac_jax.utils.replicate_all_local_devices(batch_charges)
-    #print("batch_charges", batch_charges)
+    jax.debug.print("batch_charges:{}", batch_charges)
     seed = jnp.asarray([1e6 * time.time()])
     seed = int(multihost_utils.broadcast_one_to_all(seed)[0])
     key = jax.random.PRNGKey(seed)
@@ -192,11 +189,13 @@ def main(batch_size=4, structure = jnp.array([[10, 0, 0],
     #Construct MC step
     mc_step = mcstep.make_mc_step(phase_network, batch_network, signed_network)
     '''Construct loss and optimizer, local energy calculation. we are gonna deal with it at 28.08.2024.'''
-    localenergy = local_energy(f=signed_network, complex_number=True) 
+    #localenergy = local_energy(f=signed_network, params=batch_params, complex_number=True)
     """so far, we have not constructed the pp module. Currently, we only execute all electrons calculation.  """
-    evaluate_loss = qmc_loss_function.make_loss(signed_network, local_energy, data=data, complex_output=True)
+    evaluate_loss = qmc_loss_function.make_loss(signed_network, local_energy=local_energy, params=batch_params, data=data, complex_output=True)
     """18.10.2024, we will continue later."""
-    def learning_rate_schedule(t_: jnp.array, rate: float, delay: float, decay: float) -> jnp.array:
+
+
+    def learning_rate_schedule(t_: jnp.array, rate=0.05, delay=1.0, decay=10000) -> jnp.array:
         return rate * jnp.power(1.0/(1.0 + (t_/delay)), decay)
 
     val_and_grad = jax.value_and_grad(evaluate_loss, argnums=0, has_aux=True)
@@ -207,7 +206,7 @@ def main(batch_size=4, structure = jnp.array([[10, 0, 0],
                                     value_func_has_aux=True,
                                     value_func_has_rng=True,
                                     learning_rate_schedule=learning_rate_schedule,
-                                    curvature_ema =0.95,
+                                    curvature_ema=0.95,
                                     inverse_update_period=1,
                                     min_damping=1.0e-4,
                                     num_burnin_steps=0,
@@ -220,18 +219,21 @@ def main(batch_size=4, structure = jnp.array([[10, 0, 0],
 
     sharded_key = kfac_jax.utils.make_different_rng_key_on_all_devices(key)
     sharded_key, subkeys = kfac_jax.utils.p_split(sharded_key)
-    opt_state = optimizer.init(params, subkeys, data)
-    """the default option is Kfac."""
+    """we got a bug here. Maybe we dont pass the correct data to the optimizer.init."""
+    jax.debug.print("batch_params:{}", batch_params)
+    jax.debug.print("data:{}", data)
+    opt_state = optimizer.init(params=batch_params, rng=subkeys, batch=data)
+    """the default option is Kfac. It could be the problem of parallirization. 23.10.2024."""
     step = make_kfac_training_step(mc_step=mc_step, damping=0.001, optimizer=optimizer)
     """main training loop"""
     for t in range(0, iterations):
         sharded_key, subkeys = kfac_jax.utils.p_split(sharded_key)
-        data, params, opt_state, loss, aux_data = step(data, params, opt_state, subkeys)
+        data, batch_params, opt_state, loss, aux_data = step(data, batch_params, opt_state, subkeys)
 
 
 
 
-    #return signed_network, data, batch_params, phase_network, batch_network, mc_step, localenergy
+    #return signed_network, data, batch_params, phase_network, batch_network, mc_step, local_energy
 
 
-#output = main()
+output = main()
