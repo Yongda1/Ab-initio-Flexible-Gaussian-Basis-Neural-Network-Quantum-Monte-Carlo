@@ -11,13 +11,13 @@ from jax import lax
 import jax.numpy as jnp
 import numpy as np
 from typing_extensions import Protocol
-from AIQMC import main
+#from AIQMC import main
 
 
-signednetwork, data, batchparams, batchphase, batchnetwork = main.main()
+#signednetwork, data, batchparams, batchphase, batchnetwork = main.main()
 #print("data.positions", data.positions)
 #print("params", batchparams)
-key = jax.random.PRNGKey(seed=1)
+#key = jax.random.PRNGKey(seed=1)
 
 
 Array = Union[jnp.ndarray, np.ndarray]
@@ -52,6 +52,9 @@ def local_kinetic_energy(f: nn.AINetLike) -> KineticEnergy:
         print("************")
         jax.debug.print("params:{}", params)
         jax.debug.print("data:{}", data)
+        jax.debug.print("shape_pos:{}", jnp.shape(data.positions))
+        jax.debug.print("shape_atoms:{}", jnp.shape(data.atoms))
+        jax.debug.print("shape_atoms:{}", jnp.shape(data.charges))
         hessian_value_logabs = second_grad_value(params, data.positions, data.atoms, data.charges)
         angle_grad_hessian = jax.vmap(jax.jacfwd(jax.jacrev(angle_f, argnums=1), argnums=1), in_axes=(None, 1, 1, 1), out_axes=0)
         hessian_value_angle_f = angle_grad_hessian(params, data.positions, data.atoms, data.charges)
@@ -77,8 +80,8 @@ def local_kinetic_energy(f: nn.AINetLike) -> KineticEnergy:
     return _lapl_over_f
 
 
-lap_over_f = local_kinetic_energy(signednetwork)
-output = lap_over_f(batchparams, data)
+#lap_over_f = local_kinetic_energy(signednetwork)
+#output = lap_over_f(batchparams, data)
 
 
 """all electron interaction calculation."""

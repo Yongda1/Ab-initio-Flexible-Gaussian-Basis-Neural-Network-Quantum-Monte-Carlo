@@ -1,16 +1,10 @@
 """This is the main part of AIQMC."""
 import functools
-import importlib
-import os
 import time
-from typing import Optional, Mapping, Sequence, Tuple, Union
+from typing import Optional, Tuple, Union
 from absl import logging
 import chex
-
-import curvature_tags_and_blocks
-from AIQMC import envelopes
 from AIQMC import nn
-from AIQMC import mcstep
 import jax
 from jax.experimental import multihost_utils
 import jax.numpy as jnp
@@ -20,6 +14,8 @@ import optax
 from typing_extensions import Protocol
 #from AIQMC import loss as qmc_loss_function
 from AIQMC import constants
+#from AIQMC import curvature_tags_and_blocks
+#from AIQMC import mcstep
 
 
 def _assign_spin_configuration(nalpha: int, nbeta: int, batch_size: int=1) -> jnp.ndarray:
@@ -157,30 +153,45 @@ def main(batch_size=4, structure = jnp.array([[10, 0, 0],
     """The good news is that we probably know what is happening to the parallel control over the function logabs_network. 
     The bad news is that i dont know how to solve it completely. Currently, I only use one way to make it work temporarily.
     We need improve it later. 22.08.2024."""
-    phase_network = jax.vmap(phase_network, in_axes=(None, 1, 1, 1), out_axes=0)
-    batch_network = jax.vmap(logabs_network, in_axes=(None, 1, 1, 1), out_axes=0)
+    #phase_network = jax.vmap(phase_network, in_axes=(None, 1, 1, 1), out_axes=0)
+    #batch_network = jax.vmap(logabs_network, in_axes=(None, 1, 1, 1), out_axes=0)
     "for the complex wave function, we need a new function."
     "This is correct. no problem. 19.08.2024."
-    def log_network(*args, **kwargs):
-        phase, mag = signed_network(*args, **kwargs)
-        return mag + 1.j * phase
+    #def log_network(*args, **kwargs):
+    #    phase, mag = signed_network(*args, **kwargs)
+    #    return mag + 1.j * phase
 
     pos, spins = init_electrons(subkey, structure=structure, atoms=atoms, charges=charges, electrons=jnp.array([[1.0, 0.0], [1.0, 0.0]]), batch_size=host_batch_size, init_width=0.1)
     """this operation means add one extra dimension to the array."""
     batch_pos = jnp.reshape(pos, data_shape+(-1,))
     """here, we need be sure that the array pos must be compatible with the input of AInet and hamiltonian."""
     batch_pos = kfac_jax.utils.broadcast_all_local_devices(batch_pos)
+
     spins = jnp.reshape(spins, data_shape+(-1,))
     batch_spins = kfac_jax.utils.broadcast_all_local_devices(spins)
     print("batch_pos", batch_pos)
     print("batch_atoms", batch_atoms)
     print("batch_charges", batch_charges)
+    "*********************************************************************************************"
+    '''we need change the strategy of parallel. So we need test the non-batch atoms and charges.'''
+    jax.debug.print("charges:{}", charges)
+    jax.debug.print("atoms:{}", atoms)
+    jax.debug.print("spins:{}", spins)
+    non_batch_charges = kfac_jax.utils.replicate_all_local_devices(charges)
+    non_batch_atoms = kfac_jax.utils.replicate_all_local_devices(atoms)
+    non_batch_spins = kfac_jax.utils.broadcast_all_local_devices(spins)
+    jax.debug.print("non_batch_charges:{}", non_batch_charges)
+    jax.debug.print("non_batch_atoms:{}", non_batch_atoms)
     """here, we tested the parallel calculation method. Currently, after our heavy effort, it is working well."""
     #test_output_no_batch = logabs_network(params=params, pos=batch_pos[0][1], atoms=atoms, charges=charges)
     #test_output = batch_network(batch_params, batch_pos, batch_atoms, batch_charges)
     #jax.debug.print("test_output:{}", test_output)
     #test_output_no_batch = signed_network(params=params, pos=batch_pos[0][1], atoms=atoms, charges=charges)
     data = nn.AINetData(positions=batch_pos, spins=batch_spins, atoms=batch_atoms, charges=batch_charges)
+
+    data_non_batch = nn.AINetData(positions=batch_pos, spins=non_batch_spins, atoms=non_batch_atoms, charges=non_batch_charges)
+    non_phase_network = jax.vmap(phase_network, in_axes=(None, 1, None, None), out_axes=0)
+    non_batch_network = jax.vmap(logabs_network, in_axes=(None, 1, None, None), out_axes=0)
     """here, we have one problem about the format of pos, spins, batch_atoms, batch_charges.
     These formats can be easily changed in nn.py. so, before we do this, we need know which format should be used in the loss function 16.08.2024."""
     #print("data.positions", data.positions.shape)
@@ -232,8 +243,7 @@ def main(batch_size=4, structure = jnp.array([[10, 0, 0],
 
     '''
 
-
-    return signed_network, data, batch_params, phase_network, batch_network, #mc_step, local_energy
+    return signed_network, data_non_batch, batch_params, non_batch_network, non_phase_network #mc_step, local_energy
 
 
 output = main()
