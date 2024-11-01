@@ -572,7 +572,7 @@ def train(cfg: ml_collections.ConfigDict, writer_manager=None):
     data = networks.FermiNetData(
         positions=pos, spins=spins, atoms=batch_atoms, charges=batch_charges
     )
-    jax.debug.print("data:{}", data)
+    #jax.debug.print("data:{}", data)
     t_init = 0
     opt_state_ckpt = None
     mcmc_width_ckpt = None
@@ -766,6 +766,8 @@ def train(cfg: ml_collections.ConfigDict, writer_manager=None):
         # debug=True
     )
     sharded_key, subkeys = kfac_jax.utils.p_split(sharded_key)
+    jax.debug.print("params:{}", params)
+    jax.debug.print("data:{}", data)
     opt_state = optimizer.init(params, subkeys, data)
     opt_state = opt_state_ckpt or opt_state  # avoid overwriting ckpted state
   else:

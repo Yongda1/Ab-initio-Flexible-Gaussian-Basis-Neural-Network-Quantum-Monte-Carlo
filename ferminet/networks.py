@@ -1469,9 +1469,9 @@ def make_fermi_net(
       of and log absolute of the network evaluated at x.
     """
 
-    jax.debug.print("vmap_pos:{}", pos)
-    jax.debug.print("vmap_atoms:{}", atoms)
-    jax.debug.print("vmap_charges:{}", charges)
+    #jax.debug.print("vmap_pos:{}", pos)
+    #jax.debug.print("vmap_atoms:{}", atoms)
+    #jax.debug.print("vmap_charges:{}", charges)
 
     orbitals = orbitals_apply(params, pos, spins, atoms, charges)
     if options.states:

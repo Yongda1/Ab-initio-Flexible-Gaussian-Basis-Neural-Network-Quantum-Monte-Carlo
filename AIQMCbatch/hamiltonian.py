@@ -19,9 +19,7 @@ Array = Union[jnp.ndarray, np.ndarray]
 
 
 class LocalEnergy(Protocol):
-    def __call__(self, params: nn.ParamTree, data: nn.AINetData, batch_size: int, ndim: int,
-                 batch_atoms: jnp.array, batch_charges: jnp.array) \
-            -> jnp.array:
+    def __call__(self, params: nn.ParamTree, data: nn.AINetData, batch_size: int, ndim: int,) -> jnp.array:
         """Returns the local energy of a Hamiltonian at a configuration."""
 
 
@@ -45,18 +43,18 @@ def local_kinetic_energy(f: nn.AINetLike) -> KineticEnergy:
     def _lapl_over_f(params, data):
         """29.08.2024 take care of the following function, we need write argnums=1 two times."""
         """here, we also need use both pmap and vmap."""
-        second_grad_value = jax.pmap(jax.vmap(jax.jacfwd(jax.jacrev(logabs_f, argnums=1), argnums=1), in_axes=(None, 0, 0, 0),
-                                     out_axes=0), in_axes=0, out_axes=0)
+        second_grad_value = jax.vmap(jax.jacfwd(jax.jacrev(logabs_f, argnums=1), argnums=1), in_axes=(None, 0, 0, 0),
+                                     out_axes=0)
         hessian_value_logabs = second_grad_value(params, data.positions, data.atoms, data.charges)
-        angle_grad_hessian = jax.pmap(jax.vmap(jax.jacfwd(jax.jacrev(angle_f, argnums=1), argnums=1), in_axes=(None, 0, 0, 0),
-                                      out_axes=0), in_axes=0, out_axes=0)
+        angle_grad_hessian = jax.vmap(jax.jacfwd(jax.jacrev(angle_f, argnums=1), argnums=1), in_axes=(None, 0, 0, 0),
+                                      out_axes=0)
         hessian_value_angle_f = angle_grad_hessian(params, data.positions, data.atoms, data.charges)
         hessian_value_all = hessian_value_logabs + 1.j * hessian_value_angle_f
         hessian_value_all = jnp.reshape(hessian_value_all, (4, 12, 12))
         hessian_diagonal = jnp.diagonal(hessian_value_all, axis1=1, axis2=2)
         """be aware of this line. we need use both pmap and vmap."""
-        angle_grad_value = jax.pmap(jax.vmap(jax.grad(angle_f, argnums=1), in_axes=(None, 0, 0, 0), out_axes=0), in_axes=0, out_axes=0)
-        grad_value = jax.pmap(jax.vmap(jax.grad(logabs_f, argnums=1), in_axes=(None, 0, 0, 0), out_axes=0), in_axes=0, out_axes=0)
+        angle_grad_value = jax.vmap(jax.grad(angle_f, argnums=1), in_axes=(None, 0, 0, 0), out_axes=0)
+        grad_value = jax.vmap(jax.grad(logabs_f, argnums=1), in_axes=(None, 0, 0, 0), out_axes=0)
         first_derivative_angle = angle_grad_value(params, data.positions, data.atoms, data.charges)
         first_derivative_f = grad_value(params, data.positions, data.atoms, data.charges)
         first_derivative_f = jnp.reshape(first_derivative_f,
@@ -131,7 +129,7 @@ def local_energy(f: nn.AINetLike) -> LocalEnergy:
 
     def _e_l(batch_size: int, ndim: int, params: nn.ParamTree, data: nn.AINetData) -> jnp.array:
         """after we change the parallel, we also need rewrite this part. we will solve this later, 31.10.2024."""
-        jax.debug.print("data:{}", data)
+        #jax.debug.print("data:{}", data)
         """we already created the correct batch version. We do not need reshape the array, data.atoms and data.charges."""
         electron_pos_temp = jnp.reshape(data.positions, (batch_size, 12))# 4 is batch_size, 12 is the size of input parameters.
         atoms_position_temp = jnp.reshape(data.atoms, (batch_size, 2, ndim))  # 2 is the number of atoms.
@@ -149,6 +147,7 @@ def local_energy(f: nn.AINetLike) -> LocalEnergy:
         potential_E_aa = potential_nuclear_nuclear(data.atoms, data.charges, batch_size=batch_size)
         kinetic = lap_over_f(params, data)
         total_energy = kinetic + potential_E_ee + potential_E_ae + potential_E_aa
+        total_energy = jnp.mean(total_energy, axis=-1)
         return total_energy
 
     return _e_l

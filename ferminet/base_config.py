@@ -44,7 +44,7 @@ def default() -> ml_collections.ConfigDict:
   """
   # wavefunction output.
   cfg = ml_collections.ConfigDict({
-      'batch_size': 4096,  # batch size
+      'batch_size': 4,  # batch size
       # Config module used. Should be set in get_config function as either the
       # absolute module or relative to the configs subdirectory. Relative
       # imports must start with a '.' (e.g. .atom). Do *not* override on
@@ -208,7 +208,7 @@ def default() -> ml_collections.ConfigDict:
           'ferminet': {
               # FermiNet architecture: Pfau, Spencer, Matthews, Foulkes, Phys
               # Rev Research 033429 (2020).
-              'hidden_dims': ((256, 32), (256, 32), (256, 32), (256, 32)),
+              'hidden_dims': ((4, 2), (4, 2), (4, 2), (4, 2)),
               # Whether to use the last layer of the two-electron stream of the
               # FermiNet.
               'use_last_layer': False,

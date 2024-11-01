@@ -1,22 +1,25 @@
 from typing import Tuple
 import chex
-#from AIQMCmaster import constants
+from AIQMCbatch import constants
 from AIQMCbatch import hamiltonian
 from AIQMCbatch import nn
 import jax
 import jax.numpy as jnp
 import kfac_jax
 from typing_extensions import Protocol
-from AIQMCbatch import main_kfac
+#from AIQMCbatch import main_kfac
 from AIQMCbatch.utils import utils
 
-
-#signed_network, data_non_batch, batch_params, non_batch_network, non_phase_network, batch_atoms, batch_charges = main.main()
+#signed_network, data, batch_params, batch_network, batch_phase_network = main_kfac.main()
 #jax.debug.print("local_energy:{}", local_energy)
 #key = jax.random.PRNGKey(seed=1)
 
 """Before we go into the loss function, we have to finish the hamiltonian first."""
-"""we already finsihed the hamiltonian module. today, we try to do this."""
+"""we already finsihed the hamiltonian module. today, we try to do this.
+
+We have a large problem here. Because the kfac does not accept the pmap in the loss function,
+the hamiltonian and loss module have to be non_batch version. But with vmap 1.11.2024. Then,we turn to the hamiltonian module.
+"""
 
 @chex.dataclass
 class AuxiliaryLossData:
@@ -27,28 +30,33 @@ class AuxiliaryLossData:
 
 class LossAINet(Protocol):
 
-    def __call__(self, params: nn.ParamTree, key: chex.PRNGKey, data: nn.AINetData) -> Tuple[jnp.array, AuxiliaryLossData]:
+    def __call__(self, params: nn.ParamTree, key: chex.PRNGKey, data: nn.AINetData) \
+            -> Tuple[jnp.array, AuxiliaryLossData]:
         """Evaluagtes the total energy of the network for a batch of configurations."""
 
 
 def make_loss(network: nn.AINetLike, local_energy: hamiltonian.LocalEnergy) -> LossAINet:
     """our local_energy function from hamiltonian module is already batched version.
     We dont need rewrite it here."""
-    batch_local_energy = local_energy
+
+    batch_local_energy = local_energy(network)
     logabs_f = utils.select_output(network, 1)
     angle_f = utils.select_output(network, 2)
-    batch_signed_network_logabs = jax.pmap(jax.vmap(logabs_f, in_axes=(None, 0, 0, 0), out_axes=0), in_axes=0, out_axes=0)
-    batch_signed_network_angle = jax.pmap(jax.vmap(angle_f, in_axes=(None, 0, 0, 0), out_axes=0), in_axes=0, out_axes=0)
+
+    batch_signed_network_logabs = jax.pmap(jax.vmap(logabs_f, in_axes=(None, 0, 0, 0), out_axes=0),
+                                           in_axes=0, out_axes=0)
+    batch_signed_network_angle = jax.pmap(jax.vmap(angle_f, in_axes=(None, 0, 0, 0), out_axes=0),
+                                          in_axes=0, out_axes=0)
 
 
 
     @jax.custom_jvp
     def total_energy(params: nn.ParamTree, data: nn.AINetData) -> Tuple[jnp.ndarray, AuxiliaryLossData]:
-        jax.debug.print("params:{}", params)
-        jax.debug.print("data:{}", data)
+        #jax.debug.print("params:{}", params)
+        #jax.debug.print("data:{}", data)
         e_l = batch_local_energy(batch_size=4, ndim=3, params=params, data=data,)
-        e_l = jnp.mean(e_l, axis=-1)
-        loss = jnp.mean(e_l, axis=-1)
+        #jax.debug.print("e_l:{}", e_l)
+        loss = constants.pmean(jnp.mean(e_l, axis=-1))
         loss_diff = e_l - loss
         variance = jnp.mean(loss_diff*jnp.conj(loss_diff), axis=-1)
         return loss, AuxiliaryLossData(variance=variance, local_energy=e_l, grad_local_energy=None)
@@ -73,12 +81,9 @@ def make_loss(network: nn.AINetLike, local_energy: hamiltonian.LocalEnergy) -> L
         kfac_jax.register_normal_predictive_distribution(psi_primal.real[:, None])
         primals_out = loss.real, aux_data
         """the following codes need to be rewrite 7/10/2024."""
-        device_batch_size = 1
+        device_batch_size = 4
         tangents_out = ((term1 - 2 * term2).real / device_batch_size, aux_data)
         #jax.debug.print("tangents_out:{}", tangents_out)
-        """to be continued...
-        we already checked the formula of real version and complex version. 08.10.2024.
-        we can finish this module after the conference."""
         return primals_out, tangents_out
 
     return total_energy
@@ -86,6 +91,6 @@ def make_loss(network: nn.AINetLike, local_energy: hamiltonian.LocalEnergy) -> L
 
 
 
-#total_energy_test = make_loss(signed_network, local_energy=local_energy, params=batch_params, data=data_non_batch, complex_output=True)
-#output = total_energy_test(batch_params, key, data_non_batch)
+#total_energy_test = make_loss(signed_network, hamiltonian.local_energy)
+#output = total_energy_test(batch_params, data)
 #print(jvp(total_energy_test)(batchparams, key, data))

@@ -12,7 +12,7 @@ logging.set_verbosity(logging.INFO)
 
 # Define H2 molecule
 cfg = base_config.default()
-cfg.system.electrons = (1,1)  # (alpha electrons, beta electrons)
+cfg.system.electrons = (1, 1)  # (alpha electrons, beta electrons)
 cfg.system.molecule = [system.Atom('H', (0, 0, -1)), system.Atom('H', (0, 0, 1))]
 
 # Set training parameters

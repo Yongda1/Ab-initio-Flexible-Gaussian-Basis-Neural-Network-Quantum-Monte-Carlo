@@ -10,6 +10,10 @@ import numpy as np
 from AIQMCbatch.utils import utils
 """Tomorrow, we are going to finish the walkers moving part. But differently from FermiNet, we will use the traditional moving strategy.
 19.08.2024. no worry, everything will fine."""
+"""due to the parallel problem about the optimizer, the walkers should move like non-batch version. Without pmap. 1.11.2024. This also means that
+we cannot test the codes before we finish it."""
+"""we have to think in this way. The mcstep function has been done, pmap, So, the data.pos also has been mapped to different
+devices. so we can remove pmap in front of batch_network and batch_phase."""
 
 #signed_network, data, batch_params, batch_network, batch_phase_network = main_kfac.main()
 #key = jax.random.PRNGKey(seed=1)
@@ -32,7 +36,7 @@ def walkers_update(params: nn.ParamTree, batch_phase:nn.LogAINetLike, batch_f: n
     x1 = data.positions
     #phase_f = utils.select_output(single_f, 0)
     logabs_f = utils.select_output(single_f, 1)
-    grad_value = jax.pmap(jax.vmap(jax.grad(logabs_f, argnums=1), in_axes=(None, 0, 0, 0), out_axes=0), in_axes=0, out_axes=0)
+    grad_value = jax.vmap(jax.grad(logabs_f, argnums=1), in_axes=(None, 0, 0, 0), out_axes=0)
     #phase_grad_value = jax.vmap(jax.grad(phase_f, argnums=1), in_axes=(None, 1, None, None), out_axes=0)
 
     def grad_f_closure(x):
