@@ -2,7 +2,7 @@
 import enum
 from typing import Any, Callable, Iterable, Mapping, Union, Tuple
 import jax.numpy as jnp
-import jax
+#import jax
 # from nn import construct_input_features
 
 '''
@@ -38,7 +38,7 @@ def _jastrow_ee(ee: jnp.ndarray, params: ParamTree, nelectron: int,
     We already found the method for spliting the spin configurations. 07.08.2024.
     we need change the way of spliting the spin configurations.
     Because we mentioned that the spin configurations should be input by hand.[[1, 0],[1, 0]] 22.08.2024."""
-    print("start Jsatrow part----------------")
+    #print("start Jastrow part----------------")
     # print('ee', ee)
     # jax.debug.print("vmap_ee:{}", ee)
     r_ees = jnp.linalg.norm(ee, axis=-1)
@@ -73,7 +73,7 @@ def make_pade_ee_jastrow() -> ...:
     think more !!! 06.08.2024"""
 
     def pade_ee_cusp_fun(r_ee: jnp.ndarray, cusp: float, alpha: jnp.ndarray) -> jnp.ndarray:
-        return r_ee / cusp * (1 / (jnp.abs(1 + alpha * r_ee)))
+        return r_ee / cusp * (1.0 / (jnp.abs(1.0 + alpha * r_ee)))
 
     def init() -> Mapping[str, jnp.ndarray]:
         params = {}
@@ -119,8 +119,8 @@ def make_pade_ae_jastrow() -> ...:
         beta = jnp.reshape(beta, (nelectron, natoms))
         # print('beta', beta)
         # print('value_Jastrow_ae', -1 * jnp.float_power((2 * charges), (3/4)) * (1 - jnp.exp(-1 * jnp.float_power((2 * charges), 1/4) * r_ae * beta))/(2 * beta))
-        return -1 * jnp.float_power((2 * charges), (3 / 4)) * (
-                    1 - jnp.exp(-1 * jnp.float_power((2 * charges), 1 / 4) * r_ae * beta)) / (2 * beta)
+        return -1.0 * jnp.float_power((2.0 * charges), (3.0 / 4.0)) * (
+                    1.0 - jnp.exp(-1.0 * jnp.float_power((2.0 * charges), 1.0 / 4.0) * r_ae * beta)) / (2.0 * beta)
 
     def init(nelectron: int, charges: jnp.ndarray) -> Mapping[str, jnp.ndarray]:
         params = {}

@@ -108,11 +108,13 @@ def local_kinetic_energy(
       n = data.positions.shape[0]
       eye = jnp.eye(n)
       grad_f = jax.grad(logabs_f, argnums=1)
+
       def grad_f_closure(x):
         return grad_f(params, x, data.spins, data.atoms, data.charges)
 
       primal, dgrad_f = jax.linearize(grad_f_closure, data.positions)
-
+      jax.debug.print("data.positions:{}", data.positions)
+      jax.debug.print("primal:{}", primal)
       if complex_output:
         grad_phase = jax.grad(phase_f, argnums=1)
         def grad_phase_closure(x):
@@ -272,6 +274,8 @@ def potential_energy(r_ae: Array, r_ee: Array, atoms: Array,
     atoms: Shape (natoms, ndim). Positions of the atoms.
     charges: Shape (natoms). Nuclear charges of the atoms.
   """
+  jax.debug.print("r_ae:{}", r_ae)
+  jax.debug.print("r_ee:{}", r_ee)
   return (potential_electron_electron(r_ee) +
           potential_electron_nuclear(charges, r_ae) +
           potential_nuclear_nuclear(charges, atoms))
@@ -388,12 +392,17 @@ def local_energy(
       ae, _, r_ae, r_ee = networks.construct_input_features(
           data.positions, data.atoms
       )
+      #jax.debug.print("data.atoms:{}", data.atoms)
+      #jax.debug.print("data.pos:{}", data.positions)
       potential = (potential_energy(r_ae, r_ee, data.atoms, effective_charges) +
                    pp_local(r_ae) +
                    pp_nonlocal(key, f, params, data, ae, r_ae))
       kinetic = ke(params, data)
+      jax.debug.print("potential:{}", potential)
+      jax.debug.print("kinetic:{}", kinetic)
       total_energy = potential + kinetic
       energy_mat = None  # Not necessary for ground state
+      jax.debug.print("total_energy:{}", total_energy)
     return total_energy, energy_mat
 
   return _e_l

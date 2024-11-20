@@ -13,7 +13,7 @@
 # limitations under the License.
 
 """Four hydrogen atoms on a circle."""
-
+from ferminet import train
 import itertools
 from ferminet import base_config
 from ferminet.utils import system
@@ -36,16 +36,19 @@ def _set_geometry(cfg: ml_collections.ConfigDict) -> ml_collections.ConfigDict:
   return cfg
 
 
-def get_config():
-  """Returns config for running H4 with FermiNet."""
-  cfg = base_config.default()
-  cfg.system.update({
-      'angle': 90,
-      'radius': 1.738,
-      'units': 'angstrom',
-      'electrons': (2, 2),
-  })
-  with cfg.ignore_type():
+
+"""Returns config for running H4 with FermiNet."""
+cfg = base_config.default()
+cfg.system.update({
+  'angle': 90,
+  'radius': 1.738,
+  'units': 'angstrom',
+  'electrons': (2, 2),
+})
+with cfg.ignore_type():
     cfg.system.set_molecule = _set_geometry
     cfg.config_module = '.h4'
-  return cfg
+
+
+
+train.train(cfg)

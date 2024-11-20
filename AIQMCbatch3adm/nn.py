@@ -9,16 +9,20 @@ own input layer vector h.
 
 from typing import Any, Iterable, Mapping, MutableMapping, Optional, Sequence, Tuple, Union
 import attr
-from AIQMCbatch import envelopes
-from AIQMCbatch import nnblocks
-from AIQMCbatch import Jastrow
+from AIQMCbatch3adm import envelopes
+from AIQMCbatch3adm import nnblocks
+from AIQMCbatch3adm import Jastrow
 import jax
 import chex
 import jax.numpy as jnp
 from typing_extensions import Protocol
 
-ParamTree = Union[jnp.ndarray, Iterable['ParamTree'], MutableMapping[Any, 'ParamTree']]
-Param = MutableMapping[str, jnp.ndarray]
+
+ParamTree = Union[
+    jnp.array, Iterable['ParamTree'], MutableMapping[Any, 'ParamTree']
+]
+Param = MutableMapping[str, jnp.array]
+
 
 @chex.dataclass
 class AINetData:
@@ -27,10 +31,11 @@ class AINetData:
     atoms: Any
     charges: Any
 
+
 class LogAINetLike(Protocol):
 
     def __call__(self, params: ParamTree,
-                 electrons: jnp.ndarray, spins: jnp.ndarray, atoms: jnp.ndarray, charges: jnp.ndarray) -> jnp.ndarray:
+                 electrons: jnp.array, spins: jnp.array, atoms: jnp.array, charges: jnp.array) -> jnp.array:
         """Returns the log magnitude of the wavefunction."""
 
 
@@ -42,8 +47,8 @@ class FeatureInit(Protocol):
 
 class FeatureApply(Protocol):
 
-    def __call__(self, ae_ee: jnp.ndarray, **params: jnp.ndarray) \
-            -> Tuple[jnp.ndarray, jnp.ndarray]:
+    def __call__(self, ae_ee: jnp.array, **params: jnp.array) \
+            -> Tuple[jnp.array, jnp.array]:
         """Creates the features to pass into the network."""
 
 
@@ -58,7 +63,7 @@ class InitLayersFn(Protocol):
         """Returns output dim and initizalized parameters for the interaction layers."""
 
 class ApplyLayersFn(Protocol):
-    def __call__(self, params, ae: jnp.ndarray, ee: jnp.ndarray, nelectrons: int = 4) -> jnp.ndarray:
+    def __call__(self, params, ae: jnp.array, ee: jnp.array, nelectrons: int = 4) -> jnp.array:
         """Forward evaluation of the interaction layers."""
 
 class InitAINet(Protocol):
@@ -66,11 +71,11 @@ class InitAINet(Protocol):
         """Return initialized parameters for the network."""
 
 class OrbitalsAILike(Protocol):
-    def __call__(self, params: ParamTree, pos: jnp.ndarray, atoms: jnp.ndarray, charges: jnp.ndarray) -> Sequence[jnp.ndarray]:
+    def __call__(self, params: ParamTree, pos: jnp.array, atoms: jnp.array, charges: jnp.array) -> Sequence[jnp.array]:
         """Forward evaluation of the AINet up to the orbitals."""
 
 class AINetLike(Protocol):
-    def __call__(self, params: ParamTree, pos: jnp.ndarray, atoms: jnp.ndarray, charges: jnp.ndarray) -> Tuple[jnp.ndarray, jnp.ndarray]:
+    def __call__(self, params: ParamTree, pos: jnp.array, atoms: jnp.array, charges: jnp.array) -> Tuple[jnp.array, jnp.array]:
         """Return the sign and log magnitude of the wavefunction.
         Here, we also need add the spin configuration information into the input array."""
 
@@ -86,8 +91,8 @@ because we use one-body and two body Jastrow factors. Here, we need think how ma
 Currenly, we only use a full connected layers"""
 
 
-def construct_input_features(pos: jnp.ndarray, atoms: jnp.ndarray, ndim: int = 3) \
-        -> Tuple[jnp.ndarray, jnp.ndarray]:
+def construct_input_features(pos: jnp.array, atoms: jnp.array, ndim: int = 3) \
+        -> Tuple[jnp.array, jnp.array]:
     """Construct inputs to AINet from raw electron and atomic positions.
     Here, we assume that the electron spin is up and down along the axis=0 in array pos.
     So, the pairwise distance ae also follows this order.
@@ -95,18 +100,9 @@ def construct_input_features(pos: jnp.ndarray, atoms: jnp.ndarray, ndim: int = 3
         atoms: atom positions. Shape(natoms, ndim)
     """
     ae = jnp.reshape(pos, [-1, 1, ndim]) - atoms[None, ...]
-    print("___________construct_input_features")
     ee = jnp.reshape(pos, [1, -1, ndim]) - jnp.reshape(pos, [-1, 1, ndim])
-    #print("ee", ee)
-    # here, we flat array to delete 0 distance.notes, this array is only working for C atom which has 4 electrons.
-    #jax.debug.print("vmap_ee:{}", ee)
-    #ee = jnp.log(-1 * ee)
-    #n = ee.shape[0]
     """In this way, the neural network can be run successfully. However, we need a better way to solve it."""
     ee = ee + 1
-    #r_ee = (jnp.linalg.norm(ee + jnp.eye(n)[..., None], axis=-1) * (1.0 - jnp.eye(n)))
-    #jax.debug.print("vmap_ee_1:{}", ee)
-    #ae = jnp.log(ae)
     """problem here, this function cannot be jit. 28.08.2024."""
     return ae, ee
 
@@ -131,15 +127,10 @@ def make_ainet_features(natoms: int = 2, nelectrons: int = 4, ndim: int = 3) -> 
     return FeatureLayer(init=init, apply=apply)
 
 
-def construct_symmetric_features(ae_features: jnp.ndarray, ee_features: jnp.ndarray, nelectrons: int) -> jnp.ndarray:
+def construct_symmetric_features(ae_features: jnp.array, ee_features: jnp.array, nelectrons: int) -> jnp.array:
     """here, we dont spit spin up and spin down electrons, so this function is not necessary."""
     ee_features = jnp.reshape(ee_features, [nelectrons, -1])
-    #print("ee", ee)
-    #print("ae", ae)
-    #jax.debug.print("vmap_ee_feature_reshape:{}", ee_features)
-    #jax.debug.print("vmap_ae_feature_reshape:{}", ae_features)
     h = jnp.concatenate((ae_features, ee_features), axis=-1)
-    #jax.debug.print("vmap_h:{}", h)
     return h
 
 #h = construct_symmetric_features(ae_features, ee_features, nelectrons=4)
@@ -180,12 +171,12 @@ def make_ainet_layers(feature_layer) -> Tuple[InitLayersFn, ApplyLayersFn]:
         #jax.debug.print("params[ae_ee]:{}", params)
         return output_dims, params
 
-    def apply_layer(params: Mapping[str, ParamTree], h_in: jnp.ndarray) -> jnp.ndarray:
+    def apply_layer(params: Mapping[str, ParamTree], h_in: jnp.array) -> jnp.array:
         #jax.debug.print("**params['ae_ee']:{}", **params['ae_ee'])
         h_next = jnp.tanh(nnblocks.linear_layer(h_in, w=params['ae_ee']['w'], b=params['ae_ee']['b']))
         return h_next
 
-    def apply(params, ae: jnp.ndarray, ee: jnp.ndarray, nelectrons: int = 4) -> jnp.ndarray:
+    def apply(params, ae: jnp.array, ee: jnp.array, nelectrons: int = 4) -> jnp.array:
         ae_features, ee_features = feature_layer.apply(ae, ee,)
         #jax.debug.print("vmap_ae_features:{}", ae_features)
         #jax.debug.print("vmap_ee_features:{}", ee_features)
@@ -234,23 +225,14 @@ def make_orbitals(natoms: int, nelectrons: int, num_angular: int, equivariant_la
             key, subkey = jax.random.split(key)
             orbitals.append(nnblocks.init_linear_layer(subkey, in_dim=dims_orbital_in, out_dim=nelectrons, include_bias=False))
         """we also add the coefficients for the first orbitals part. We need think what the in_dim and out_dim are.26/07/20204."""
-        #coe_orbitals = []
-        #coe_orbitals.append(nnblocks.init_linear_layer(key, in_dim=natoms, out_dim=nelectrons, include_bias=False))
         params['orbital'] = orbitals
-        #params['ceo_orbitals'] = coe_orbitals
-        #print("params", params)
-        #print("params_envelope", params['envelope'])
 
         return params
 
-    def apply(params, pos: jnp.ndarray, atoms: jnp.ndarray, charges: jnp.ndarray):
+    def apply(params, pos: jnp.array, atoms: jnp.array, charges: jnp.array):
 
         ae, ee = construct_input_features(pos, atoms, ndim=3)
-        print("---------orbitals_apply")
-        #jax.debug.print("vmap_ae:{}", ae)
-        #jax.debug.print("vmap_ee:{}", ee)
         h_to_orbitals = equivariant_layers_apply(params=params['layers'], ae=ae, ee=ee)
-        #jax.debug.print("h_to_orbitals:{}", h_to_orbitals)
         """the initial envelope function finished without the diffusion part.24/07/2024."""
         envelope_factor = envelope.apply(ae, params=params['envelope'], natoms=2, nelectrons=4)
         orbitals_first = jnp.array([nnblocks.linear_layer_no_b(h, **p) for h, p in zip(h_to_orbitals, params['orbital'])])
@@ -262,30 +244,17 @@ def make_orbitals(natoms: int, nelectrons: int, num_angular: int, equivariant_la
         Before, we made a mistake about the orbitals. So, here we have to rewrite the envelope part. 
         We have 16 elements in the matrix. We also need 16 corresponding elements in the envelope functions."""
         envelope_factor = jnp.reshape(jnp.array(envelope_factor), (nelectrons, nelectrons))
-        #print('envelope_factor', envelope_factor)
         orbitals_end = jnp.array([a * b for a, b in zip(orbitals_first, envelope_factor)])
-        #print('orbitals_end', orbitals_end)
         orbitals_end = jnp.transpose(orbitals_end)
-        #print('orbitals_end', orbitals_end)
-        #h_to_orbitals = envelope_factor * h_to_orbitals
-        #print(jnp.shape(orbitals_first))
-        #orbitals_first = jnp.reshape(jnp.array(orbitals_first), (-1))
-        #temp1 = orbitals_first * orbitals_first
-        #print(temp1)
-        #orbitals_end = orbitals_first * jnp.exp(orbitals_first * orbitals_first) * envelope_factor
         """let's add Jastrow here. We need use the deter property, k^n det(A) = det(kA). 
         We have some bugs here.29/07/2024, please solve it tommorrow.
         we already solve it. The bug is from the sign in the one-body Jastrow."""
-        #temp1 = jastrow_ae_apply(ae=ae, nelectron=4, charges=jnp.array([2, 2]), params=params['jastrow_ae']) / nelectrons
-        #print('temp1', temp1)
         jastrow = jnp.exp(jastrow_ae_apply(ae=ae, nelectron=4, charges=charges,
                                            params=params['jastrow_ae'])/nelectrons +
                           jastrow_ee_apply(ee=ee, nelectron=4, params=params['jastrow_ee'])/nelectrons)
-        #print('jastrow', jastrow)
         """here, we only have one determinant. Notes: currently, the wave_function is a determinant.
         Today, we finished the construction of the wave function as the single determinant 07.08.2024."""
         wave_function = jastrow*orbitals_end
-        #print('wave_function', wave_function)
         return wave_function
 
     return init, apply
@@ -302,21 +271,12 @@ def make_ai_net(ndim: int = 3, full_det: bool = True) -> Network:
         key, subkey = jax.random.split(key, num=2)
         return orbitals_init(subkey)
 
-    def apply(params, pos: jnp.array, atoms: jnp.array, charges: jnp.array):
+    def apply(params, pos: jnp.array, atoms: jnp.array, charges: jnp.array) -> Tuple[jnp.array, jnp.array]:
 
         """logdet_matmul function still has problems. We need solve it later.12.08.2024.!!!"""
-        #jax.debug.print("params", params)
-        #pos = jnp.reshape(pos, (-1))
-        #atoms = jnp.reshape(atoms, (2, 3))
-        #charges = jnp.reshape(charges, (-1))
-        #jax.debug.print("vmap_input_pos:{}", pos)
-        #jax.debug.print("vmap_input_atoms:{}", atoms)
-        #jax.debug.print("vmap_input_charges:{}", charges)
         """the shape of orbitals is not correct. We can solve this problem tomorrow.22.08.2024."""
         orbitals = orbitals_apply(params, pos, atoms, charges)
-        #jax.debug.print("orbitals:{}", orbitals)
         orbitals = jnp.reshape(orbitals, (-1, 4))
-        #jax.debug.print("orbitals:{}", orbitals)
         return nnblocks.slogdet(orbitals)
 
     return Network(init=init, apply=apply, orbitals=orbitals_apply)

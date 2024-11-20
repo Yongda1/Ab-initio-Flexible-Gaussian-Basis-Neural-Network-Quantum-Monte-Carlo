@@ -348,6 +348,13 @@ def make_kfac_training_step(
       old_state = copy_tree(state)
 
     # Optimization step
+    jax.debug.print("-------------------")
+    jax.debug.print("params:{}", params)
+    jax.debug.print("old_data:{}", data)
+    jax.debug.print("loss_keys:{}", loss_keys)
+    jax.debug.print("shared_mom:{}", shared_mom)
+    jax.debug.print("shared_damping:{}", shared_damping)
+    jax.debug.print("--------------------")
     new_params, new_state, stats = optimizer.step(
         params=params,
         state=state,
@@ -356,7 +363,7 @@ def make_kfac_training_step(
         momentum=shared_mom,
         damping=shared_damping,
     )
-
+    jax.debug.print("new_params:{}", new_params)
     if reset_if_nan and jnp.isnan(stats['loss']):
       new_params = old_params
       new_state = old_state
@@ -766,9 +773,13 @@ def train(cfg: ml_collections.ConfigDict, writer_manager=None):
         # debug=True
     )
     sharded_key, subkeys = kfac_jax.utils.p_split(sharded_key)
-    jax.debug.print("params:{}", params)
-    jax.debug.print("data:{}", data)
+    #jax.debug.print("params:{}", params)
+    #jax.debug.print("data:{}", data)
+    #b = jax.tree_util.tree_map(lambda x: x.shape, params)
+    #jax.debug.print("b:{}",b)
+    #jax.debug.print("subkeys:{}", subkeys)
     opt_state = optimizer.init(params, subkeys, data)
+    #jax.debug.print("opt_state:{}", opt_state)
     opt_state = opt_state_ckpt or opt_state  # avoid overwriting ckpted state
   else:
     raise ValueError(f'Not a recognized optimizer: {cfg.optim.optimizer}')
@@ -846,6 +857,8 @@ def train(cfg: ml_collections.ConfigDict, writer_manager=None):
     num_resets = 0  # used if reset_if_nan is true
     for t in range(t_init, cfg.optim.iterations):
       sharded_key, subkeys = kfac_jax.utils.p_split(sharded_key)
+      jax.debug.print("subkeys:{}", subkeys)
+      jax.debug.print("data_input:{}", data)
       data, params, opt_state, loss, aux_data, pmove = step(
           data,
           params,

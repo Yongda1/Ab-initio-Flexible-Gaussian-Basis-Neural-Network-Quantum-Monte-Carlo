@@ -203,9 +203,13 @@ def make_loss(network: networks.LogFermiNetLike,
     """
     keys = jax.random.split(key, num=data.positions.shape[0])
     e_l, e_l_mat = batch_local_energy(params, keys, data)
+    jax.debug.print("e_l:{}", e_l)
     loss = constants.pmean(jnp.mean(e_l))
     loss_diff = e_l - loss
     variance = constants.pmean(jnp.mean(loss_diff * jnp.conj(loss_diff)))
+    jax.debug.print("loss:{}", loss)
+    #jax.debug.print("type_loss:{}", type(loss))
+    jax.debug.print("variance:{}", variance)
     return loss, AuxiliaryLossData(
         variance=variance.real,
         local_energy=e_l,
@@ -219,6 +223,8 @@ def make_loss(network: networks.LogFermiNetLike,
     """Custom Jacobian-vector product for unbiased local energy gradients."""
     params, key, data = primals
     loss, aux_data = total_energy(params, key, data)
+    jax.debug.print("loss:{}", loss)
+    jax.debug.print("aux_data:{}",aux_data)
 
     if clip_local_energy > 0.0:
       aux_data.clipped_energy, diff = clip_local_values(
@@ -245,7 +251,13 @@ def make_loss(network: networks.LogFermiNetLike,
         data_tangents.atoms,
         data_tangents.charges,
     )
+    jax.debug.print("primals:{}", primals)
+    jax.debug.print("tangents:{}", tangents)
     psi_primal, psi_tangent = jax.jvp(batch_network, primals, tangents)
+    jax.debug.print("**********")
+    jax.debug.print("psi_primal:{}", psi_primal)
+    jax.debug.print("psi_tangent:{}",  psi_tangent)
+    jax.debug.print("**********")
     if complex_output:
       clipped_el = diff + aux_data.clipped_energy
       term1 = (jnp.dot(clipped_el, jnp.conjugate(psi_tangent)) +
