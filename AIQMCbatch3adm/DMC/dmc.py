@@ -20,7 +20,7 @@ localenergyDMC = hamiltonian.local_energy_dmc(f=signed_network)
 total_energy_test = make_loss(log_network, local_energy=localenergy)
 total_energy_test_pmap = jax.pmap(total_energy_test, in_axes=(0, 0, nn.AINetData(positions=0, atoms=0, charges=0),), out_axes=(0, 0))
 loss, aux_data = total_energy_test_pmap(params, subkeys, data)
-#jax.debug.print("loss:{}", loss)
+jax.debug.print("loss:{}", loss)
 #jax.debug.print("aux_data:{}", aux_data)
 
 def compute_tmoves(lognetwork: nn.LogAINetLike):
@@ -29,9 +29,9 @@ def compute_tmoves(lognetwork: nn.LogAINetLike):
     The implementation of T-moves is from the paper,
     'Nonlocal pseudopotentials and time-step errors in diffusion Monte Carlo' written by Anderson and Umrigar."""
     def calculate_ratio_weight(params: nn.ParamTree, data: nn.AINetData):
-        jax.debug.print("data.positions:{}", data.positions)
+        #jax.debug.print("data.positions:{}", data.positions)
         n = data.positions.shape[0]
-        jax.debug.print("n:{}", n)
+        #jax.debug.print("n:{}", n)
         return None
 
     return calculate_ratio_weight
@@ -45,14 +45,22 @@ output = run_ratio_weight(params, data)
 batch_lognetwork = jax.pmap(jax.vmap(log_network, in_axes=(None, 0, 0, 0), out_axes=0))
 
 
-def comput_S(e_trial: float, e_est: float, branchcut: float, v2: float, tau: float, eloc: float, nelec: int):
+def comput_S(e_trial: float, e_est: float, branchcut: float, v2: jnp.array, tau: float, eloc: jnp.array, nelec: int):
     """here, we calculate the S. 24.11.2024."""
-    jax.debug.print("v2:{}", v2)
-    jax.debug.print("eloc:{}", eloc)
-    #e_cut = e_est-eloc
-    #e_cut = jnp.min(jnp.array([jnp.abs(e_cut), branchcut]))*jnp.sign(e_cut)
-    #denominator = 1 + (v2 * tau/nelec) ** 2
-    #return e_trial - e_est + e_cut/denominator
+    v2 = jnp.sum(v2, axis=-1)
+    #jax.debug.print("v2:{}", v2)
+    #jax.debug.print("e_trial:{}", e_trial)
+    #jax.debug.print("e_est:{}", e_est)
+    eloc = jnp.real(eloc)
+    e_est = jnp.real(e_est)
+    e_trial = jnp.real(e_trial)
+    e_cut = e_est-eloc
+    #jax.debug.print("eloc:{}", eloc)
+    #jax.debug.print("e_cut:{}", e_cut)
+    #jax.debug.print("branchcut:{}", branchcut)
+    e_cut = jnp.min(jnp.array([jnp.abs(e_cut[0]), branchcut]))*jnp.sign(e_cut)
+    denominator = 1 + (v2 * tau/nelec) ** 2
+    return e_trial - e_est + e_cut/denominator
 
 
 def walkers_accept(x1, x2, ratio, key, nelectrons: int):
@@ -61,9 +69,16 @@ def walkers_accept(x1, x2, ratio, key, nelectrons: int):
     cond = ratio > rnd
     #jax.debug.print("cond:{}", cond)
     cond = jnp.reshape(cond, (nelectrons, 1))
-    #jax.debug.print("cond:{}", cond)
+    jax.debug.print("cond:{}", cond)
+    #x2_accept = x2[cond]
+    #jax.debug.print("x2_accept:{}", x2_accept)
+
     x_new = jnp.where(cond, x2, x1)
-    return x_new
+    #xnew_accept = jnp.sum(x_new, where=cond)
+    #jax.debug.print("xnew_accept:{}", xnew_accept)
+    tdamp = jnp.sum(x_new) / jnp.sum(x2)
+    jax.debug.print("tdamp:{}", tdamp)
+    return x_new, jnp.abs(tdamp)
 
 
 def limdrift(g, tau, acyrus):
@@ -87,7 +102,7 @@ def propose_drift_diffusion(lognetwork: nn.LogAINetLike, tstep: float, nelectron
     sign_f = utils.select_output(lognetwork, 0)
 
     def calculate_drift_diffusion(params: nn.ParamTree, key: chex.PRNGKey, data: nn.AINetData,
-                                  etrial: float, e_est: float, branchcut_start: float):
+                                  etrial: float, e_est: float, branchcut_start: float, weights: float):
         x1 = data.positions
         grad_value = jax.value_and_grad(logabs_f, argnums=1)
 
@@ -97,6 +112,9 @@ def propose_drift_diffusion(lognetwork: nn.LogAINetLike, tstep: float, nelectron
 
         value, grad = grad_f_closure(x1)
         grad_eff = limdrift(jnp.real(grad), tstep, 0.25)
+
+        grad_old_eff_s = grad_eff
+
         initial_configuration = jnp.reshape(x1, (nelectrons, dim))
         x1 = jnp.reshape(x1, (-1, 3))
         x1 = jnp.reshape(x1, (1, -1))
@@ -140,46 +158,46 @@ def propose_drift_diffusion(lognetwork: nn.LogAINetLike, tstep: float, nelectron
         jax.debug.print("changed_configuration:{}", changed_configuration)
         """to be continued...22.11.2024. we need do the acceptance judgement later."""
 
-        final_configuration = walkers_accept(initial_configuration, changed_configuration, ratios, key, nelectrons)
+        final_configuration, tdamp = walkers_accept(initial_configuration, changed_configuration, ratios, key, nelectrons)
 
         final_configuration = jnp.reshape(final_configuration, (-1))
-        #jax.debug.print("final_configuration:{}", final_configuration)
+
         new_data = nn.AINetData(**(dict(data) | {'positions': final_configuration}))
-        grad_old_eff = grad_eff
-        grad_new_eff = grad_new_eff
-        #jax.debug.print("grad_old_eff:{}", grad_old_eff)
-        #jax.debug.print("grad_new_eff:{}", grad_new_eff)
+        value_new_s, grad_new_s = grad_f_closure(new_data.positions)
+        grad_new_eff_s = limdrift(grad_new_s, tstep, 0.25)
+        #jax.debug.print("grad_old_eff_s:{}", grad_old_eff_s)
+        #jax.debug.print("grad_new_eff_s:{}", grad_new_eff_s)
         """we need calculate the local energy here."""
-        #jax.debug.print("data:{}", data)
-        #jax.debug.print("new_data:{}", new_data)
-        jax.debug.print("x1:{}", x1)
-        jax.debug.print("x2:{}", x2)
-        eloc_old = jax.vmap(local_energy, in_axes=(None, None, 0, None, None))(params, key, x1, data.atoms, data.charges)
-        #eloc_new = localenergy(params, key, new_data)
-        jax.debug.print("eloc_old:{}", eloc_old)
-        """To be continued...27.11.2024"""
+
+        eloc_old, e_l_mat_old = local_energy(params, key, data)
+        #jax.debug.print("eloc_old:{}", eloc_old)
+        eloc_new, e_l_mat_old = local_energy(params, key, new_data)
         #jax.debug.print("eloc_new:{}", eloc_new)
-        #batch_local_energy = jax.vmap(local_energy, in_axes=(None, None, nn.AINetData(positions=0, atoms=0, charges=0),
-        #                                                     ), out_axes=(0, 0))
-        #e_l, e_l_mat = batch_local_energy(params, key, data)
-        """we have more problems here. to be continued... 25.11.2024."""
-        #S_old = comput_S(e_trial=etrial, e_est=e_est, branchcut=branchcut_start, v2=jnp.square(grad_old_eff), tau=tstep,
-        #                 eloc=eloc_old, nelec=nelectrons)
+        #tdamp =
+        S_old = comput_S(e_trial=etrial, e_est=e_est, branchcut=branchcut_start, v2=jnp.square(grad_old_eff_s), tau=tstep,eloc=eloc_old, nelec=nelectrons)
+        S_new = comput_S(e_trial=etrial, e_est=e_est, branchcut=branchcut_start, v2=jnp.square(grad_new_eff_s), tau=tstep,eloc=eloc_new, nelec=nelectrons)
+        jax.debug.print("S_old:{}", S_old)
+        jax.debug.print("S_new:{}", S_new)
+        wmult = jnp.exp(tstep * tdamp * (0.5 * S_new + 0.5 * S_old))
+        weights *= wmult
+        jax.debug.print("weights:{}", weights)
+        """we stop here currently.  
+        We need finish the pseudopotential part first, then t-moves part, eventually back to this line. 28.11.2024."""
         return None
     return calculate_drift_diffusion
 
 
 
-drift_diffusion = propose_drift_diffusion(lognetwork=signed_network, tstep=0.1, nelectrons=4, dim=3, local_energy=localenergyDMC)
+drift_diffusion = propose_drift_diffusion(lognetwork=signed_network, tstep=0.1, nelectrons=4, dim=3, local_energy=localenergy)
 drift_diffusion_parallel = jax.vmap(drift_diffusion, in_axes=(None, 0, nn.AINetData(positions=0, atoms=0, charges=0),
-                                                              None, None, None), out_axes=0)
+                                                              None, None, None, None), out_axes=0)
 
 
 def main_drift_diffusion(params: nn.ParamTree, key: chex.PRNGKey, data: nn.AINetData):
     """To make the different configuration have the different key, i.e. random process, we have to write the code in this way. 19.11.2024.
     Except that we need make the batched configurations, we also need batch electrons. 19.11.2024."""
     keys = jax.random.split(key, num=4)
-    data = drift_diffusion_parallel(params, keys, data, loss, loss, 10.0)
+    data = drift_diffusion_parallel(params, keys, data, loss, loss, 10.0, 1.0)
 
 
 main_drift_diffusion_parallel = jax.pmap(main_drift_diffusion)

@@ -167,9 +167,9 @@ def local_energy_dmc(f: nn.AINetLike) -> LocalEnergyDMC:
         potential_ae = potential_electron_nuclear(r_ae, charges=charges)
         potential_aa = potential_nuclear_nuclear(charges=charges, atoms=atoms)
         total_energy = kinetic + potential_ee + potential_aa + potential_ae
-        energy_mat = None
+
         #jax.debug.print("total_energy:{}", total_energy)
-        return total_energy, energy_mat
+        return total_energy
 
     return _e_l_dmc
 '''
