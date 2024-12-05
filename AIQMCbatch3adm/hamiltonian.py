@@ -113,7 +113,7 @@ def potential_nuclear_nuclear(atoms: jnp.array, charges: jnp.array) -> jnp.array
         jnp.triu((charges[None, ...] * charges[..., None]) / r_aa, k=1))
 
 
-def local_energy(f: nn.AINetLike) -> LocalEnergy:
+def local_energy(f: nn.AINetLike, batch_size: int, natoms: int, nelectrons: int) -> LocalEnergy:
     """create the function to evaluate the local energy.
     default is complex number.
     f: signednetwork
@@ -133,8 +133,8 @@ def local_energy(f: nn.AINetLike) -> LocalEnergy:
         ae = jnp.reshape(data.positions, [-1, 1, ndim]) - data.atoms[None, ...]
         r_ae = jnp.linalg.norm(ae, axis=-1)
         r_ee = jnp.linalg.norm(ee, axis=-1)
-        r_ee = jnp.reshape(r_ee, (4, 4, 1))
-        r_ae = jnp.reshape(r_ae, (4, 2, 1))
+        r_ee = jnp.reshape(r_ee, (batch_size, nelectrons, 1))
+        r_ae = jnp.reshape(r_ae, (batch_size, natoms, 1))
         kinetic = lap_over_f(params, data)
         potential_ee = potential_electron_electron(r_ee)
         potential_ae = potential_electron_nuclear(r_ae, charges=data.charges)

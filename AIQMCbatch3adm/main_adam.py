@@ -6,6 +6,7 @@ from typing import Optional, Tuple, Union
 from absl import logging
 from AIQMCbatch3adm import nn
 import jax
+import numpy as np
 from jax.experimental import multihost_utils
 import jax.numpy as jnp
 import kfac_jax
@@ -31,33 +32,35 @@ def _assign_spin_configuration(nalpha: int, nbeta: int, batch_size: int=1) -> jn
 structure = jnp.array([[10, 0, 0],
                        [0, 10, 0],
                        [0, 0, 10]])
-atoms = jnp.array([[1.0, 1.0, 1.0], [0.2, 0.2, 0.2]])
-charges = jnp.array([2.0, 2.0])
-pos = jnp.array([1.5, 1.5, 1.5, 2, 0.5, 0.5, 0.5, 0.5, 0.5, 0.5, 2, 0.5])
+Symbol = ['C', 'O', 'O']
+atoms = jnp.array([[1.33, 1, 1], [0, 1, 1], [2.66, 1, 1]])
+charges = jnp.array([4, 6, 6])
+#pos = jnp.array([1.5, 1.5, 1.5, 2, 0.5, 0.5, 0.5, 0.5, 0.5, 0.5, 2, 0.5])
 
 
-def init_electrons(key, structure: jnp.ndarray, atoms: jnp.ndarray, charges: jnp.ndarray,
-                   electrons: jnp.ndarray, batch_size: int, init_width: float) -> Tuple[jnp.ndarray, jnp.ndarray]:
+def init_electrons(key, structure: jnp.array, atoms: jnp.array, charges: jnp.array,
+                   electrons: jnp.array, batch_size: int, init_width: float) -> Tuple[jnp.array, jnp.array]:
     """Initializes electron positions around each atom.
     structure: the crystal structure, (lattice parameters, cell size).
     atoms: positions of the atoms.
-    electrons: the array of number of alpha and beta electrons, i.e. spin configurations.
+    electrons: the array of alpha and beta electrons, i.e. spin configurations.
     batch_size: total number of Monte Carlo configurations to generate across all devices.
     init_width: width of atom-centred Gaussian used to generate initial electron configurations.
     This function needs be finished."""
     electrons_positions_batch = []
     for _ in range(batch_size):
-        electron_positions = []
         for i in range(len(atoms)):
-            electron_positions.append(jnp.tile(atoms[i], int(charges[i])))
-        electrons_positions_batch.append(electron_positions)
-    electrons_positions_batch = jnp.reshape(jnp.array(electrons_positions_batch), (batch_size, len(charges), -1, 3))
+            electrons_positions_batch.append(np.tile(atoms[i], int(charges[i])))
+
+    """the following line has some problems. But it is still working now. We can make it better later."""
+    electrons_positions_batch = np.hstack(np.array(electrons_positions_batch))
+    electrons_positions_batch = jnp.reshape(jnp.array(electrons_positions_batch), (batch_size, -1))
     key, subkey = jax.random.split(key, num=2)
     electrons_positions_batch += (jax.random.normal(subkey, shape=electrons_positions_batch.shape) * init_width)
-    electrons_positions_batch = jnp.reshape(electrons_positions_batch, (batch_size, 12))
     "we need think about this. We need assign the spin configurations to electrons.12.08.2024."
-    electrons = jnp.repeat(electrons, batch_size, axis=0)
-    return electrons_positions_batch, electrons
+    spins = electrons
+    spins = jnp.repeat(jnp.reshape(spins, (1, -1)), batch_size, )
+    return electrons_positions_batch, spins
 
 
 
@@ -113,7 +116,7 @@ def make_training_step(mcmcstep, optimizer_step: OptUpdate) -> Step:
 
 def main(batch_size=4, structure = jnp.array([[10, 0, 0],
                        [0, 10, 0],
-                       [0, 0, 10]]), atoms=jnp.array([[0, 0, 0], [0.2, 0.2, 0.2]]), charges=jnp.array([2.0, 2.0]), nelectrons=4, ndim=3,
+                       [0, 0, 10]]), atoms=atoms, charges=charges, nelectrons=16, natoms =3, ndim=3,
          iterations=1):
     num_devices = jax.local_device_count() #the amount of GPU per host
     num_hosts = jax.device_count() // num_devices #the amount of host
@@ -134,7 +137,7 @@ def main(batch_size=4, structure = jnp.array([[10, 0, 0],
     seed = int(multihost_utils.broadcast_one_to_all(seed)[0])
     key = jax.random.PRNGKey(seed)
     """we already write the envelope function in the nn.py."""
-    network = nn.make_ai_net(ndim=3, full_det=True)
+    network = nn.make_ai_net(ndim=3, natoms=3, nelectrons=16, num_angular=4, charges=charges, full_det=True)
     key, subkey = jax.random.split(key)
     params = network.init(subkey)
     params = kfac_jax.utils.replicate_all_local_devices(params)
@@ -146,14 +149,16 @@ def main(batch_size=4, structure = jnp.array([[10, 0, 0],
 
 
     pos, spins = init_electrons(subkey, structure=structure, atoms=atoms, charges=charges,
-                                electrons=jnp.array([[1.0, 0.0], [1.0, 0.0]]),
+                                electrons=jnp.array([1.0, -1.0, 1.0, -1.0, 1.0, -1.0, 1.0, -1.0, 1.0, -1.0, 1.0, -1.0, 1.0, -1.0, 1.0, -1.0]),
                                 batch_size=host_batch_size, init_width=0.1)
     batch_pos = jnp.reshape(pos, data_shape+(-1,))
     batch_pos = kfac_jax.utils.broadcast_all_local_devices(batch_pos)
+    #jax.debug.print("batch_pos:{}", batch_pos)
     data = nn.AINetData(positions=batch_pos, atoms=batch_atoms, charges=batch_charges)
     '''--------------Main training-------------'''
+    #jax.debug.print("data:{}", data)
     mc_step = mcstep.make_mc_step(signed_network, nsteps=10)
-    localenergy = hamiltonian.local_energy(f=signed_network)
+    localenergy = hamiltonian.local_energy(f=signed_network, batch_size=batch_size, natoms=natoms, nelectrons=nelectrons)
     """so far, we have not constructed the pp module. Currently, we only execute all electrons calculation.  """
     evaluate_loss = qmc_loss_functions.make_loss(log_network, local_energy=localenergy)
     """18.10.2024, we will continue later."""
@@ -186,4 +191,4 @@ def main(batch_size=4, structure = jnp.array([[10, 0, 0],
     return signed_network, data, params, log_network
 
 
-output = main()
+#output = main()

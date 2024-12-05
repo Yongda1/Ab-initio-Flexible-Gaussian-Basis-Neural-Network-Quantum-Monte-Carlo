@@ -107,7 +107,7 @@ def construct_input_features(pos: jnp.array, atoms: jnp.array, ndim: int = 3) \
     return ae, ee
 
 
-def make_ainet_features(natoms: int = 2, nelectrons: int = 4, ndim: int = 3) -> FeatureLayer:
+def make_ainet_features(natoms: int, nelectrons: int, ndim: int) -> FeatureLayer:
 
     def init() -> Tuple[Tuple[int, int], Param]:
         """This is the number of per electron-atom pair, electron-electron features.
@@ -129,6 +129,8 @@ def make_ainet_features(natoms: int = 2, nelectrons: int = 4, ndim: int = 3) -> 
 
 def construct_symmetric_features(ae_features: jnp.array, ee_features: jnp.array, nelectrons: int) -> jnp.array:
     """here, we dont spit spin up and spin down electrons, so this function is not necessary."""
+    #jax.debug.print("ae_features:{}", ae_features)
+    #jax.debug.print("ee_features:{}", ee_features)
     ee_features = jnp.reshape(ee_features, [nelectrons, -1])
     h = jnp.concatenate((ae_features, ee_features), axis=-1)
     return h
@@ -176,7 +178,7 @@ def make_ainet_layers(feature_layer) -> Tuple[InitLayersFn, ApplyLayersFn]:
         h_next = jnp.tanh(nnblocks.linear_layer(h_in, w=params['ae_ee']['w'], b=params['ae_ee']['b']))
         return h_next
 
-    def apply(params, ae: jnp.array, ee: jnp.array, nelectrons: int = 4) -> jnp.array:
+    def apply(params, ae: jnp.array, ee: jnp.array, nelectrons: int) -> jnp.array:
         ae_features, ee_features = feature_layer.apply(ae, ee,)
         #jax.debug.print("vmap_ae_features:{}", ae_features)
         #jax.debug.print("vmap_ee_features:{}", ee_features)
@@ -215,8 +217,8 @@ def make_orbitals(natoms: int, nelectrons: int, num_angular: int, equivariant_la
         dims_orbital_in, params['layers'] = equivariant_layers_init(subkey)
         output_dims = dims_orbital_in
         """Here, we should put the envelope function."""
-        params['envelope'] = envelope.init(natoms=2, nelectrons=4)
-        params['jastrow_ae'] = jastrow_ae_init(nelectron=4, charges=jnp.array([2, 2]))
+        params['envelope'] = envelope.init(natoms=natoms, nelectrons=nelectrons)
+        params['jastrow_ae'] = jastrow_ae_init(nelectron=nelectrons, charges=jnp.array([4, 6, 6]))
         params['jastrow_ee'] = jastrow_ee_init()
         orbitals = []
 
@@ -232,9 +234,9 @@ def make_orbitals(natoms: int, nelectrons: int, num_angular: int, equivariant_la
     def apply(params, pos: jnp.array, atoms: jnp.array, charges: jnp.array):
 
         ae, ee = construct_input_features(pos, atoms, ndim=3)
-        h_to_orbitals = equivariant_layers_apply(params=params['layers'], ae=ae, ee=ee)
+        h_to_orbitals = equivariant_layers_apply(params=params['layers'], ae=ae, ee=ee, nelectrons=nelectrons)
         """the initial envelope function finished without the diffusion part.24/07/2024."""
-        envelope_factor = envelope.apply(ae, params=params['envelope'], natoms=2, nelectrons=4)
+        envelope_factor = envelope.apply(ae, params=params['envelope'], natoms=natoms, nelectrons=nelectrons)
         orbitals_first = jnp.array([nnblocks.linear_layer_no_b(h, **p) for h, p in zip(h_to_orbitals, params['orbital'])])
         """we need match the shape of orbitals.24/07/2024.Then we need debug the two functions.
         we need add r^l * e^(-r^2) on the orbitals_first. then times by envelope_factor.
@@ -249,9 +251,9 @@ def make_orbitals(natoms: int, nelectrons: int, num_angular: int, equivariant_la
         """let's add Jastrow here. We need use the deter property, k^n det(A) = det(kA). 
         We have some bugs here.29/07/2024, please solve it tommorrow.
         we already solve it. The bug is from the sign in the one-body Jastrow."""
-        jastrow = jnp.exp(jastrow_ae_apply(ae=ae, nelectron=4, charges=charges,
+        jastrow = jnp.exp(jastrow_ae_apply(ae=ae, nelectron=nelectrons, charges=charges,
                                            params=params['jastrow_ae'])/nelectrons +
-                          jastrow_ee_apply(ee=ee, nelectron=4, params=params['jastrow_ee'])/nelectrons)
+                          jastrow_ee_apply(ee=ee, nelectron=nelectrons, params=params['jastrow_ee'])/nelectrons)
         """here, we only have one determinant. Notes: currently, the wave_function is a determinant.
         Today, we finished the construction of the wave function as the single determinant 07.08.2024."""
         wave_function = jastrow*orbitals_end
@@ -260,12 +262,17 @@ def make_orbitals(natoms: int, nelectrons: int, num_angular: int, equivariant_la
     return init, apply
 
 
-def make_ai_net(ndim: int = 3, full_det: bool = True) -> Network:
+def make_ai_net(ndim: int,
+                natoms: int,
+                nelectrons: int,
+                num_angular: int,
+                charges: jnp.array,
+                full_det: bool = True) -> Network:
     """Creates functions for initializing parameters and evaluating AInet.
     07.08.2024 we still have some problems about this module ,for example, """
-    feature_layer1 = make_ainet_features(natoms=2, nelectrons=4, ndim=3)
+    feature_layer1 = make_ainet_features(natoms=natoms, nelectrons=nelectrons, ndim=ndim)
     equivariant_layers = make_ainet_layers(feature_layer=feature_layer1)
-    orbitals_init, orbitals_apply = make_orbitals(natoms=2, nelectrons=4, num_angular=4, equivariant_layers=equivariant_layers)
+    orbitals_init, orbitals_apply = make_orbitals(natoms=natoms, nelectrons=nelectrons, num_angular=num_angular, equivariant_layers=equivariant_layers)
 
     def init(key: chex.PRNGKey) -> ParamTree:
         key, subkey = jax.random.split(key, num=2)
@@ -276,7 +283,14 @@ def make_ai_net(ndim: int = 3, full_det: bool = True) -> Network:
         """logdet_matmul function still has problems. We need solve it later.12.08.2024.!!!"""
         """the shape of orbitals is not correct. We can solve this problem tomorrow.22.08.2024."""
         orbitals = orbitals_apply(params, pos, atoms, charges)
-        orbitals = jnp.reshape(orbitals, (-1, 4))
+        #jax.debug.print("orbitals:{}", orbitals)
+        orbitals = jnp.reshape(orbitals, (-1, nelectrons))
         return nnblocks.slogdet(orbitals)
 
     return Network(init=init, apply=apply, orbitals=orbitals_apply)
+
+
+"""This part for debugging this module."""
+#key = jax.random.PRNGKey(1)
+#network = make_ai_net(ndim=3, natoms=3, nelectrons=16, num_angular=4, charges=jnp.array([4, 6, 6]), full_det=True)
+#params = network.init(key)
