@@ -41,7 +41,9 @@ now, we need think about how to implement the P_l functions efficiently.
 """
 symbol = ['Ge', 'Si', 'O']
 Rn_local = jnp.array([[1, 3, 2, 2], [1, 3, 2, 0], [1, 3, 2, 0]])
-Rn_non_local = jnp.array([[[2, 2], [2, 2], [2, 2]], [[2, 2], [2, 2], [0, 0]], [[2, 0], [0, 0], [0, 0]]])
+Rn_non_local = jnp.array([[[2, 2], [2, 2], [2, 2]],
+                          [[2, 2], [2, 2], [0, 0]],
+                          [[2, 0], [0, 0], [0, 0]]])
 Local_coes = jnp.array([[4.0,      5.9158506497680, -12.033712959815, 1.283543489065],
                         [4.000000, 20.673264,       -14.818174,       0],
                         [6.000000, 73.85984,        -47.87600,        0]])
@@ -110,7 +112,8 @@ def get_non_v_l(data: nn.AINetData, rn_non_local: jnp.array, non_local_coefficie
 
     non_local_parallel = jax.vmap(exp_non_single, in_axes=(0, None, None, None), out_axes=0)
     non_local_output = non_local_parallel(r_ae,  non_local_exponent, rn_non_local, non_local_coefficient)
-    jax.debug.print("non_local_output:{}", non_local_output)
+    non_local_output = jnp.sum(non_local_output, axis=-1)
+    #jax.debug.print("non_local_output:{}", non_local_output)
     return non_local_output
 
 
@@ -118,7 +121,7 @@ def get_non_v_l(data: nn.AINetData, rn_non_local: jnp.array, non_local_coefficie
 get_non_v_l_parallel = jax.pmap(jax.vmap(get_non_v_l,
                                     in_axes=(nn.AINetData(positions=0, atoms=0, charges=0), None, None, None,)),
                            in_axes=(0, None, None, None,))
-output1 = get_non_v_l_parallel(data, Rn_non_local, Non_local_coes, Non_local_exps)
+#output1 = get_non_v_l_parallel(data, Rn_non_local, Non_local_coes, Non_local_exps)
 
 
 def generate_quadrature_grids():
@@ -170,43 +173,21 @@ def get_rot(batch_size: int, key: chex.PRNGKey):
     return Points_OA, Points_OB, Points_OC, Points_OD, weights
 
 
-def P_l_0(x):
-    """we should be aware of judgement. now, we need rewrite this part to make it run efficiently on GPU.
-    l = 0"""
-    return jnp.ones(x.shape)
-
-
-def P_l_1(x):
-    return x
-
-
-def P_l_2(x):
-    return 0.5 * (3 * x * x - 1)
-
-
-def P_l_3(x):
-    return 0.5 * (5 * x * x * x - 3 * x)
-
-
-def P_l_4(x):
-    return 0.125 * (35 * x * x * x * x - 30 * x * x + 3)
-
-
-'''
-def P_l(list_l: jnp.array):
-    #list_l = list_l + 1
-    jax.debug.print("list_l:{}", list_l)
-    rnd = jnp.zeros(list_l.shape)
-    #a = jnp.ones(list_l.shape)
-    cond = list_l >= rnd
-    list_l_new = jnp.where(cond, list_l, rnd)
-    jax.debug.print("x_new:{}", list_l_new)
-    
-
-    #jnp.ones(x.shape) + x + 0.5 * (3 * x * x - 1) + 0.5 * (5 * x * x * x - 3 * x) + 0.125 * (35 * x * x * x * x - 30 * x * x + 3)
-
-output = P_l(list_l=jnp.array([0, 1, 2, -1, -1]))
-'''
+def P_l(x, list_l: int):
+    """
+    create the legendre polynomials functions
+    :param x: cos(theta)
+    :param list_l: the angular momentum functions used in the calculation. For example, list_l = [1, 1, 1, 0, ] means s, p, d, no f
+    :return:
+    """
+    if list_l == 0:
+        return jnp.ones(x.shape)
+    if list_l == 1:
+        return jnp.ones(x.shape), x
+    if list_l == 2:
+        return jnp.ones(x.shape), x, 0.5 * (3 * x * x - 1)
+    if list_l == 3:
+        return jnp.ones(x.shape), x, 0.5 * (3 * x * x - 1), 0.5 * (5 * x * x * x - 3 * x)
 
 
 def get_P_l(data: nn.AINetData, params: nn.ParamTree, Points: jnp.array, weights: float):
@@ -221,6 +202,7 @@ def get_P_l(data: nn.AINetData, params: nn.ParamTree, Points: jnp.array, weights
     denominator = log_network(params, data.positions, data.atoms, data.charges)
     #jax.debug.print("denominator:{}", denominator)
     #jax.debug.print("Points:{}", Points)
+
     def rot_coords_single(r_ae: jnp.array, Points: jnp.array):
         #jax.debug.print("r_ae:{}", r_ae)
         return r_ae * Points
@@ -261,7 +243,6 @@ def get_P_l(data: nn.AINetData, params: nn.ParamTree, Points: jnp.array, weights
     #jax.debug.print("ratios:{}", ratios)
     #jax.debug.print("cos_theta:{}", cos_theta)
     """the following part is not general. We need think about the situation like CO2 or SiO2. 2.12.2024."""
-    ((1/(4 * jnp.pi)) * P_l_0(cos_theta) + ((2 + 1)/(4 * jnp.pi)) * P_l_1(cos_theta)) * ratios
     return cos_theta, ratios
 
 
@@ -275,7 +256,7 @@ get_P_l_parallel = jax.pmap(jax.vmap(get_P_l,
 
 def total_energy_pseudopotential(data: nn.AINetData, params: nn.ParamTree, rn_local_general: jnp.array, rn_non_local_general: jnp.array,
                                  local_coefficient_general: jnp.array, nonlocal_coefficient_general: jnp.array,
-                                 local_exponent_general: jnp.array, nonlocal_exponent_general: jnp.array, nelectrons: int, natoms: int):
+                                 local_exponent_general: jnp.array, nonlocal_exponent_general: jnp.array, nelectrons: int, natoms: int, list_l: int):
     """This function caluclates the energy of pseudopotential.
     For the pp of C and O, only l=0 contributes to the nonlocal part.
     we have more problems here. If all atoms have the same shape of the pp parameters, it is ok.
@@ -287,40 +268,50 @@ def total_energy_pseudopotential(data: nn.AINetData, params: nn.ParamTree, rn_lo
     nonlocal_parameters = get_non_v_l_parallel(data, rn_non_local_general, nonlocal_coefficient_general, nonlocal_exponent_general)
     #jax.debug.print("nonlocal_parameters:{}", nonlocal_parameters)
     '''here, we only have s angular momentum function.'''
-    l_list = jnp.array([0,])
     key = jax.random.PRNGKey(1)
     # sharded_key = kfac_jax.utils.make_different_rng_key_on_all_devices(key)
     # sharded_key, subkeys = kfac_jax.utils.p_split(sharded_key)
     Points_OA, Points_OB, Points_OC, Points_OD, weights = get_rot(4, key)
-    #jax.debug.print("Points_OA:{}", Points_OA)
+
     cos_theta_OA, ratios_OA = get_P_l_parallel(data, params, Points_OA, weights[0])
     cos_theta_OB, ratios_OB = get_P_l_parallel(data, params, Points_OB, weights[1])
     cos_theta_OC, ratios_OC = get_P_l_parallel(data, params, Points_OC, weights[2])
     cos_theta_OD, ratios_OD = get_P_l_parallel(data, params, Points_OD, weights[3])
-    #jax.debug.print("cos_theta_OA:{}", cos_theta_OA)
-    test = jnp.sum(P_l_0(cos_theta_OA) * ratios_OA, axis=-1) + jnp.sum(P_l_0(cos_theta_OB) * ratios_OB, axis=-1) +\
-           jnp.sum(P_l_0(cos_theta_OC) * ratios_OC, axis=-1) + jnp.sum(P_l_0(cos_theta_OD) * ratios_OD, axis=-1)
-
-    #test = jnp.sum(test, axis=-1)
-    test = jnp.reshape(test, (4, nelectrons, natoms))
-    nonlocal_parameters = jnp.reshape(nonlocal_parameters, (4, nelectrons, natoms))
+    output_OA = jnp.sum(jnp.array(P_l(cos_theta_OA, list_l=list_l)) * ratios_OA, axis=-1)
+    output_OB = jnp.sum(jnp.array(P_l(cos_theta_OB, list_l=list_l)) * ratios_OB, axis=-1)
+    output_OC = jnp.sum(jnp.array(P_l(cos_theta_OC, list_l=list_l)) * ratios_OC, axis=-1)
+    output_OD = jnp.sum(jnp.array(P_l(cos_theta_OD, list_l=list_l)) * ratios_OD, axis=-1)
+    #jax.debug.print("output_OA:{}", output_OA)
+    jax.debug.print("output_OA_shape:{}", output_OA.shape)
     #jax.debug.print("nonlocal_parameters:{}", nonlocal_parameters)
-    #jax.debug.print("test:{}", test)
-    nonlocal_energy = nonlocal_parameters * test
-    nonlocal_energy = jnp.sum(jnp.sum(nonlocal_energy, axis=-1), axis=-1)
-    jax.debug.print("nonlocal_ernegy:{}", nonlocal_energy)
-    total_energy = jnp.sum(local_part_energy + nonlocal_energy)
+    jax.debug.print("nonlocal_parameters_shape:{}", nonlocal_parameters.shape)
+    "now, the problem is the mismatch between two arrays. 6.12.2024."
+
+    def multiply_test(a: jnp.array, b: jnp.array):
+        return a * b
+
+    multiply_test_parallel = jax.vmap(multiply_test, in_axes=(0, 4), out_axes=0)
+    OA_energy = multiply_test_parallel(output_OA, nonlocal_parameters)
+    OB_energy = multiply_test_parallel(output_OB, nonlocal_parameters)
+    OC_energy = multiply_test_parallel(output_OC, nonlocal_parameters)
+    OD_energy = multiply_test_parallel(output_OD, nonlocal_parameters)
+    """dimension of output: angular momentum, 1, batch_size, nelectrons, natoms"""
+    jax.debug.print("OA_energy:{}", OA_energy.shape)
+    jax.debug.print("OB_energy:{}", OB_energy.shape)
+    jax.debug.print("OC_energy:{}", OC_energy.shape)
+    jax.debug.print("OD_energy:{}", OD_energy.shape)
+    nonlocal_energy = jnp.sum(jnp.sum(jnp.sum(OA_energy + OB_energy + OC_energy + OD_energy, axis=0), axis=-1), axis=-1)
+    jax.debug.print("nonlocal_energy_shape:{}", nonlocal_energy.shape)
+    jax.debug.print("local_part_energy_shape:{}", local_part_energy.shape)
+    total_energy = local_part_energy + nonlocal_energy
     jax.debug.print("total_energy:{}", total_energy)
     return total_energy
 
 
-
-'''
 test_output = total_energy_pseudopotential(data=data, params=params,
-                                           rn_local_general=rn_local_general,
-                                           rn_non_local_general=rn_non_local_general,
-                                           local_coefficient_general=local_coefficient_general,
-                                           nonlocal_coefficient_general=nonlocal_coefficient_general,
-                                           local_exponent_general=local_exponent_general,
-                                           nonlocal_exponent_general=nonlocal_exponent_general, nelectrons=16, natoms=3)
-'''
+                                           rn_local_general=Rn_local,
+                                           rn_non_local_general=Rn_non_local,
+                                           local_coefficient_general=Local_coes,
+                                           nonlocal_coefficient_general=Non_local_coes,
+                                           local_exponent_general=Local_exps,
+                                           nonlocal_exponent_general=Non_local_exps, nelectrons=16, natoms=3, list_l=2)
