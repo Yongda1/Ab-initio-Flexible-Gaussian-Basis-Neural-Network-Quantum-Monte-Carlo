@@ -9,38 +9,90 @@ from AIQMCbatch3adm import main_adam
 from AIQMCbatch3adm.utils import utils
 from AIQMCbatch3adm import hamiltonian
 from AIQMCbatch3adm.loss import make_loss
+from AIQMCbatch3adm.pseudopotential.pseudopotential import total_energy_pseudopotential, get_non_v_l_parallel
 import kfac_jax
+
+symbol = ['Ge', 'Si', 'O']
+Rn_local = jnp.array([[1, 3, 2, 2], [1, 3, 2, 0], [1, 3, 2, 0]])
+Rn_non_local = jnp.array([[[2, 2], [2, 2], [2, 2]],
+                          [[2, 2], [2, 2], [0, 0]],
+                          [[2, 0], [0, 0], [0, 0]]])
+Local_coes = jnp.array([[4.0,      5.9158506497680, -12.033712959815, 1.283543489065],
+                        [4.000000, 20.673264,       -14.818174,       0],
+                        [6.000000, 73.85984,        -47.87600,        0]])
+Local_exps = jnp.array([[1.478962662442, 3.188905647765, 1.927438978253, 1.545539235916],
+                        [5.168316,       8.861690,       3.933474,       0],
+                        [12.30997,       14.76962,       13.71419,       0]])
+Non_local_coes = jnp.array([[[43.265429324814, -1.909339873965], [35.263014141211, 0.963439928853], [2.339019442484, 0.541380654081]],
+                            [[14.832760,       26.349664],       [7.621400,        10.331583],      [0,              0]],
+                            [[85.86406,         0],               [0,               0],              [0,              0]]])
+Non_local_exps = jnp.array([[[2.894473589836, 1.550339816290], [2.986528872039, 1.283381203893], [1.043001142249, 0.554562729807]],
+                            [[9.447023,       2.553812],       [3.660001,       1.903653],       [0,              0]],
+                            [[13.65512,        0],             [0,              0],              [0,              0]]])
+
+
+
+
 
 signed_network, data, params, log_network = main_adam.main()
 key = jax.random.PRNGKey(1)
 sharded_key = kfac_jax.utils.make_different_rng_key_on_all_devices(key)
 sharded_key, subkeys = kfac_jax.utils.p_split(sharded_key)
-localenergy = hamiltonian.local_energy(f=signed_network)
-localenergyDMC = hamiltonian.local_energy_dmc(f=signed_network)
+localenergy = hamiltonian.local_energy(f=signed_network, batch_size=4, natoms=3, nelectrons=16)
+#localenergyDMC = hamiltonian.local_energy_dmc(f=signed_network)
 total_energy_test = make_loss(log_network, local_energy=localenergy)
 total_energy_test_pmap = jax.pmap(total_energy_test, in_axes=(0, 0, nn.AINetData(positions=0, atoms=0, charges=0),), out_axes=(0, 0))
 loss, aux_data = total_energy_test_pmap(params, subkeys, data)
 jax.debug.print("loss:{}", loss)
 #jax.debug.print("aux_data:{}", aux_data)
 
+
+
+total_energy, ratios_OA, ratios_OB, ratios_OC, ratios_OD, cos_theta_OA, cos_theta_OB, cos_theta_OC, cos_theta_OD = \
+    total_energy_pseudopotential(data=data, params=params,
+                                 rn_local_general=Rn_local,
+                                 rn_non_local_general=Rn_non_local,
+                                 local_coefficient_general=Local_coes,
+                                 nonlocal_coefficient_general=Non_local_coes,
+                                 local_exponent_general=Local_exps,
+                                 nonlocal_exponent_general=Non_local_exps, nelectrons=16, natoms=3, list_l=2, batch_size=4)
+
+
+#jax.debug.print("ratios_OA:{}", ratios_OA)
+jax.debug.print("ratios_OA_shape:{}", ratios_OA.shape)
+#jax.debug.print("cos_theta_OA:{}", cos_theta_OA)
+jax.debug.print("cos_theta_OA_shape:{}", cos_theta_OA.shape)
+
+
+v_r_non_local = get_non_v_l_parallel(data, Rn_non_local, Non_local_coes, Non_local_exps)
+#jax.debug.print("v_r_non_local:{}", v_r_non_local)
+"""the last dimension is angular momentum function"""
+jax.debug.print("v_r_non_local_shape:{}", v_r_non_local.shape)
+
+
+
+
 def compute_tmoves(lognetwork: nn.LogAINetLike):
     """For a given electron, evaluate all possible t-moves.
     Here, we need read the paper about T-moves.
     The implementation of T-moves is from the paper,
-    'Nonlocal pseudopotentials and time-step errors in diffusion Monte Carlo' written by Anderson and Umrigar."""
-    def calculate_ratio_weight(params: nn.ParamTree, data: nn.AINetData):
-        #jax.debug.print("data.positions:{}", data.positions)
-        n = data.positions.shape[0]
-        #jax.debug.print("n:{}", n)
+    'Nonlocal pseudopotentials and time-step errors in diffusion Monte Carlo' written by Anderson and Umrigar.
+    We finished the pseudopotential part currently, now turn to the T-moves. 9.12.2024.
+    we use the same strategy for this function. The input is just one configuration.
+    """
+    def calculate_ratio_weight_tmoves(params: nn.ParamTree, data: nn.AINetData, costheta: jnp.array, ratios: jnp.array):
+        jax.debug.print("data.positions:{}", data.positions)
+        jax.debug.print("costheta:{}", costheta)
+        jax.debug.print("ratios:{}", ratios)
         return None
 
-    return calculate_ratio_weight
+    return calculate_ratio_weight_tmoves
     
-'''
+
 ratio_weight = compute_tmoves(lognetwork=log_network)
-run_ratio_weight = jax.pmap(jax.vmap(ratio_weight, in_axes=(None, nn.AINetData(positions=0, atoms=0, charges=0)), out_axes=0))
-output = run_ratio_weight(params, data)
-'''
+run_ratio_weight = jax.pmap(jax.vmap(ratio_weight, in_axes=(None, nn.AINetData(positions=0, atoms=0, charges=0), 0, 0), out_axes=0))
+output = run_ratio_weight(params, data, cos_theta_OA, ratios_OA)
+
 
 batch_lognetwork = jax.pmap(jax.vmap(log_network, in_axes=(None, 0, 0, 0), out_axes=0))
 
@@ -201,14 +253,4 @@ def main_drift_diffusion(params: nn.ParamTree, key: chex.PRNGKey, data: nn.AINet
 
 
 main_drift_diffusion_parallel = jax.pmap(main_drift_diffusion)
-output = main_drift_diffusion_parallel(params, subkeys, data)
-
-'''
-def propose_tmoves(lognework: nn.LogAINetLike, data: nn.AINetData, ):
-    """t-moves for dmc."""
-
-def dmc_propagate(lognetwork: nn.LogAINetLike, data: nn.AINetData, tstep: float, nsteps: int,) -> jnp.array:
-    """This is the dmc propagation function.
-    we need introduce T-moves in the calculation. This means """
-    pos = data.positions
-'''
+#output = main_drift_diffusion_parallel(params, subkeys, data)
