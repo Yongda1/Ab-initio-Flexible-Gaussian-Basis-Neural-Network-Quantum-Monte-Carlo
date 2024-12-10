@@ -39,11 +39,12 @@ The above method could be applied in the nonlcoal part. However, with higher ang
 we have to change the parallel mechanism.
 now, we need think about how to implement the P_l functions efficiently.
 """
+'''
 symbol = ['Ge', 'Si', 'O']
-Rn_local = jnp.array([[1, 3, 2, 2], [1, 3, 2, 0], [1, 3, 2, 0]])
-Rn_non_local = jnp.array([[[2, 2], [2, 2], [2, 2]],
-                          [[2, 2], [2, 2], [0, 0]],
-                          [[2, 0], [0, 0], [0, 0]]])
+Rn_local = jnp.array([[1.0, 3.0, 2.0, 2.0], [1.0, 3.0, 2.0, 0.0], [1.0, 3.0, 2.0, 0.0]])
+Rn_non_local = jnp.array([[[2.0, 2.0], [2.0, 2.0], [2.0, 2.0]],
+                          [[2.0, 2.0], [2.0, 2.0], [0.0, 0.0]],
+                          [[2.0, 0.0], [0.0, 0.0], [0.0, 0.0]]])
 Local_coes = jnp.array([[4.0,      5.9158506497680, -12.033712959815, 1.283543489065],
                         [4.000000, 20.673264,       -14.818174,       0],
                         [6.000000, 73.85984,        -47.87600,        0]])
@@ -56,7 +57,7 @@ Non_local_coes = jnp.array([[[43.265429324814, -1.909339873965], [35.26301414121
 Non_local_exps = jnp.array([[[2.894473589836, 1.550339816290], [2.986528872039, 1.283381203893], [1.043001142249, 0.554562729807]],
                             [[9.447023,       2.553812],       [3.660001,       1.903653],       [0,              0]],
                             [[13.65512,        0],             [0,              0],              [0,              0]]])
-
+'''
 
 def get_v_l(data: nn.AINetData, rn_local: jnp.array, local_coefficient: jnp.array, local_exponent: jnp.array,):
     """calculate the local part of pseudopotential energy.
@@ -173,7 +174,7 @@ def get_rot(batch_size: int, key: chex.PRNGKey):
     return Points_OA, Points_OB, Points_OC, Points_OD, weights
 
 
-def P_l(x, list_l: int):
+def P_l(x, list_l: float):
     """
     create the legendre polynomials functions
     :param x: cos(theta)
@@ -243,7 +244,7 @@ def get_P_l(data: nn.AINetData, params: nn.ParamTree, Points: jnp.array, weights
     #jax.debug.print("ratios:{}", ratios)
     #jax.debug.print("cos_theta:{}", cos_theta)
     """the following part is not general. We need think about the situation like CO2 or SiO2. 2.12.2024."""
-    return cos_theta, ratios
+    return cos_theta, ratios, roted_configurations
 
 
 
@@ -273,10 +274,10 @@ def total_energy_pseudopotential(data: nn.AINetData, params: nn.ParamTree, rn_lo
     # sharded_key, subkeys = kfac_jax.utils.p_split(sharded_key)
     Points_OA, Points_OB, Points_OC, Points_OD, weights = get_rot(batch_size, key)
 
-    cos_theta_OA, ratios_OA = get_P_l_parallel(data, params, Points_OA, weights[0])
-    cos_theta_OB, ratios_OB = get_P_l_parallel(data, params, Points_OB, weights[1])
-    cos_theta_OC, ratios_OC = get_P_l_parallel(data, params, Points_OC, weights[2])
-    cos_theta_OD, ratios_OD = get_P_l_parallel(data, params, Points_OD, weights[3])
+    cos_theta_OA, ratios_OA, roted_configurations_OA = get_P_l_parallel(data, params, Points_OA, weights[0])
+    cos_theta_OB, ratios_OB, roted_configurations_OB = get_P_l_parallel(data, params, Points_OB, weights[1])
+    cos_theta_OC, ratios_OC, roted_configurations_OC = get_P_l_parallel(data, params, Points_OC, weights[2])
+    cos_theta_OD, ratios_OD, roted_configurations_OD = get_P_l_parallel(data, params, Points_OD, weights[3])
     output_OA = jnp.sum(jnp.array(P_l(cos_theta_OA, list_l=list_l)) * ratios_OA, axis=-1)
     output_OB = jnp.sum(jnp.array(P_l(cos_theta_OB, list_l=list_l)) * ratios_OB, axis=-1)
     output_OC = jnp.sum(jnp.array(P_l(cos_theta_OC, list_l=list_l)) * ratios_OC, axis=-1)
@@ -306,7 +307,7 @@ def total_energy_pseudopotential(data: nn.AINetData, params: nn.ParamTree, rn_lo
     #jax.debug.print("local_part_energy_shape:{}", local_part_energy.shape)
     total_energy = local_part_energy + nonlocal_energy
     #jax.debug.print("total_energy:{}", total_energy)
-    return total_energy, ratios_OA, ratios_OB, ratios_OC, ratios_OD, cos_theta_OA, cos_theta_OB, cos_theta_OC, cos_theta_OD
+    return total_energy, ratios_OA, ratios_OB, ratios_OC, ratios_OD, cos_theta_OA, cos_theta_OB, cos_theta_OC, cos_theta_OD, roted_configurations_OA, roted_configurations_OB, roted_configurations_OC, roted_configurations_OD
 
 
 

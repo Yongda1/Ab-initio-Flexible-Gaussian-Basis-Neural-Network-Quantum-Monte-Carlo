@@ -9,14 +9,14 @@ from AIQMCbatch3adm import main_adam
 from AIQMCbatch3adm.utils import utils
 from AIQMCbatch3adm import hamiltonian
 from AIQMCbatch3adm.loss import make_loss
-from AIQMCbatch3adm.pseudopotential.pseudopotential import total_energy_pseudopotential, get_non_v_l_parallel
+from AIQMCbatch3adm.pseudopotential.pseudopotential import total_energy_pseudopotential, get_non_v_l
 import kfac_jax
 
 symbol = ['Ge', 'Si', 'O']
-Rn_local = jnp.array([[1, 3, 2, 2], [1, 3, 2, 0], [1, 3, 2, 0]])
-Rn_non_local = jnp.array([[[2, 2], [2, 2], [2, 2]],
-                          [[2, 2], [2, 2], [0, 0]],
-                          [[2, 0], [0, 0], [0, 0]]])
+Rn_local = jnp.array([[1.0, 3.0, 2.0, 2.0], [1.0, 3.0, 2.0, 0.0], [1.0, 3.0, 2.0, 0.0]])
+Rn_non_local = jnp.array([[[2.0, 2.0], [2.0, 2.0], [2.0, 2.0]],
+                          [[2.0, 2.0], [2.0, 2.0], [0.0, 0.0]],
+                          [[2.0, 0.0], [0.0, 0.0], [0.0, 0.0]]])
 Local_coes = jnp.array([[4.0,      5.9158506497680, -12.033712959815, 1.283543489065],
                         [4.000000, 20.673264,       -14.818174,       0],
                         [6.000000, 73.85984,        -47.87600,        0]])
@@ -24,11 +24,11 @@ Local_exps = jnp.array([[1.478962662442, 3.188905647765, 1.927438978253, 1.54553
                         [5.168316,       8.861690,       3.933474,       0],
                         [12.30997,       14.76962,       13.71419,       0]])
 Non_local_coes = jnp.array([[[43.265429324814, -1.909339873965], [35.263014141211, 0.963439928853], [2.339019442484, 0.541380654081]],
-                            [[14.832760,       26.349664],       [7.621400,        10.331583],      [0,              0]],
-                            [[85.86406,         0],               [0,               0],              [0,              0]]])
+                            [[14.832760,       26.349664],       [7.621400,        10.331583],      [0.0,              0.0]],
+                            [[85.86406,         0.0],            [0.0,               0.0],          [0.0,              0.0]]])
 Non_local_exps = jnp.array([[[2.894473589836, 1.550339816290], [2.986528872039, 1.283381203893], [1.043001142249, 0.554562729807]],
-                            [[9.447023,       2.553812],       [3.660001,       1.903653],       [0,              0]],
-                            [[13.65512,        0],             [0,              0],              [0,              0]]])
+                            [[9.447023,       2.553812],       [3.660001,       1.903653],       [0.0,              0.0]],
+                            [[13.65512,        0.0],           [0.0,              0.0],          [0.0,              0.0]]])
 
 
 
@@ -48,7 +48,10 @@ jax.debug.print("loss:{}", loss)
 
 
 
-total_energy, ratios_OA, ratios_OB, ratios_OC, ratios_OD, cos_theta_OA, cos_theta_OB, cos_theta_OC, cos_theta_OD = \
+total_energy, \
+ratios_OA, ratios_OB, ratios_OC, ratios_OD, \
+cos_theta_OA, cos_theta_OB, cos_theta_OC, cos_theta_OD, \
+roted_configurations_OA, roted_configurations_OB, roted_configurations_OC, roted_configurations_OD = \
     total_energy_pseudopotential(data=data, params=params,
                                  rn_local_general=Rn_local,
                                  rn_non_local_general=Rn_non_local,
@@ -62,17 +65,38 @@ total_energy, ratios_OA, ratios_OB, ratios_OC, ratios_OD, cos_theta_OA, cos_thet
 jax.debug.print("ratios_OA_shape:{}", ratios_OA.shape)
 #jax.debug.print("cos_theta_OA:{}", cos_theta_OA)
 jax.debug.print("cos_theta_OA_shape:{}", cos_theta_OA.shape)
+jax.debug.print("roted_configurations_OA_shape:{}", roted_configurations_OA.shape)
 
-
-v_r_non_local = get_non_v_l_parallel(data, Rn_non_local, Non_local_coes, Non_local_exps)
+#v_r_non_local = get_non_v_l_parallel(data, Rn_non_local, Non_local_coes, Non_local_exps)
 #jax.debug.print("v_r_non_local:{}", v_r_non_local)
 """the last dimension is angular momentum function"""
-jax.debug.print("v_r_non_local_shape:{}", v_r_non_local.shape)
+#jax.debug.print("v_r_non_local_shape:{}", v_r_non_local.shape)
 
 
+def P_l_theta(x: jnp.array, list_l: float):
+    """
+    create the legendre polynomials functions
+    :param x: cos(theta)
+    :param list_l: the angular momentum functions used in the calculation. For example, list_l = [1, 1, 1, 0, ] means s, p, d, no f
+    :return:
+    """
+    if list_l == 0:
+        return 1/(4 * jnp.pi) * jnp.ones(x.shape)
+    if list_l == 1:
+        return 1/(4 * jnp.pi) * jnp.ones(x.shape), \
+               (2 + 1)/(4 * jnp.pi) * x
+    if list_l == 2:
+        return 1/(4 * jnp.pi) * jnp.ones(x.shape), \
+               (2 + 1)/(4 * jnp.pi) * x, \
+               (2 * 2 + 1)/(4 * jnp.pi) * 0.5 * (3 * x * x - 1)
+    if list_l == 3:
+        return 1/(4 * jnp.pi) * jnp.ones(x.shape), \
+               (2 + 1)/(4 * jnp.pi) * x, \
+               (2 * 2 + 1)/(4 * jnp.pi) * 0.5 * (3 * x * x - 1), \
+               (3 * 2 + 1)/(4 * jnp.pi) * 0.5 * (5 * x * x * x - 3 * x)
 
 
-def compute_tmoves(lognetwork: nn.LogAINetLike):
+def compute_tmoves(lognetwork: nn.LogAINetLike, list_l: float, tstep: float):
     """For a given electron, evaluate all possible t-moves.
     Here, we need read the paper about T-moves.
     The implementation of T-moves is from the paper,
@@ -80,18 +104,53 @@ def compute_tmoves(lognetwork: nn.LogAINetLike):
     We finished the pseudopotential part currently, now turn to the T-moves. 9.12.2024.
     we use the same strategy for this function. The input is just one configuration.
     """
-    def calculate_ratio_weight_tmoves(params: nn.ParamTree, data: nn.AINetData, costheta: jnp.array, ratios: jnp.array):
-        jax.debug.print("data.positions:{}", data.positions)
-        jax.debug.print("costheta:{}", costheta)
-        jax.debug.print("ratios:{}", ratios)
+    def calculate_ratio_weight_tmoves(params: nn.ParamTree,
+                                      data: nn.AINetData,
+                                      costheta: jnp.array,
+                                      ratios: jnp.array,
+                                      Rn_non_local: jnp.array,
+                                      Non_local_coes: jnp.array,
+                                      Non_local_exps: jnp.array):
+        #jax.debug.print("data.positions:{}", data.positions)
+        #jax.debug.print("costheta:{}", costheta)
+        #jax.debug.print("ratios:{}", ratios)
+        output_P_l = jnp.array(P_l_theta(costheta, list_l=2.0))
+        #jax.debug.print("output_P_l:{}", output_P_l)
+        jax.debug.print("output_P_l_shape:{}", output_P_l.shape)
+        v_r_non_local = get_non_v_l(data, Rn_non_local, Non_local_coes, Non_local_exps)
+        """we have some problems about the data type. It should be float32 but currently it is int32. Maybe it is a bug. We solve it later."""
+        jax.debug.print("v_r_non_local_shape:{}", v_r_non_local.shape)
+
+        def multiply_weights(v_r_non_local: jnp.array, output_P_l: jnp.array):
+            return (jnp.exp(-1 * tstep * v_r_non_local) - 1) * output_P_l
+
+        multiply_weights_parallel = jax.vmap(jax.vmap(multiply_weights, in_axes=(2, 0), out_axes=0), in_axes=(None, 3), out_axes=0)
+        """the shape of weights should be number of points, angular momentum functions, number of electrons, number of atoms"""
+        weights = multiply_weights_parallel(v_r_non_local, output_P_l)
+        jax.debug.print("weights_shape:{}", weights.shape)
+        weights = jnp.sum(weights, axis=1)
+        jax.debug.print("weights_shape:{}", weights.shape)
+        jax.debug.print("ratios_shape:{}", ratios.shape)
+
+        def run_t_amplitudes(ratios: jnp.array, weights: jnp.array):
+            return ratios * weights
+
+        run_t_amplitudes_parallel = jax.vmap(run_t_amplitudes, in_axes=(2, 0), out_axes=0)
+        t_amplitudes = run_t_amplitudes_parallel(ratios, weights)
+        jax.debug.print("r_amplitudes_shape:{}", t_amplitudes.shape)
+        jax.debug.print("r_amplitudes:{}", t_amplitudes)
+        forward_probability = jnp.zeros_like(t_amplitudes)
+        """we need propose the move to the new configuration here. to be continued...10.12.2024."""
         return None
 
     return calculate_ratio_weight_tmoves
     
 
-ratio_weight = compute_tmoves(lognetwork=log_network)
-run_ratio_weight = jax.pmap(jax.vmap(ratio_weight, in_axes=(None, nn.AINetData(positions=0, atoms=0, charges=0), 0, 0), out_axes=0))
-output = run_ratio_weight(params, data, cos_theta_OA, ratios_OA)
+ratio_weight = compute_tmoves(lognetwork=log_network, list_l=2, tstep=0.1)
+run_ratio_weight = jax.pmap(jax.vmap(ratio_weight,
+                                     in_axes=(None, nn.AINetData(positions=0, atoms=0, charges=0), 0, 0, None, None, None), out_axes=0),
+                            in_axes=(0, nn.AINetData(positions=0, atoms=0, charges=0), 0, 0, None, None, None), out_axes=0)
+output = run_ratio_weight(params, data, cos_theta_OA, ratios_OA, Rn_non_local, Non_local_coes, Non_local_exps)
 
 
 batch_lognetwork = jax.pmap(jax.vmap(log_network, in_axes=(None, 0, 0, 0), out_axes=0))

@@ -1,3 +1,4 @@
-from AIQMCbatch2 import main_kfac
+import numpy as np
 
-output = main_kfac.main()
+r = np.random.rand()
+print("r", r)
