@@ -150,7 +150,7 @@ def main(batch_size=4, structure = jnp.array([[10, 0, 0],
 
     pos, spins = init_electrons(subkey, structure=structure, atoms=atoms, charges=charges,
                                 electrons=jnp.array([1.0, -1.0, 1.0, -1.0, 1.0, -1.0, 1.0, -1.0, 1.0, -1.0, 1.0, -1.0, 1.0, -1.0, 1.0, -1.0]),
-                                batch_size=host_batch_size, init_width=0.1)
+                                batch_size=host_batch_size, init_width=1.5)
     batch_pos = jnp.reshape(pos, data_shape+(-1,))
     batch_pos = kfac_jax.utils.broadcast_all_local_devices(batch_pos)
     #jax.debug.print("batch_pos:{}", batch_pos)

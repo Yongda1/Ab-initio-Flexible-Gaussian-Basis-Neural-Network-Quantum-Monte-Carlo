@@ -244,7 +244,7 @@ def get_P_l(data: nn.AINetData, params: nn.ParamTree, Points: jnp.array, weights
     #jax.debug.print("ratios:{}", ratios)
     #jax.debug.print("cos_theta:{}", cos_theta)
     """the following part is not general. We need think about the situation like CO2 or SiO2. 2.12.2024."""
-    return cos_theta, ratios, roted_configurations, weights
+    return cos_theta, ratios, roted_configurations, weights, roted_coords
 
 
 
@@ -274,10 +274,10 @@ def total_energy_pseudopotential(data: nn.AINetData, params: nn.ParamTree, rn_lo
     # sharded_key, subkeys = kfac_jax.utils.p_split(sharded_key)
     Points_OA, Points_OB, Points_OC, Points_OD, weights = get_rot(batch_size, key)
 
-    cos_theta_OA, ratios_OA, roted_configurations_OA, weights_OA = get_P_l_parallel(data, params, Points_OA, weights[0])
-    cos_theta_OB, ratios_OB, roted_configurations_OB, weights_OB = get_P_l_parallel(data, params, Points_OB, weights[1])
-    cos_theta_OC, ratios_OC, roted_configurations_OC, weights_OC = get_P_l_parallel(data, params, Points_OC, weights[2])
-    cos_theta_OD, ratios_OD, roted_configurations_OD, weights_OD = get_P_l_parallel(data, params, Points_OD, weights[3])
+    cos_theta_OA, ratios_OA, roted_configurations_OA, weights_OA, roted_coords_OA = get_P_l_parallel(data, params, Points_OA, weights[0])
+    cos_theta_OB, ratios_OB, roted_configurations_OB, weights_OB, roted_coords_OB = get_P_l_parallel(data, params, Points_OB, weights[1])
+    cos_theta_OC, ratios_OC, roted_configurations_OC, weights_OC, roted_coords_OC = get_P_l_parallel(data, params, Points_OC, weights[2])
+    cos_theta_OD, ratios_OD, roted_configurations_OD, weights_OD, roted_coords_OD = get_P_l_parallel(data, params, Points_OD, weights[3])
     output_OA = jnp.sum(jnp.array(P_l(cos_theta_OA, list_l=list_l)) * ratios_OA, axis=-1)
     output_OB = jnp.sum(jnp.array(P_l(cos_theta_OB, list_l=list_l)) * ratios_OB, axis=-1)
     output_OC = jnp.sum(jnp.array(P_l(cos_theta_OC, list_l=list_l)) * ratios_OC, axis=-1)
@@ -307,7 +307,7 @@ def total_energy_pseudopotential(data: nn.AINetData, params: nn.ParamTree, rn_lo
     #jax.debug.print("local_part_energy_shape:{}", local_part_energy.shape)
     total_energy = local_part_energy + nonlocal_energy
     #jax.debug.print("total_energy:{}", total_energy)
-    return total_energy, ratios_OA, ratios_OB, ratios_OC, ratios_OD, cos_theta_OA, cos_theta_OB, cos_theta_OC, cos_theta_OD, roted_configurations_OA, roted_configurations_OB, roted_configurations_OC, roted_configurations_OD, weights
+    return total_energy, ratios_OA, ratios_OB, ratios_OC, ratios_OD, cos_theta_OA, cos_theta_OB, cos_theta_OC, cos_theta_OD, roted_configurations_OA, roted_configurations_OB, roted_configurations_OC, roted_configurations_OD, weights, roted_coords_OA, roted_coords_OB, roted_coords_OC, roted_coords_OD
 
 
 

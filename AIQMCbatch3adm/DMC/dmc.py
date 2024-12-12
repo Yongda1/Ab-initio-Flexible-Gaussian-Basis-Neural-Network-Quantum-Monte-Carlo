@@ -52,7 +52,8 @@ jax.debug.print("loss:{}", loss)
 total_energy, \
 ratios_OA, ratios_OB, ratios_OC, ratios_OD, \
 cos_theta_OA, cos_theta_OB, cos_theta_OC, cos_theta_OD, \
-roted_configurations_OA, roted_configurations_OB, roted_configurations_OC, roted_configurations_OD, weights = \
+roted_configurations_OA, roted_configurations_OB, roted_configurations_OC, roted_configurations_OD, weights, \
+roted_coords_OA, roted_coords_OB, roted_coords_OC, roted_coords_OD = \
     total_energy_pseudopotential(data=data, params=params,
                                  rn_local_general=Rn_local,
                                  rn_non_local_general=Rn_non_local,
@@ -67,7 +68,8 @@ jax.debug.print("ratios_OA_shape:{}", ratios_OA.shape)
 #jax.debug.print("cos_theta_OA:{}", cos_theta_OA)
 jax.debug.print("cos_theta_OA_shape:{}", cos_theta_OA.shape)
 jax.debug.print("roted_configurations_OA_shape:{}", roted_configurations_OA.shape)
-
+#jax.debug.print("roted_coords_OA:{}", roted_coords_OA)
+jax.debug.print("roted_coords_OA_shape:{}", roted_coords_OA.shape)
 #v_r_non_local = get_non_v_l_parallel(data, Rn_non_local, Non_local_coes, Non_local_exps)
 #jax.debug.print("v_r_non_local:{}", v_r_non_local)
 """the last dimension is angular momentum function"""
@@ -170,8 +172,10 @@ def propose_t_moves(params: nn.ParamTree,
                     ratios_OA: jnp.array, ratios_OB: jnp.array, ratios_OC: jnp.array, ratios_OD: jnp.array,
                     cos_theta_OA: jnp.array, cos_theta_OB: jnp.array, cos_theta_OC: jnp.array, cos_theta_OD: jnp.array,
                     roted_configurations_OA: jnp.array, roted_configurations_OB: jnp.array, roted_configurations_OC: jnp.array, roted_configurations_OD: jnp.array,
+                    roted_coords_OA: jnp.array, roted_coords_OB: jnp.array, roted_coords_OC: jnp.array, roted_coords_OD: jnp.array,
                     weigths: jnp.array
                     ):
+    nelectrons = 16
     forward_probability_output_OA = ratio_weight(params, data, cos_theta_OA, ratios_OA, Rn_non_local,
                                                      Non_local_coes, Non_local_exps)
     forward_probability_output_OB = ratio_weight(params, data, cos_theta_OB, ratios_OB, Rn_non_local,
@@ -180,59 +184,119 @@ def propose_t_moves(params: nn.ParamTree,
                                                      Non_local_coes, Non_local_exps)
     forward_probability_output_OD = ratio_weight(params, data, cos_theta_OD, ratios_OD, Rn_non_local,
                                                      Non_local_coes, Non_local_exps)
-    jax.debug.print("forward_probability_output_OA_shape:{}", forward_probability_output_OA.shape)
-    jax.debug.print("forward_probability_output_OB_shape:{}", forward_probability_output_OB.shape)
-    jax.debug.print("forward_probability_output_OC_shape:{}", forward_probability_output_OC.shape)
-    jax.debug.print("forward_probability_output_OD_shape:{}", forward_probability_output_OD.shape)
-    roted_configurations_OA = jnp.transpose(roted_configurations_OA, (2, 0, 1, 3))
-    roted_configurations_OB = jnp.transpose(roted_configurations_OB, (2, 0, 1, 3))
-    roted_configurations_OC = jnp.transpose(roted_configurations_OC, (2, 0, 1, 3))
-    roted_configurations_OD = jnp.transpose(roted_configurations_OD, (2, 0, 1, 3))
-    jax.debug.print("roted_configurations_OA_shape:{}", roted_configurations_OA.shape)
-    jax.debug.print("roted_configurations_OB_shape:{}", roted_configurations_OB.shape)
-    jax.debug.print("roted_configurations_OC_shape:{}", roted_configurations_OC.shape)
-    jax.debug.print("roted_configurations_OD_shape:{}", roted_configurations_OD.shape)
+
     norm = 1 + jnp.sum(weigths[0] * forward_probability_output_OA) + jnp.sum(weigths[1] * forward_probability_output_OB) + \
            jnp.sum(weigths[2] * forward_probability_output_OC) + jnp.sum(weigths[3] * forward_probability_output_OD)
 
     jax.debug.print("norm:{}", norm)
 
-    forward_probability_output_OA = jnp.reshape(forward_probability_output_OA, (-1,))
-    forward_probability_output_OB = jnp.reshape(forward_probability_output_OB, (-1,))
-    forward_probability_output_OC = jnp.reshape(forward_probability_output_OC, (-1,))
-    forward_probability_output_OD = jnp.reshape(forward_probability_output_OD, (-1,))
+    forward_probability_output_OA = jnp.transpose(forward_probability_output_OA, (1, 2, 0))
+    forward_probability_output_OB = jnp.transpose(forward_probability_output_OB, (1, 2, 0))
+    forward_probability_output_OC = jnp.transpose(forward_probability_output_OC, (1, 2, 0))
+    forward_probability_output_OD = jnp.transpose(forward_probability_output_OD, (1, 2, 0))
+
     forward_probability_output_total = jnp.concatenate([forward_probability_output_OA,
                                                        forward_probability_output_OB,
                                                        forward_probability_output_OC,
-                                                       forward_probability_output_OD], axis=0)
+                                                      forward_probability_output_OD], axis=2)
 
+
+    roted_configurations_total = jnp.concatenate([roted_configurations_OA,
+                                                  roted_configurations_OB,
+                                                  roted_configurations_OC,
+                                                  roted_configurations_OD], axis=2)
+
+    jax.debug.print("roted_configurations_total:{}", roted_configurations_total.shape)
+    forward_probability_output_total = jnp.reshape(forward_probability_output_total, (nelectrons, -1))
+    roted_configurations_total = jnp.reshape(roted_configurations_total, (nelectrons, -1, 48))
     jax.debug.print("forward_probability_output_total_shape:{}", forward_probability_output_total.shape)
+    forward_probability_output_total_final = jnp.concatenate([jnp.ones((nelectrons, 1)), forward_probability_output_total], axis=1)
+    jax.debug.print("forward_probability_output_total_final_shape:{}", forward_probability_output_total_final.shape)
+
 
 
     def select_walker(a: jnp.array):
-        r = np.random.rand()
-        jax.debug.print("r:{}", r)
+        r = np.random.rand() + 1
+        #jax.debug.print("r:{}", r)
         return jnp.searchsorted(a, r)
 
-    cdf = jnp.cumsum(forward_probability_output_total / norm)
+    cdf = jnp.cumsum(forward_probability_output_total_final / norm, axis=1)
+    #jax.debug.print("cdf:{}", cdf)
     selected_moves = jnp.apply_along_axis(func1d=select_walker, axis=-1, arr=cdf)
-    jax.debug.print("selected_moves:{}", selected_moves)
+    #jax.debug.print("selected_moves:{}", selected_moves)
+    #jax.debug.print("t_amp:{}", forward_probability_output_total.shape)
+    move_selected = jnp.zeros_like(selected_moves)
+    move_selected_final = jnp.where(selected_moves < forward_probability_output_total_final.shape[1], selected_moves, move_selected)
+    #jax.debug.print("move_selected_final:{}", move_selected_final)
+    order = jnp.arange(0, nelectrons, step=1)
+    """here, we use one loop currently.we will make it better later."""
+    pos_temp = data.positions
+    pos_temp = jnp.reshape(pos_temp, (-1, 3))
+
+    roted_coords_total = jnp.concatenate([roted_coords_OA, roted_coords_OB, roted_coords_OC, roted_coords_OD], axis=2)
+    roted_coords_total = jnp.reshape(roted_coords_total, (nelectrons, -1, 3))
+
+    ratios_total = jnp.concatenate([ratios_OA, ratios_OB, ratios_OC, ratios_OD], axis=-1)
+    ratios_total = jnp.reshape(ratios_total, (nelectrons, -1))
+    jax.debug.print("ratios_total:{}", ratios_total.shape)
+
+    """3 is the dimension of the electrons."""
+    pos_temp = jnp.reshape(pos_temp, (nelectrons, 1, 3))
+    #jax.debug.print("pos_temp:{}", pos_temp)
+    #jax.debug.print("pos_temp_shape:{}", pos_temp.shape)
+    total_configuration = jnp.concatenate([pos_temp, roted_coords_total], axis=1)
+    jax.debug.print("ratio_total:{}", ratios_total.shape)
+    #jax.debug.print("total_configuration_shape:{}", total_configuration.shape)
+    ratio_ones = jnp.ones((nelectrons, 1))
+    jax.debug.print("ratio_ones:{}", ratio_ones.shape)
+    ratio_total_final = jnp.concatenate([ratio_ones, ratios_total], axis=1)
+    jax.debug.print("ratio_total_final_shape:{}", ratio_total_final.shape)
+
+    def selcted_configurations(move_selected_final: jnp.array, order: jnp.array,
+                               ratio_total: jnp.array, roted_coords_total: jnp.array, t_amp: jnp.array):
+        #jax.debug.print("move_selected_final:{}", move_selected_final)
+        #jax.debug.print("order:{}", order)
+        #jax.debug.print("new_configuration:{}", new_configuration)
+        #jax.debug.print("pos_temp:{}", pos_temp)
+        #jax.debug.print("roted_coords_total_shape:{}", roted_coords_total.shape)
+        temp = roted_coords_total[order]
+        temp_ratio = ratio_total[order]
+        reverse_ratio = 1 / temp_ratio[move_selected_final]
+        back_amplitudes = t_amp[move_selected_final] * reverse_ratio
+        #jax.debug.print("A:{}", back_amplitudes)
+        #new_configuration = new_configuration.at[order].set(temp[move_selected_final])
 
 
-    return None
+        return temp[move_selected_final], back_amplitudes
+
+    #if move_selected_final < 1:
+    #    new_configuration = new_configuration.at[order].set(pos_temp[order])
+
+    selcted_configurations_parallel = jax.vmap(selcted_configurations, in_axes=(0, 0, None, None, None))
+    new_configuration, back_amplitudes = selcted_configurations_parallel(move_selected_final, order, ratio_total_final, total_configuration, forward_probability_output_total_final)
+    #jax.debug.print("new_configuration:{}", new_configuration)
+    jax.debug.print("back_amplitudes_shape:{}", back_amplitudes.shape)
+    """to be continued... we put the original configuration int the total_configuration, ratio_total_final, forward_probability_output_total_final.
+    The next step is to calculate the back_amplitudes norm. However, one problem occurred. After the original shape added, the shape of the array changed.
+    we need do more the parallel calculation. 12.12.2024."""
+
+
+    #return new_configuration
 
 
 
 propose_t_moves_parallel = jax.pmap(jax.vmap(propose_t_moves,
-                                             in_axes=(None, nn.AINetData(positions=0, atoms=0, charges=0), None, None, None, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, None),
+                                             in_axes=(None, nn.AINetData(positions=0, atoms=0, charges=0), None, None, None, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, None),
                                              out_axes=0),
-                                    in_axes=(0, nn.AINetData(positions=0, atoms=0, charges=0), None, None, None, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, None),
+                                    in_axes=(0, nn.AINetData(positions=0, atoms=0, charges=0), None, None, None, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, None),
                                     out_axes=0)
 
 output = propose_t_moves_parallel(params, data, Rn_non_local, Non_local_coes, Non_local_exps,
                          ratios_OA, ratios_OB, ratios_OC, ratios_OD,
                          cos_theta_OA, cos_theta_OB, cos_theta_OC, cos_theta_OD,
-                         roted_configurations_OA, roted_configurations_OB, roted_configurations_OC, roted_configurations_OD, weights)
+                         roted_configurations_OA, roted_configurations_OB, roted_configurations_OC, roted_configurations_OD,
+                                  roted_coords_OA, roted_coords_OB, roted_coords_OC, roted_coords_OD,
+                                  weights)
 
 
 
