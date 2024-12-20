@@ -14,16 +14,16 @@ import jax
 import jax.numpy as jnp
 import attr
 from typing import Any, Mapping, Sequence, Union, Tuple
-from nn import construct_input_features
+#from nn import construct_input_features
 from jax.scipy.special import sph_harm
 
 
-
+'''
 pos = jnp.array([1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18])
 atoms = jnp.array([[1, 1, 1], [2, 2, 2], [3, 3, 3]])
 ae, ee = construct_input_features(pos=pos, atoms=atoms)
 jax.debug.print("ae:{}", ae)
-
+'''
 
 class EnvelopType(enum.Enum):
     PRE_Orbital = enum.auto
@@ -47,7 +47,7 @@ class Envelope:
 
 def make_GTO_envelope():
     """Create a Slater-type orbital envelop as we show in the slides."""
-    def init(natoms: int, nelectrons: int,) -> Sequence[Mapping[str, jnp.ndarray]]:
+    def init(natoms: int, nelectrons: int,) -> Mapping[str, jnp.ndarray]:
         """first we need construct the angular momentum vector by specifying the order of polarization.
         0 means only s orbitals, i.e. the number of orbitals is 1.
         1 means p orbitals, i.e. the number of orbitals is 3.
@@ -98,13 +98,11 @@ def make_GTO_envelope():
         angular_total = jnp.concatenate([output1, output2, output3], axis=0)
         angular_total = jnp.reshape(angular_total, (9, natoms * nelectrons))
         angular_total = jnp.reshape(angular_total, (9, nelectrons, natoms))
-        jax.debug.print("xi_shape:{}", xi.shape)
         angular_total = jnp.transpose(angular_total, (1, 0, 2))
 
         def multiply(xi: jnp.array, angular_total: jnp.array):
             return xi * angular_total
 
-        jax.debug.print("angular_total_shape:{}", angular_total.shape)
         multiply_parallel = jax.vmap(jax.vmap(multiply, in_axes=(0, None), out_axes=0), in_axes=(None, 0), out_axes=0)
         angular_part = multiply_parallel(xi, angular_total)
         angular_part = jnp.sum(angular_part, axis=[2, 3])
@@ -112,8 +110,9 @@ def make_GTO_envelope():
 
     return Envelope(init=init, apply=apply)
 
-
+'''
 envelope = make_GTO_envelope()
 xi = envelope.init(natoms=3, nelectrons=6)
 print("xi", xi)
 output = envelope.apply(ae, xi['xi'], natoms=3, nelectrons=6)
+'''
