@@ -55,7 +55,7 @@ class FeatureLayer:
 
 
 class InitLayersFn(Protocol):
-    def __call__(self, key:chex.PRNGKey) -> Tuple[int, ParamTree]:
+    def __call__(self, key: chex.PRNGKey) -> Tuple[int, ParamTree]:
         """Returns output dim and initizalized parameters for the interaction layers."""
 
 
@@ -65,7 +65,7 @@ class ApplyLayersFn(Protocol):
 
 
 class InitAINet(Protocol):
-    def __call__(self, key:chex.PRNGKey) -> ParamTree:
+    def __call__(self, key: chex.PRNGKey) -> ParamTree:
         """Return initialized parameters for the network."""
 
 
@@ -286,7 +286,7 @@ def make_ai_net(ndim: int,
 """This part for debugging this module."""
 key = jax.random.PRNGKey(1)
 spins = jnp.array([1.0, -1.0, 1.0, -1.0, 1.0, -1.0])
-temp = jnp.reshape(spins, (6, 1))
+temp = jnp.reshape(spins, (6, 1)) #6 is the number of electrons.
 spins = jnp.reshape(spins, (1, 6))
 spins_total = spins * temp
 spins_total_uptriangle = jnp.triu(spins_total, k=1)
