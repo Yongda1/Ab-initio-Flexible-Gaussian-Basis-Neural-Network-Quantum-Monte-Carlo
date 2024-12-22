@@ -46,9 +46,9 @@ def init_electrons(key, structure: jnp.array, atoms: jnp.array, charges: jnp.arr
     key, subkey = jax.random.split(key, num=2)
     electrons_positions_batch += (jax.random.normal(subkey, shape=electrons_positions_batch.shape) * init_width)
     "we need think about this. We need assign the spin configurations to electrons.12.08.2024."
-    spins = electrons
-    spins = jnp.repeat(jnp.reshape(spins, (1, -1)), batch_size, )
-    return electrons_positions_batch, spins
+    spins_no_batch = electrons
+    #spins = jnp.repeat(jnp.reshape(spins, (1, -1)), batch_size, )
+    return electrons_positions_batch, spins_no_batch
 
 
 OptimizerState = Union[optax.OptState, kfac_jax.Optimizer.State]
@@ -172,7 +172,12 @@ def main(atoms: jnp.array,
 
     print('''--------------Main training-------------''')
     """to be continued...21.12.2024"""
+    print('''--------------Start Monte Carlo process------------''')
+
+    '''
     mc_step = mcstep.make_mc_step(signed_network, nsteps=10)
+    
+    
     localenergy = hamiltonian.local_energy(f=signed_network, batch_size=batch_size, natoms=natoms, nelectrons=nelectrons)
     """so far, we have not constructed the pp module. Currently, we only execute all electrons calculation.  """
     evaluate_loss = qmc_loss_functions.make_loss(log_network, local_energy=localenergy)
@@ -191,7 +196,7 @@ def main(atoms: jnp.array,
     step = make_training_step(mcmcstep=mc_step, optimizer_step=make_opt_update_step(evaluate_loss, optimizer))
     sharded_key = kfac_jax.utils.make_different_rng_key_on_all_devices(key)
     sharded_key, subkeys = kfac_jax.utils.p_split(sharded_key)
-    '''
+    
     we comment on this part for the test of t-moves.
     """main training loop"""
     for t in range(0, iterations):
