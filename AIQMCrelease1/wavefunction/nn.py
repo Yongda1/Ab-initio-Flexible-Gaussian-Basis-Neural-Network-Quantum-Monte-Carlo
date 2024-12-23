@@ -12,6 +12,7 @@ import jax
 import chex
 import jax.numpy as jnp
 from typing_extensions import Protocol
+from jax.config import config; config.update("jax_enable_x64", True)
 
 
 ParamTree = Union[
@@ -96,7 +97,7 @@ def construct_input_features(pos: jnp.array, atoms: jnp.array, ndim: int = 3) \
         atoms: atom positions. Shape(natoms, ndim)
     """
     ae = jnp.reshape(pos, [-1, 1, ndim]) - atoms[None, ...]
-    ee = jnp.reshape(pos, [1, -1, ndim]) - jnp.reshape(pos, [-1, 1, ndim])
+    ee = jnp.reshape(pos, [1, -1, ndim]) - jnp.reshape(pos, [-1, 1, ndim]) + 0.1
     return ae, ee
 
 
@@ -112,6 +113,7 @@ def make_ainet_features(natoms: int, nelectrons: int, ndim: int) -> FeatureLayer
     def apply(ae: jnp.array, ee: jnp.array) -> Tuple[jnp.ndarray, jnp.ndarray]:
         ae_features = ae
         ae_features = jnp.reshape(ae_features, [jnp.shape(ae_features)[0], -1]) #reshape the ae vector to a line.
+        """to be continued here, 23.22.2024"""
         ee_features = ee
         return ae_features, ee_features
 

@@ -211,7 +211,7 @@ def main(atoms: jnp.array,
     return signed_network, data, params, log_network
 
 
-
+'''
 structure = jnp.array([[10, 0, 0],
                        [0, 10, 0],
                        [0, 0, 10]])
@@ -227,4 +227,4 @@ output = main(atoms=atoms,
               ndim=3,
               batch_size=4,
               iterations=1,
-              structure=structure)
+              structure=structure)'''
