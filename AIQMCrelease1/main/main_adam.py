@@ -13,7 +13,7 @@ import kfac_jax
 import optax
 from typing_extensions import Protocol
 import chex
-from AIQMCbatch3adm import mcstep
+from AIQMCrelease1.MonteCarloSample import mcstep
 from AIQMCbatch3adm import loss as qmc_loss_functions
 from AIQMCbatch3adm import constants
 from AIQMCbatch3adm import hamiltonian
@@ -114,8 +114,6 @@ def main(atoms: jnp.array,
     print("Quantum Monte Carlo Start running")
     num_devices = jax.local_device_count() #the amount of GPU per host
     num_hosts = jax.device_count() // num_devices #the amount of host
-    #jax.debug.print("num_devices:{}", num_devices)
-    #jax.debug.print("num_hosts:{}", num_hosts)
     logging.info('Start QMC with $i devices per host, across %i hosts.', num_devices, num_hosts)
     if batch_size % (num_devices * num_hosts) != 0:
         raise ValueError('Batch size must be divisible by number of devices!')
@@ -173,12 +171,14 @@ def main(atoms: jnp.array,
     print('''--------------Main training-------------''')
     """to be continued...21.12.2024"""
     print('''--------------Start Monte Carlo process------------''')
+    sharded_key = kfac_jax.utils.make_different_rng_key_on_all_devices(key)
+    sharded_key, subkeys = kfac_jax.utils.p_split(sharded_key)
+    mc_step = mcstep.main_monte_carlo(f=signed_network, key=subkeys, params=params, batch_size=batch_size)
+    """to be continued...24.12.2024."""
 
+    """we need add the pseudopotential module into the hamiltonian module."""
+    #localenergy = hamiltonian.local_energy(f=signed_network, batch_size=batch_size, natoms=natoms, nelectrons=nelectrons)
     '''
-    mc_step = mcstep.make_mc_step(signed_network, nsteps=10)
-    
-    
-    localenergy = hamiltonian.local_energy(f=signed_network, batch_size=batch_size, natoms=natoms, nelectrons=nelectrons)
     """so far, we have not constructed the pp module. Currently, we only execute all electrons calculation.  """
     evaluate_loss = qmc_loss_functions.make_loss(log_network, local_energy=localenergy)
     """18.10.2024, we will continue later."""

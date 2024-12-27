@@ -5,32 +5,10 @@ from AIQMCrelease1.wavefunction import nn
 import jax
 from jax import lax
 from jax import numpy as jnp
-import numpy as np
 from AIQMCrelease1.main import main_adam
 from AIQMCrelease1.utils import utils
 import kfac_jax
-"""we need rewrite this part. 22.12.2024. to be continued..."""
-"""currently, we need rewrite this part like the dmc module."""
 
-structure = jnp.array([[10, 0, 0],
-                       [0, 10, 0],
-                       [0, 0, 10]])
-Symbol = ['C', 'O', 'O']
-atoms = jnp.array([[1.33, 1.0, 1.0], [0.0, 1.0, 1.0], [2.66, 1.0, 1.0]])
-charges = jnp.array([4.0, 6.0, 6.0])
-spins = jnp.array([1.0, -1.0, 1.0, -1.0, 1.0, -1.0, 1.0, -1.0, 1.0, -1.0, 1.0, -1.0, 1.0, -1.0, 1.0, -1.0])
-signed_network, data, batch_params, lognetwork = main_adam.main(atoms=atoms,
-                                                                charges=charges,
-                                                                spins=spins,
-                                                                nelectrons=16,
-                                                                natoms=3,
-                                                                ndim=3,
-                                                                batch_size=4,
-                                                                iterations=1,
-                                                                structure=structure)
-key = jax.random.PRNGKey(seed=1)
-sharded_key = kfac_jax.utils.make_different_rng_key_on_all_devices(key)
-sharded_key, subkeys = kfac_jax.utils.p_split(sharded_key)
 
 def limdrift(g, tau, acyrus):
     v2 = jnp.sum(g**2)
@@ -50,8 +28,7 @@ def walkers_accept(x1, x2, ratio, key, nelectrons: int):
 def monte_carlo(logwavefunction: nn.AINetLike,
                 tstep: float,
                 ndim: int,
-                batch_size: int,
-                nelectrons: int):
+                nelectrons: int,):
 
     logabs_f = utils.select_output(logwavefunction, 1)
     #sign_f = utils.select_output(logwavefunction, 0)
@@ -64,6 +41,7 @@ def monte_carlo(logwavefunction: nn.AINetLike,
         x1 = data.positions
         grad_value = jax.grad(logabs_f, argnums=1)
         grad_value = jax.value_and_grad(logabs_f, argnums=1)
+
         def grad_f_closure(x):
             return grad_value(params, x, data.atoms, data.charges)
 
@@ -114,37 +92,53 @@ def monte_carlo(logwavefunction: nn.AINetLike,
     return walkers_update
 
 
-mc = monte_carlo(logwavefunction=signed_network, tstep=0.1, ndim=3, batch_size=4, nelectrons=16)
-mc_parallel = jax.pmap(jax.vmap(mc, in_axes=(None, 0, None)))
-new_data, newkey = mc_parallel(batch_params, data, subkeys)
-jax.debug.print("new_data:{}", new_data)
-jax.debug.print("newkey:{}", newkey)
-
-"""to be continued...23.12.2024"""
-def monte_carlo_loop(params: nn.ParamTree, data: nn.AINetData, key: chex.PRNGKey, nsteps: int,):
-    mc = monte_carlo(logwavefunction=signed_network, tstep=0.1, ndim=3, batch_size=4, nelectrons=16)
-    keys = 
+def generate_batch_key(batch_size: int):
+    def get_keys(key: chex.PRNGKey):
+        keys = jax.random.split(key, num=batch_size)
+        return keys
+    return get_keys
 
 
-'''
-def make_mc_step(signednetwork, nsteps: int, tstep: float, batch_size: int, nelectrons: int, ndim: int):
-    @jax.jit
-    def mcmc_step(params: nn.ParamTree,
-                  data: nn.AINetData,
-                  key):
-        def step_fn(i, x):
-            return walkers_update_parallel(params, signednetwork, *x, tstep=tstep, ndim=ndim, batch_size=batch_size, nelectrons=nelectrons, i=i)
+def main_monte_carlo(f: nn.AINetLike, key: chex.PRNGKey, params: nn.ParamTree, batch_size: int,):
+    """create mont carlo sample loop. One loop is used here. However, we should circumvent it. Later, we optimize it."""
+    generate_keys = generate_batch_key(batch_size=batch_size)
+    generate_keys_parallel = jax.pmap(generate_keys)
+    mc = monte_carlo(logwavefunction=f, tstep=0.1, ndim=3, nelectrons=16)
+    mc_parallel = jax.pmap(jax.vmap(mc, in_axes=(None, 0, 0)))
 
-        new_data, key = lax.fori_loop(lower=0, upper=nsteps, body_fun=step_fn, init_val=(data, key))
-        #jax.debug.print("new_data:{}", new_data)
-        return new_data
-    #jax.debug.print("data:{}", data)
-    return mcmc_step
-'''
+    def mc_step(nsteps: int, data: nn.AINetData):
+        keys_batched = generate_keys_parallel(key=key)
+        for i in range(nsteps):
+            jax.debug.print("i:{}", i)
+            new_data, newkeys = mc_parallel(params, data, keys_batched)
+            data = new_data
+            keys_batched = newkeys
+            jax.debug.print("data:{}", data.positions)
+        return data
+
+    return mc_step
 
 '''
-mcstep = make_mc_step(lognetwork, nsteps=1, tstep=0.1, batch_size=4, nelectrons=16, ndim=3)
-mcstep_parallel = jax.pmap(mcstep, donate_argnums=1)
-data = mcstep_parallel(params=batch_params, data=data, key=subkeys)
-#jax.debug.print("data:{}", data)
+structure = jnp.array([[10, 0, 0],
+                       [0, 10, 0],
+                       [0, 0, 10]])
+Symbol = ['C', 'O', 'O']
+atoms = jnp.array([[1.33, 1.0, 1.0], [0.0, 1.0, 1.0], [2.66, 1.0, 1.0]])
+charges = jnp.array([4.0, 6.0, 6.0])
+spins = jnp.array([1.0, -1.0, 1.0, -1.0, 1.0, -1.0, 1.0, -1.0, 1.0, -1.0, 1.0, -1.0, 1.0, -1.0, 1.0, -1.0])
+signed_network, data, batch_params, lognetwork = main_adam.main(atoms=atoms,
+                                                                charges=charges,
+                                                                spins=spins,
+                                                                nelectrons=16,
+                                                                natoms=3,
+                                                                ndim=3,
+                                                                batch_size=4,
+                                                                iterations=1,
+                                                                structure=structure)
+key = jax.random.PRNGKey(seed=1)
+sharded_key = kfac_jax.utils.make_different_rng_key_on_all_devices(key)
+sharded_key, subkeys = kfac_jax.utils.p_split(sharded_key)
+mc_step = main_monte_carlo(f=signed_network, key=subkeys, params=batch_params, batch_size=4)
+new_data = mc_step(nsteps=10, data=data)
 '''
+
