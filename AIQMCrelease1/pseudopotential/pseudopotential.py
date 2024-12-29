@@ -8,7 +8,7 @@ import jax.numpy as jnp
 import kfac_jax
 #from AIQMCrelease1.main import main_adam
 from jax import Array
-
+from typing import Tuple
 from AIQMCrelease1.wavefunction import nn
 from typing_extensions import Protocol
 
@@ -74,6 +74,12 @@ class LocalPPEnergy(Protocol):
 class NonlocalPPcoes(Protocol):
     def __call__(self, data: nn.AINetData) -> jnp.array:
         """Returns the nonlocal coes of a hamiltonian at a configuration."""
+
+
+class NonlocalPPPoints(Protocol):
+    def __call__(self, data: nn.AINetData, params: nn.ParamTree, Points: jnp.array, weights: float) \
+            -> Tuple[jnp.array, jnp.array, jnp.array, jnp.array, jnp.array]:
+        """Return the spherical integration points information"""
 
 
 def local_pp_energy(nelectrons: int,
@@ -161,7 +167,7 @@ get_non_local_coe_test = get_non_v_l(ndim=3,
 get_non_local_coe_test_parallel = jax.vmap(get_non_local_coe_test,
                                            in_axes=(nn.AINetData(positions=0, atoms=0, charges=0)), out_axes=0)
 '''
-'''
+
 
 def generate_quadrature_grids():
     """generate quadrature grids from Mitas, Shirley, and Ceperley."""
@@ -212,21 +218,25 @@ def P_l(x, list_l: float):
         return jnp.ones(x.shape), x, 0.5 * (3 * x * x - 1), 0.5 * (5 * x * x * x - 3 * x)
 
 
-def get_P_l(nelectrons: int, natoms: int, ndim: int, log_network_inner: nn.AINetLike):
+def get_P_l(nelectrons: int, natoms: int, ndim: int, log_network_inner: nn.AINetLike) -> NonlocalPPPoints:
     """currently, we apply CO2 molecular into the codes. So, we need debug this part again."""
 
     def rot_coords_single(r_ae_inner: jnp.array, Points_inner: jnp.array):
+        #jax.debug.print("Points_inner_shape:{}", Points_inner.shape)
+        #jax.debug.print("r_ae_inner:{}", r_ae_inner)
         return r_ae_inner * Points_inner
 
     rot_coords_parallel = jax.vmap(jax.vmap(rot_coords_single, in_axes=(0, None), out_axes=0), in_axes=(0, None),
                                    out_axes=0)
 
-    def calculate_cos_theta_single(ae_inner: jnp.array, roted_coords_inner: jnp.array):
-        return jnp.sum(ae_inner * roted_coords_inner, axis=-1) / \
-               (jnp.linalg.norm(ae_inner) * jnp.linalg.norm(roted_coords_inner))
+    def calculate_cos_theta_single(ae_inner_1: jnp.array, roted_coords_inner_1: jnp.array):
+        return jnp.sum(ae_inner_1 * roted_coords_inner_1, axis=-1) / \
+               (jnp.linalg.norm(ae_inner_1) * jnp.linalg.norm(roted_coords_inner_1))
+
 
     calculate_cos_theta_parallel = jax.vmap(jax.vmap(calculate_cos_theta_single, in_axes=(0, 0), out_axes=0),
                                             in_axes=(0, 0))
+
 
     def return_arrays(x2: jnp.array, roted_coords: jnp.array, order1: jnp.array):
         temp = x2.at[order1].set(roted_coords)
@@ -247,12 +257,15 @@ def get_P_l(nelectrons: int, natoms: int, ndim: int, log_network_inner: nn.AINet
         ae = jnp.reshape(data.positions, [-1, 1, ndim]) - data.atoms[None, ...]
         r_ae = jnp.linalg.norm(ae, axis=-1)
         r_ae = jnp.reshape(r_ae, (nelectrons, natoms, 1))
-        denominator = log_network(params, data.positions, data.atoms, data.charges)
+        jax.debug.print("r_ae:{}", r_ae)
+        denominator = log_network_inner(params, data.positions, data.atoms, data.charges)
         roted_coords = rot_coords_parallel(r_ae, Points)
+        jax.debug.print("roted_coords:{}", roted_coords.shape)
         cos_theta = calculate_cos_theta_parallel(ae, roted_coords)
         order = jnp.arange(0, nelectrons, step=1)
         x1 = data.positions
         x2 = jnp.reshape(x1, (nelectrons, ndim))
+        #jax.debug.print("x2:{}", x2)
         roted_configurations = return_arrays_parallel(x2, roted_coords, order)
         roted_wavefunciton_value = batch_lognetwork(params, roted_configurations, data.atoms, data.charges)
         ratios = roted_wavefunciton_value / denominator * weights
@@ -260,11 +273,11 @@ def get_P_l(nelectrons: int, natoms: int, ndim: int, log_network_inner: nn.AINet
     return generate_points_information
 
 
+'''
 generate_points_information_test = get_P_l(nelectrons=16, natoms=3, ndim=3, log_network_inner=log_network)
 generate_points_information_test_parallel = jax.pmap(jax.vmap(generate_points_information_test,
                                     in_axes=(nn.AINetData(positions=0, atoms=0, charges=0), None, 0,  None)),
                            in_axes=(0, 0, None, None,))
-#output2 = get_P_l_parallel(data, params, Points_OA, weights[0], l_list)
 '''
-
+#output2 = get_P_l_parallel(data, params, Points_OA, weights[0], l_list)
 

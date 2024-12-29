@@ -1,3 +1,4 @@
+import chex
 import jax
 import jax.numpy as jnp
 from AIQMCrelease1.pseudopotential import pseudopotential
@@ -41,23 +42,59 @@ Non_local_exps = jnp.array([[[2.894473589836, 1.550339816290], [2.986528872039, 
 
 def total_energy_pseudopotential(get_local_pp_energy: pseudopotential.LocalPPEnergy,
                                  get_nonlocal_pp_coes: pseudopotential.NonlocalPPcoes,
+                                 get_P_l: pseudopotential.NonlocalPPPoints,
+                                 log_network: nn.AINetLike,
                                  nelectrons: int,
                                  natoms: int,
                                  ndim: int,
                                  list_l: int,
-                                 batch_size: int):
+                                 batch_size: int,
+                                 key: chex.PRNGKey,):
     """This function caluclates the energy of pseudopotential.
     For the pp of C and O, only l=0 contributes to the nonlocal part.
     we have more problems here. If all atoms have the same shape of the pp parameters, it is ok.
     But if one of the atoms has higher angular momentum functions, I don't know how to do it efficiently."""
 
-    def get_total_pp_energy(data: nn.AINetData):
+
+    def multiply_test(a: jnp.array, b: jnp.array):
+        return a * b
+
+    """here, 4 is the number of points."""
+    multiply_test_parallel = jax.vmap(multiply_test, in_axes=(0, 2), out_axes=0)
+
+    def get_total_pp_energy(data: nn.AINetData,
+                            params: nn.ParamTree,
+                            Points_OA: jnp.array,
+                            Points_OB: jnp.array,
+                            Points_OC: jnp.array,
+                            Points_OD: jnp.array):
         local_pp_energy = get_local_pp_energy(data)
         local_pp_energy = jnp.sum(jnp.sum(local_pp_energy, axis=-1), axis=-1)
-        jax.debug.print("local_pp_energy:{}", local_pp_energy)
         nonlocal_parameters = get_nonlocal_pp_coes(data)
-        jax.debug.print("nonlocal_paras:{}", nonlocal_parameters)
-        return local_pp_energy
+        cos_theta_OA, ratios_OA, roted_configurations_OA, weights_OA, roted_coords_OA = get_P_l(
+            data, params, Points_OA, weights[0])
+        cos_theta_OB, ratios_OB, roted_configurations_OB, weights_OB, roted_coords_OB = get_P_l(
+            data, params, Points_OB, weights[1])
+        cos_theta_OC, ratios_OC, roted_configurations_OC, weights_OC, roted_coords_OC = get_P_l(
+            data, params, Points_OC, weights[2])
+        cos_theta_OD, ratios_OD, roted_configurations_OD, weights_OD, roted_coords_OD = get_P_l(
+            data, params, Points_OD, weights[3])
+        output_OA = jnp.sum(jnp.array(pseudopotential.P_l(cos_theta_OA, list_l=list_l)) * ratios_OA, axis=-1)
+        output_OB = jnp.sum(jnp.array(pseudopotential.P_l(cos_theta_OB, list_l=list_l)) * ratios_OB, axis=-1)
+        output_OC = jnp.sum(jnp.array(pseudopotential.P_l(cos_theta_OC, list_l=list_l)) * ratios_OC, axis=-1)
+        output_OD = jnp.sum(jnp.array(pseudopotential.P_l(cos_theta_OD, list_l=list_l)) * ratios_OD, axis=-1)
+
+        jax.debug.print("output_OA_shape:{}", output_OA.shape)
+        jax.debug.print("nonlocal_paras_shape:{}", nonlocal_parameters.shape)
+        OA_energy = multiply_test_parallel(output_OA, nonlocal_parameters)
+        OB_energy = multiply_test_parallel(output_OB, nonlocal_parameters)
+        OC_energy = multiply_test_parallel(output_OC, nonlocal_parameters)
+        OD_energy = multiply_test_parallel(output_OD, nonlocal_parameters)
+        jax.debug.print("OA_energy:{}", OA_energy.shape)
+        nonlocal_energy = jnp.sum(jnp.sum(jnp.sum(OA_energy + OB_energy + OC_energy + OD_energy, axis=0), axis=-1), axis=-1)
+        total_energy = local_pp_energy + nonlocal_energy
+        jax.debug.print("total_energy:{}", total_energy)
+        return output_OA, nonlocal_parameters
 
     return get_total_pp_energy
 
@@ -76,15 +113,39 @@ get_non_local_coe_test = pseudopotential.get_non_v_l(ndim=3,
                                                      non_local_coefficient=Non_local_coes,
                                                      non_local_exponent=Non_local_exps)
 
+generate_points_information_test = pseudopotential.get_P_l(nelectrons=16,
+                                                           natoms=3,
+                                                           ndim=3,
+                                                           log_network_inner=lognetwork)
+
+
+key = jax.random.PRNGKey(1)
+key, subkey = jax.random.split(key)
+Points_OA, Points_OB, Points_OC, Points_OD, weights = pseudopotential.get_rot(batch_size=4, key=subkey)
+Points_OA = Points_OA[None, ...]
+Points_OB = Points_OB[None, ...]
+Points_OC = Points_OC[None, ...]
+Points_OD = Points_OD[None, ...]
+jax.debug.print("Points_OA_shape:{}", Points_OA.shape)
 total_energy_function_test = total_energy_pseudopotential(get_local_pp_energy=get_local_part_energy_test,
                                                           get_nonlocal_pp_coes=get_non_local_coe_test,
+                                                          get_P_l=generate_points_information_test,
+                                                          log_network=lognetwork,
                                                           nelectrons=16,
                                                           natoms=3,
                                                           ndim=3,
                                                           list_l=2,
-                                                          batch_size=4)
-total_energy_function_test_parallel = jax.pmap(jax.vmap(total_energy_function_test))
-output = total_energy_function_test_parallel(data)
+                                                          batch_size=4,
+                                                          key=key)
+
+total_energy_function_test_parallel = jax.pmap(jax.vmap(total_energy_function_test,
+                                                        in_axes=(
+                                                            nn.AINetData(positions=0, atoms=0, charges=0),
+                                                            None, 0, 0, 0, 0)))
+
+output_OA, nonlocal_parameters = total_energy_function_test_parallel(data, batch_params, Points_OA, Points_OB, Points_OC, Points_OD)
+#jax.debug.print("output_OA_shape:{}", output_OA.shape)
+#jax.debug.print("nonlocal_paras_shape:{}", nonlocal_parameters.shape)
 '''
 get_local_part_energy_test = local_energy(nelectrons=16,
                                       natoms=3,

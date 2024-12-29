@@ -39,7 +39,7 @@ The above method could be applied in the nonlcoal part. However, with higher ang
 we have to change the parallel mechanism.
 now, we need think about how to implement the P_l functions efficiently.
 """
-'''
+
 symbol = ['Ge', 'Si', 'O']
 Rn_local = jnp.array([[1.0, 3.0, 2.0, 2.0], [1.0, 3.0, 2.0, 0.0], [1.0, 3.0, 2.0, 0.0]])
 Rn_non_local = jnp.array([[[2.0, 2.0], [2.0, 2.0], [2.0, 2.0]],
@@ -57,7 +57,7 @@ Non_local_coes = jnp.array([[[43.265429324814, -1.909339873965], [35.26301414121
 Non_local_exps = jnp.array([[[2.894473589836, 1.550339816290], [2.986528872039, 1.283381203893], [1.043001142249, 0.554562729807]],
                             [[9.447023,       2.553812],       [3.660001,       1.903653],       [0,              0]],
                             [[13.65512,        0],             [0,              0],              [0,              0]]])
-'''
+
 
 def get_v_l(data: nn.AINetData, rn_local: jnp.array, local_coefficient: jnp.array, local_exponent: jnp.array,):
     """calculate the local part of pseudopotential energy.
@@ -209,8 +209,9 @@ def get_P_l(data: nn.AINetData, params: nn.ParamTree, Points: jnp.array, weights
         return r_ae * Points
 
     rot_coords_parallel = jax.vmap(jax.vmap(rot_coords_single, in_axes=(0, None), out_axes=0), in_axes=(0, None), out_axes=0)
-    roted_coords = rot_coords_parallel(r_ae, Points)
 
+    roted_coords = rot_coords_parallel(r_ae, Points)
+    jax.debug.print("roted_coords:{}", roted_coords.shape)
     def calculate_cos_theta_single(ae: jnp.array, roted_coords: jnp.array):
         return jnp.sum(ae * roted_coords, axis=-1)/(jnp.linalg.norm(ae) * jnp.linalg.norm(roted_coords))
 
@@ -283,9 +284,9 @@ def total_energy_pseudopotential(data: nn.AINetData, params: nn.ParamTree, rn_lo
     output_OC = jnp.sum(jnp.array(P_l(cos_theta_OC, list_l=list_l)) * ratios_OC, axis=-1)
     output_OD = jnp.sum(jnp.array(P_l(cos_theta_OD, list_l=list_l)) * ratios_OD, axis=-1)
     #jax.debug.print("output_OA:{}", output_OA)
-    #jax.debug.print("output_OA_shape:{}", output_OA.shape)
+    jax.debug.print("output_OA_shape:{}", output_OA.shape)
     #jax.debug.print("nonlocal_parameters:{}", nonlocal_parameters)
-    #jax.debug.print("nonlocal_parameters_shape:{}", nonlocal_parameters.shape)
+    jax.debug.print("nonlocal_parameters_shape:{}", nonlocal_parameters.shape)
     "now, the problem is the mismatch between two arrays. 6.12.2024."
 
     def multiply_test(a: jnp.array, b: jnp.array):
@@ -298,12 +299,12 @@ def total_energy_pseudopotential(data: nn.AINetData, params: nn.ParamTree, rn_lo
     OC_energy = multiply_test_parallel(output_OC, nonlocal_parameters)
     OD_energy = multiply_test_parallel(output_OD, nonlocal_parameters)
     """dimension of output: angular momentum, 1, batch_size, nelectrons, natoms"""
-    #jax.debug.print("OA_energy:{}", OA_energy.shape)
+    jax.debug.print("OA_energy:{}", OA_energy.shape)
     #jax.debug.print("OB_energy:{}", OB_energy.shape)
     #jax.debug.print("OC_energy:{}", OC_energy.shape)
     #jax.debug.print("OD_energy:{}", OD_energy.shape)
     nonlocal_energy = jnp.sum(jnp.sum(jnp.sum(OA_energy + OB_energy + OC_energy + OD_energy, axis=0), axis=-1), axis=-1)
-    #jax.debug.print("nonlocal_energy_shape:{}", nonlocal_energy.shape)
+    jax.debug.print("nonlocal_energy_shape:{}", nonlocal_energy.shape)
     #jax.debug.print("local_part_energy_shape:{}", local_part_energy.shape)
     total_energy = local_part_energy + nonlocal_energy
     #jax.debug.print("total_energy:{}", total_energy)
@@ -313,7 +314,7 @@ def total_energy_pseudopotential(data: nn.AINetData, params: nn.ParamTree, rn_lo
 
 
 
-'''
+
 total_energy, ratios_OA, ratios_OB, ratios_OC, ratios_OD, cos_theta_OA, cos_theta_OB, cos_theta_OC, cos_theta_OD = \
     total_energy_pseudopotential(data=data, params=params,
                                  rn_local_general=Rn_local,
@@ -322,4 +323,3 @@ total_energy, ratios_OA, ratios_OB, ratios_OC, ratios_OD, cos_theta_OA, cos_thet
                                  nonlocal_coefficient_general=Non_local_coes,
                                  local_exponent_general=Local_exps,
                                  nonlocal_exponent_general=Non_local_exps, nelectrons=16, natoms=3, list_l=2, batch_size=4)
-'''
