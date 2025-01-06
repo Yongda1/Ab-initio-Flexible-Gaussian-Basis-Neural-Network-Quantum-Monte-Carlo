@@ -75,12 +75,12 @@ class NonlocalPPcoes(Protocol):
     def __call__(self, data: nn.AINetData) -> jnp.array:
         """Returns the nonlocal coes of a hamiltonian at a configuration."""
 
-
+'''
 class NonlocalPPPoints(Protocol):
     def __call__(self, data: nn.AINetData, params: nn.ParamTree, Points: jnp.array, weights: float) \
-            -> Tuple[jnp.array, jnp.array, jnp.array, jnp.array, jnp.array]:
+            -> jnp.array, jnp.array, jnp.array, jnp.array, jnp.array:
         """Return the spherical integration points information"""
-
+'''
 
 def local_pp_energy(nelectrons: int,
                     natoms: int,
@@ -172,12 +172,41 @@ get_non_local_coe_test_parallel = jax.vmap(get_non_local_coe_test,
 def generate_quadrature_grids():
     """generate quadrature grids from Mitas, Shirley, and Ceperley."""
     """Generate in Cartesian grids for octahedral symmetry.
-    We are not going to give more options for users, so just default 50 integration points."""
+    We are not going to give more options for users, so just default 50 integration points.
+    One problem, this function cannot run in jit."""
+    '''
     octpts = jnp.mgrid[-1:2, -1:2, -1:2].reshape(3, -1).T
+    jax.debug.print("octpts:{}", octpts)
     nonzero_count = jnp.count_nonzero(octpts, axis=1)
     OA = octpts[nonzero_count == 1]
     OB = octpts[nonzero_count == 2] / jnp.sqrt(2)
     OC = octpts[nonzero_count == 3] / jnp.sqrt(3)
+    jax.debug.print("OA:{}", OA)
+    jax.debug.print("OB:{}", OB)
+    jax.debug.print("OC:{}", OC)
+    '''
+    OA = jnp.array([[-1, 0, 0], [0, -1, 0], [0, 0, -1], [0, 0, 1], [0, 1, 0], [1, 0, 0]])
+    OB = jnp.array([[-0.70710678, -0.70710678, 0.],
+                    [-0.70710678,  0.        , -0.70710678],
+                    [-0.70710678,  0.        ,  0.70710678],
+                    [-0.70710678,  0.70710678,  0.        ],
+                    [ 0.        , -0.70710678, -0.70710678],
+                    [ 0.        , -0.70710678,  0.70710678],
+                    [ 0.        ,  0.70710678, -0.70710678],
+                    [ 0.        ,  0.70710678,  0.70710678],
+                    [ 0.70710678, -0.70710678,  0.        ],
+                    [ 0.70710678,  0.        , -0.70710678],
+                    [ 0.70710678,  0.        ,  0.70710678],
+                    [ 0.70710678,  0.70710678,  0.        ]])
+    OC = jnp.array([[-0.57735027, -0.57735027, -0.57735027],
+                    [-0.57735027, -0.57735027, 0.57735027],
+                    [-0.57735027,  0.57735027, -0.57735027],
+                    [-0.57735027,  0.57735027,  0.57735027],
+                    [ 0.57735027, -0.57735027, -0.57735027],
+                    [ 0.57735027, -0.57735027,  0.57735027],
+                    [ 0.57735027,  0.57735027, -0.57735027],
+                    [ 0.57735027,  0.57735027,  0.57735027]])
+
     d1 = OC * jnp.sqrt(3 / 11)
     OD1 = jnp.transpose(jnp.concatenate((jnp.reshape(d1[:, 0], (1, -1)), jnp.reshape(d1[:, 1], (1, -1)), jnp.reshape(d1[:, 2] * 3, (1, -1))), axis=0))
     OD2 = jnp.transpose(jnp.concatenate((jnp.reshape(d1[:, 0], (1, -1)), jnp.reshape(d1[:, 1] * 3, (1, -1)), jnp.reshape(d1[:, 2], (1, -1))), axis=0))
@@ -186,9 +215,11 @@ def generate_quadrature_grids():
     weights = jnp.array([[4/315], [64/2835], [27/1280], [14641/725760]])
     return OA, OB, OC, OD, weights
 
+'''
+output2 = generate_quadrature_grids()
+jax.debug.print("output2:{}", output2)
+'''
 
-#output2 = generate_quadrature_grids()
-#jax.debug.print("output2:{}", output2)
 
 def get_rot(batch_size: int, key: chex.PRNGKey):
     key, subkey = jax.random.split(key)
@@ -200,6 +231,12 @@ def get_rot(batch_size: int, key: chex.PRNGKey):
     Points_OD = jnp.einsum('jkl,ik->jil', rot, OD,)
     return Points_OA, Points_OB, Points_OC, Points_OD, weights
 
+'''
+key = jax.random.PRNGKey(1)
+key, subkey = jax.random.split(key)
+Points_OA, Points_OB, Points_OC, Points_OD, weights = get_rot(1, key=key)
+jax.debug.print("Points_OA:{}", Points_OA)
+'''
 
 def P_l(x, list_l: float):
     """
@@ -218,12 +255,10 @@ def P_l(x, list_l: float):
         return jnp.ones(x.shape), x, 0.5 * (3 * x * x - 1), 0.5 * (5 * x * x * x - 3 * x)
 
 
-def get_P_l(nelectrons: int, natoms: int, ndim: int, log_network_inner: nn.AINetLike) -> NonlocalPPPoints:
+def get_P_l(nelectrons: int, natoms: int, ndim: int, log_network_inner: nn.AINetLike):
     """currently, we apply CO2 molecular into the codes. So, we need debug this part again."""
 
     def rot_coords_single(r_ae_inner: jnp.array, Points_inner: jnp.array):
-        #jax.debug.print("Points_inner_shape:{}", Points_inner.shape)
-        #jax.debug.print("r_ae_inner:{}", r_ae_inner)
         return r_ae_inner * Points_inner
 
     rot_coords_parallel = jax.vmap(jax.vmap(rot_coords_single, in_axes=(0, None), out_axes=0), in_axes=(0, None),
@@ -257,18 +292,17 @@ def get_P_l(nelectrons: int, natoms: int, ndim: int, log_network_inner: nn.AINet
         ae = jnp.reshape(data.positions, [-1, 1, ndim]) - data.atoms[None, ...]
         r_ae = jnp.linalg.norm(ae, axis=-1)
         r_ae = jnp.reshape(r_ae, (nelectrons, natoms, 1))
-        jax.debug.print("r_ae:{}", r_ae)
         denominator = log_network_inner(params, data.positions, data.atoms, data.charges)
         roted_coords = rot_coords_parallel(r_ae, Points)
-        jax.debug.print("roted_coords:{}", roted_coords.shape)
         cos_theta = calculate_cos_theta_parallel(ae, roted_coords)
         order = jnp.arange(0, nelectrons, step=1)
         x1 = data.positions
         x2 = jnp.reshape(x1, (nelectrons, ndim))
-        #jax.debug.print("x2:{}", x2)
         roted_configurations = return_arrays_parallel(x2, roted_coords, order)
         roted_wavefunciton_value = batch_lognetwork(params, roted_configurations, data.atoms, data.charges)
+        #jax.debug.print("denominator:{}", denominator)
         ratios = roted_wavefunciton_value / denominator * weights
+
         return cos_theta, ratios, roted_configurations, weights, roted_coords
     return generate_points_information
 
