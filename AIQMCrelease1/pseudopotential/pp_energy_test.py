@@ -45,13 +45,7 @@ key, subkey = jax.random.split(key)
 def total_energy_pseudopotential(get_local_pp_energy: pseudopotential.LocalPPEnergy,
                                  get_nonlocal_pp_coes: pseudopotential.NonlocalPPcoes,
                                  get_P_l,
-                                 log_network: nn.AINetLike,
-                                 nelectrons: int,
-                                 natoms: int,
-                                 ndim: int,
-                                 list_l: int,
-                                 batch_size: int,
-                                 key: chex.PRNGKey,):
+                                 list_l: int,):
     """This function caluclates the energy of pseudopotential.
     For the pp of C and O, only l=0 contributes to the nonlocal part.
     we have more problems here. If all atoms have the same shape of the pp parameters, it is ok.
@@ -62,14 +56,15 @@ def total_energy_pseudopotential(get_local_pp_energy: pseudopotential.LocalPPEne
 
     """here, 4 is the number of points."""
     multiply_test_parallel = jax.vmap(multiply_test, in_axes=(0, 2), out_axes=0)
-    Points_OA, Points_OB, Points_OC, Points_OD, weights = pseudopotential.get_rot(batch_size=1, key=key)#we have to set batch_size=1 here.
     get_P_l_parallel = jax.vmap(get_P_l, in_axes=(None, None, 0, None))
 
-    def get_total_pp_energy(data: nn.AINetData,
-                            params: nn.ParamTree):
+    def get_total_pp_energy(params: nn.ParamTree, key: chex.PRNGKey, data: nn.AINetData,):
         local_pp_energy = get_local_pp_energy(data)
         local_pp_energy = jnp.sum(jnp.sum(local_pp_energy, axis=-1), axis=-1)
         nonlocal_parameters = get_nonlocal_pp_coes(data)
+        """we have to set batch_size=1 here."""
+        Points_OA, Points_OB, Points_OC, Points_OD, weights = pseudopotential.get_rot(batch_size=1,
+                                                                                      key=key)
         cos_theta_OA, ratios_OA, roted_configurations_OA, weights_OA, roted_coords_OA = get_P_l_parallel(
             data, params, Points_OA, weights[0])
         cos_theta_OB, ratios_OB, roted_configurations_OB, weights_OB, roted_coords_OB = get_P_l_parallel(

@@ -148,13 +148,11 @@ def local_energy(signed_network: nn.AINetLike,
                                                                natoms=natoms,
                                                                ndim=ndim,
                                                                log_network_inner=abslognetwork)
-
-
-
-    #total_energy_function_test_parallel = jax.pmap(jax.vmap(total_energy_function_test,
-    #                                                        in_axes=(
-    #                                                            nn.AINetData(positions=0, atoms=0, charges=0),
-    #                                                            None,)))
+    total_energy_function_test = pp_energy_test.total_energy_pseudopotential(
+        get_local_pp_energy=get_local_part_energy_test,
+        get_nonlocal_pp_coes=get_non_local_coe_test,
+        get_P_l=generate_points_information_test,
+        list_l=2)
 
     def _e_l(params: nn.ParamTree, key: chex.PRNGKey, data: nn.AINetData) -> Tuple[jnp.array, Optional[jnp.array]]:
         """after we change the parallel, we also need rewrite this part. we will solve this later, 31.10.2024.
@@ -170,18 +168,7 @@ def local_energy(signed_network: nn.AINetLike,
         kinetic = lap_over_f(params, data)
         potential_ee = potential_electron_electron(r_ee)
         """we need improve this function.make it be static as well."""
-        total_energy_function_test = pp_energy_test.total_energy_pseudopotential(
-            get_local_pp_energy=get_local_part_energy_test,
-            get_nonlocal_pp_coes=get_non_local_coe_test,
-            get_P_l=generate_points_information_test,
-            log_network=abslognetwork,
-            nelectrons=nelectrons,
-            natoms=natoms,
-            ndim=ndim,
-            list_l=2,
-            batch_size=4,
-            key=key)
-        pp_energy_value = total_energy_function_test(data, params)
+        pp_energy_value = total_energy_function_test(params, key, data)
         """maybe we could generate the integration points here. Just before the pp energy calculation."""
         potential_ae = potential_electron_nuclear(r_ae, charges=data.charges)
         potential_aa = potential_nuclear_nuclear(charges=data.charges, atoms=data.atoms)
