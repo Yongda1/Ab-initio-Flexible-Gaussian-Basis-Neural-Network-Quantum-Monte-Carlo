@@ -45,17 +45,18 @@ key, subkey = jax.random.split(key)
 def total_energy_pseudopotential(get_local_pp_energy: pseudopotential.LocalPPEnergy,
                                  get_nonlocal_pp_coes: pseudopotential.NonlocalPPcoes,
                                  get_P_l,
-                                 list_l: int,):
+                                 list_l: int):
     """This function caluclates the energy of pseudopotential.
     For the pp of C and O, only l=0 contributes to the nonlocal part.
     we have more problems here. If all atoms have the same shape of the pp parameters, it is ok.
-    But if one of the atoms has higher angular momentum functions, I don't know how to do it efficiently."""
+    But if one of the atoms has higher angular momentum functions, I don't know how to do it efficiently.
+    we need debug this function carefully. 7.1.2025."""
 
     def multiply_test(a: jnp.array, b: jnp.array):
         return a * b
 
     """here, 4 is the number of points."""
-    multiply_test_parallel = jax.vmap(multiply_test, in_axes=(0, 2), out_axes=0)
+    multiply_test_parallel = jax.vmap(multiply_test, in_axes=(0, 1), out_axes=0)
     get_P_l_parallel = jax.vmap(get_P_l, in_axes=(None, None, 0, None))
 
     def get_total_pp_energy(params: nn.ParamTree, key: chex.PRNGKey, data: nn.AINetData,):
@@ -79,6 +80,9 @@ def total_energy_pseudopotential(get_local_pp_energy: pseudopotential.LocalPPEne
         output_OD = jnp.sum(jnp.array(pseudopotential.P_l(cos_theta_OD, list_l=list_l)) * ratios_OD, axis=-1)
         #jax.debug.print("output_OA_shape:{}", output_OA.shape)
         #jax.debug.print("nonlocal_paras_shape:{}", nonlocal_parameters.shape)
+        jax.debug.print("output_OA:{}", output_OA.shape)
+        jax.debug.print("nonlocal_parameters:{}", nonlocal_parameters.shape)
+
         OA_energy = multiply_test_parallel(output_OA, nonlocal_parameters)
         OB_energy = multiply_test_parallel(output_OB, nonlocal_parameters)
         OC_energy = multiply_test_parallel(output_OC, nonlocal_parameters)

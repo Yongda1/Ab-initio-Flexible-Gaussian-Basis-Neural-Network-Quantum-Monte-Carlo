@@ -16,7 +16,7 @@ import chex
 from AIQMCrelease1.MonteCarloSample import mcstep
 from AIQMCbatch3adm import loss as qmc_loss_functions
 from AIQMCbatch3adm import constants
-from AIQMCbatch3adm import hamiltonian
+from AIQMCrelease1.Energy import hamiltonian
 from AIQMCbatch3adm import curvature_tags_and_blocks
 import functools
 
@@ -110,6 +110,12 @@ def main(atoms: jnp.array,
          batch_size: int,
          iterations: int,
          structure: jnp.array,
+         Rn_local: jnp.array,
+         Local_coes: jnp.array,
+         Local_exps: jnp.array,
+         Rn_non_local: jnp.array,
+         Non_local_coes: jnp.array,
+         Non_local_exps: jnp.array,
          ):
     print("Quantum Monte Carlo Start running")
     num_devices = jax.local_device_count() #the amount of GPU per host
@@ -177,7 +183,19 @@ def main(atoms: jnp.array,
     """to be continued...24.12.2024."""
 
     """we need add the pseudopotential module into the hamiltonian module."""
-    #localenergy = hamiltonian.local_energy(f=signed_network, batch_size=batch_size, natoms=natoms, nelectrons=nelectrons)
+    """be aware of the list_l, this variable means the angular momentum function max indice in pseudopotential file.7.1.2025."""
+    localenergy = hamiltonian.local_energy(signed_network=signed_network,
+                                           abslognetwork=log_network,
+                                           Rn_local=Rn_local,
+                                           Local_coes=Local_coes,
+                                           Local_exps=Local_exps,
+                                           Rn_non_local=Rn_non_local,
+                                           Non_local_coes=Non_local_coes,
+                                           Non_local_exps=Non_local_exps,
+                                           natoms=natoms,
+                                           nelectrons=nelectrons,
+                                           ndim=ndim,
+                                           list_l=0)
     '''
     """so far, we have not constructed the pp module. Currently, we only execute all electrons calculation.  """
     evaluate_loss = qmc_loss_functions.make_loss(log_network, local_energy=localenergy)
