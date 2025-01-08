@@ -134,6 +134,11 @@ def local_energy(signed_network: nn.AINetLike,
         potential_ae = potential_electron_nuclear(r_ae, charges=data.charges)
         potential_aa = potential_nuclear_nuclear(charges=data.charges, atoms=data.atoms)
         total_energy = kinetic + potential_ee + potential_aa + potential_ae
+        jax.debug.print("kinetic energy:{}", kinetic)
+        """we need debug the potential energy part. 8.1.2025."""
+        jax.debug.print("potential_energy:{}", potential_aa)
+        jax.debug.print("potential_ee:{}", potential_ee)
+        jax.debug.print("potential_ae:{}", potential_ae)
         energy_mat = None
         return total_energy, energy_mat
 

@@ -349,11 +349,11 @@ def make_kfac_training_step(
 
     # Optimization step
     jax.debug.print("-------------------")
-    jax.debug.print("params:{}", params)
-    jax.debug.print("old_data:{}", data)
-    jax.debug.print("loss_keys:{}", loss_keys)
-    jax.debug.print("shared_mom:{}", shared_mom)
-    jax.debug.print("shared_damping:{}", shared_damping)
+    #jax.debug.print("params:{}", params)
+    #jax.debug.print("old_data:{}", data)
+    #jax.debug.print("loss_keys:{}", loss_keys)
+    #jax.debug.print("shared_mom:{}", shared_mom)
+    #jax.debug.print("shared_damping:{}", shared_damping)
     jax.debug.print("--------------------")
     new_params, new_state, stats = optimizer.step(
         params=params,
@@ -363,7 +363,7 @@ def make_kfac_training_step(
         momentum=shared_mom,
         damping=shared_damping,
     )
-    jax.debug.print("new_params:{}", new_params)
+    #jax.debug.print("new_params:{}", new_params)
     if reset_if_nan and jnp.isnan(stats['loss']):
       new_params = old_params
       new_state = old_state
@@ -857,8 +857,8 @@ def train(cfg: ml_collections.ConfigDict, writer_manager=None):
     num_resets = 0  # used if reset_if_nan is true
     for t in range(t_init, cfg.optim.iterations):
       sharded_key, subkeys = kfac_jax.utils.p_split(sharded_key)
-      jax.debug.print("subkeys:{}", subkeys)
-      jax.debug.print("data_input:{}", data)
+      #jax.debug.print("subkeys:{}", subkeys)
+      #jax.debug.print("data_input:{}", data)
       data, params, opt_state, loss, aux_data, pmove = step(
           data,
           params,

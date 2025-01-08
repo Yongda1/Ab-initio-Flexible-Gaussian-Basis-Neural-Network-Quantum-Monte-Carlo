@@ -1006,7 +1006,7 @@ def make_fermi_net_layers(
       h_elec_ion = None
 
     h_one = ae_features  # single-electron features
-    jax.debug.print("h_one:{}", h_one)
+    #jax.debug.print("h_one:{}", h_one)
 
     if options.separate_spin_channels:
       # Use the same stream for spin-parallel and spin-antiparallel electrons.
@@ -1020,7 +1020,7 @@ def make_fermi_net_layers(
       # construct_symmetric_features simple.
       # Shape: (nelectron, nelectron, nfeatures)
       h_two = [ee_features]
-    jax.debug.print("h_two:{}", h_two)
+    #jax.debug.print("h_two:{}", h_two)
     if options.nuclear_embedding_dim:
       nuclear_embedding = network_blocks.linear_layer(
           charges[:, None], **params['nuclear']
@@ -1172,8 +1172,8 @@ def make_orbitals(
       nalpha+nbeta) (or (ndet, nalpha, nalpha) and (ndet, nbeta, nbeta)).
     """
     ae, ee, r_ae, r_ee = construct_input_features(pos, atoms, ndim=options.ndim)
-    jax.debug.print("ae:{}", ae)
-    jax.debug.print("ee:{}", ee)
+    #jax.debug.print("ae:{}", ae)
+    #jax.debug.print("ee:{}", ee)
     h_to_orbitals = equivariant_layers_apply(
         params['layers'],
         ae=ae,

@@ -274,8 +274,11 @@ def potential_energy(r_ae: Array, r_ee: Array, atoms: Array,
     atoms: Shape (natoms, ndim). Positions of the atoms.
     charges: Shape (natoms). Nuclear charges of the atoms.
   """
-  jax.debug.print("r_ae:{}", r_ae)
-  jax.debug.print("r_ee:{}", r_ee)
+  #jax.debug.print("r_ae:{}", r_ae)
+  #jax.debug.print("r_ee:{}", r_ee)
+  jax.debug.print("potential_nuclear_nuclear:{}", potential_nuclear_nuclear(charges, atoms))
+  jax.debug.print("potential_electron_electron:{}", potential_electron_electron(r_ee))
+  jax.debug.print(" potential_electron_nuclear:{}", potential_electron_nuclear(charges, r_ae))
   return (potential_electron_electron(r_ee) +
           potential_electron_nuclear(charges, r_ae) +
           potential_nuclear_nuclear(charges, atoms))

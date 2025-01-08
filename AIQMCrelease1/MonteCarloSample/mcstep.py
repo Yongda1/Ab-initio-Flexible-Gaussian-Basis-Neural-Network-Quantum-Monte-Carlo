@@ -97,11 +97,17 @@ def generate_batch_key(batch_size: int):
     return get_keys
 
 
-def main_monte_carlo(f: nn.AINetLike, key: chex.PRNGKey, params: nn.ParamTree, batch_size: int,):
+def main_monte_carlo(f: nn.AINetLike,
+                     key: chex.PRNGKey,
+                     params: nn.ParamTree,
+                     batch_size: int,
+                     tstep: float,
+                     ndim: int,
+                     nelectrons: int):
     """create mont carlo sample loop. One loop is used here. However, we should circumvent it. Later, we optimize it."""
     generate_keys = generate_batch_key(batch_size=batch_size)
     generate_keys_parallel = jax.pmap(generate_keys)
-    mc = monte_carlo(logwavefunction=f, tstep=0.1, ndim=3, nelectrons=16)
+    mc = monte_carlo(logwavefunction=f, tstep=tstep, ndim=ndim, nelectrons=nelectrons)
     mc_parallel = jax.pmap(jax.vmap(mc, in_axes=(None, 0, 0)))
 
     def mc_step(nsteps: int, data: nn.AINetData):

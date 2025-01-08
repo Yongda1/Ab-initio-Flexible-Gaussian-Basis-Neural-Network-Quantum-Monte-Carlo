@@ -182,6 +182,7 @@ def make_orbitals(natoms: int,
                   num_angular: int,
                   n_parallel: int,
                   n_antiparallel: int,
+                  charges: jnp.array,
                   parallel_indices: jnp.array,
                   antiparallel_indices: jnp.array,
                   equivariant_layers: Tuple[InitLayersFn, ApplyLayersFn],) -> ...:
@@ -198,7 +199,7 @@ def make_orbitals(natoms: int,
         dims_orbital_in, params['layers'] = equivariant_layers_init(subkey)
         output_dims = dims_orbital_in
         params['envelope'] = envelope.init(natoms=natoms, nelectrons=nelectrons)
-        params['jastrow_ae'] = jastrow_ae_init(nelectron=nelectrons, charges=jnp.array([4, 6, 6]))
+        params['jastrow_ae'] = jastrow_ae_init(nelectron=nelectrons, charges=charges)
         params['jastrow_ee'] = jastrow_ee_init(n_parallel=n_parallel, n_antiparallel=n_antiparallel)
         orbitals = []
         diffuse_coefficients = []
@@ -239,7 +240,7 @@ def make_orbitals(natoms: int,
                                            parallel_indices=parallel_indices,
                                            antiparallel_indices=antiparallel_indices,
                                            params=params['jastrow_ee'])/nelectrons)
-        wave_function = jastrow*orbitals_end
+        wave_function = jastrow * orbitals_end
         return wave_function
 
     return init, apply
@@ -264,6 +265,7 @@ def make_ai_net(ndim: int,
                                                   num_angular=num_angular,
                                                   n_parallel=n_parallel,
                                                   n_antiparallel=n_antiparallel,
+                                                  charges=charges,
                                                   parallel_indices=parallel_indices,
                                                   antiparallel_indices=antiparallel_indices,
                                                   equivariant_layers=equivariant_layers)
