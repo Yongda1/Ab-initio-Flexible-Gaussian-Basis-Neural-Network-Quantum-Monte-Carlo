@@ -4,20 +4,20 @@
 import time
 from typing import Optional, Tuple, Union
 from absl import logging
-from AIQMCrelease1.wavefunction import nn
+import chex
 import jax
-import numpy as np
-from jax.experimental import multihost_utils
-import jax.numpy as jnp
 import kfac_jax
 import optax
+import numpy as np
+import jax.numpy as jnp
 from typing_extensions import Protocol
-import chex
+from jax.experimental import multihost_utils
+from AIQMCrelease1.wavefunction import nn
 from AIQMCrelease1.MonteCarloSample import mcstep
-from AIQMCbatch3adm import loss as qmc_loss_functions
-from AIQMCbatch3adm import constants
-from AIQMCrelease1.Energy import hamiltonian
-from AIQMCbatch3adm import curvature_tags_and_blocks
+from AIQMCrelease1.Loss import pploss as qmc_loss_functions
+from AIQMCrelease1 import constants
+from AIQMCrelease1.Energy import pphamiltonian
+from AIQMCrelease1 import curvature_tags_and_blocks
 import functools
 
 
@@ -87,15 +87,14 @@ def make_opt_update_step(evaluate_loss: qmc_loss_functions.LossAINet, optimizer:
     return opt_update
 
 
-def make_training_step(mcmcstep, optimizer_step: OptUpdate) -> Step:
+def make_training_step(optimizer_step: OptUpdate) -> Step:
 
-    @functools.partial(constants.pmap, donate_argnums=(0, 2))
+    @functools.partial(constants.pmap, donate_argnums=(2))
     def step(data: nn.AINetData,
              params: nn.ParamTree,
              state: Optional[optax.OptState],
              key: chex.PRNGKey,) -> StepResults:
         mcmc_key, loss_key = jax.random.split(key, num=2)
-        data = mcmcstep(params, data, mcmc_key)
         new_params, new_state, loss, aux_data = optimizer_step(params, data, state, loss_key)
         return data, new_params, new_state, loss, aux_data
     return step
@@ -184,24 +183,23 @@ def main(atoms: jnp.array,
 
     """we need add the pseudopotential module into the hamiltonian module."""
     """be aware of the list_l, this variable means the angular momentum function max indice in pseudopotential file.7.1.2025."""
-    localenergy = hamiltonian.local_energy(signed_network=signed_network,
-                                           abslognetwork=log_network,
-                                           Rn_local=Rn_local,
-                                           Local_coes=Local_coes,
-                                           Local_exps=Local_exps,
-                                           Rn_non_local=Rn_non_local,
-                                           Non_local_coes=Non_local_coes,
-                                           Non_local_exps=Non_local_exps,
-                                           natoms=natoms,
-                                           nelectrons=nelectrons,
-                                           ndim=ndim,
-                                           list_l=0)
-    '''
+    localenergy = pphamiltonian.local_energy(signed_network=signed_network,
+                                             lognetwork=log_network,
+                                             rn_local=Rn_local,
+                                             local_coes=Local_coes,
+                                             local_exps=Local_exps,
+                                             rn_non_local=Rn_non_local,
+                                             non_local_coes=Non_local_coes,
+                                             non_local_exps=Non_local_exps,
+                                             natoms=natoms,
+                                             nelectrons=nelectrons,
+                                             ndim=ndim,
+                                             list_l=0)
+
     """so far, we have not constructed the pp module. Currently, we only execute all electrons calculation.  """
     evaluate_loss = qmc_loss_functions.make_loss(log_network, local_energy=localenergy)
     """18.10.2024, we will continue later."""
 
-    #we have some problems about kfac optimizer. We dont understand the mechanism behind it. Leave more time for it.
     def learning_rate_schedule(t_: jnp.array, rate=0.05, delay=1.0, decay=10000) -> jnp.array:
         return rate * jnp.power(1.0/(1.0 + (t_/delay)), decay)
 
@@ -211,25 +209,19 @@ def main(atoms: jnp.array,
                             optax.scale(-1.))
 
     opt_state = jax.pmap(optimizer.init)(params)
-    step = make_training_step(mcmcstep=mc_step, optimizer_step=make_opt_update_step(evaluate_loss, optimizer))
+    step = make_training_step(optimizer_step=make_opt_update_step(evaluate_loss, optimizer))
     sharded_key = kfac_jax.utils.make_different_rng_key_on_all_devices(key)
     sharded_key, subkeys = kfac_jax.utils.p_split(sharded_key)
-    
-    we comment on this part for the test of t-moves.
+
     """main training loop"""
     for t in range(0, iterations):
         sharded_key, subkeys = kfac_jax.utils.p_split(sharded_key)
-        jax.debug.print("data:{}", data)
-        jax.debug.print("params:{}", params)
-        jax.debug.print("opt_state:{}", opt_state)
-        jax.debug.print("subkeys:{}", subkeys)
+        data = mc_step(nsteps=50, data=data)
         data, params, opt_state, loss, aux_data, = step(data, params, opt_state, subkeys)
 
-    '''
-    return signed_network, data, params, log_network
+    #return signed_network, data, params, log_network
 
 
-'''
 structure = jnp.array([[10, 0, 0],
                        [0, 10, 0],
                        [0, 0, 10]])
@@ -237,12 +229,28 @@ Symbol = ['C', 'O', 'O']
 atoms = jnp.array([[1.33, 1.0, 1.0], [0.0, 1.0, 1.0], [2.66, 1.0, 1.0]])
 charges = jnp.array([4.0, 6.0, 6.0])
 spins = jnp.array([1.0, -1.0, 1.0, -1.0, 1.0, -1.0, 1.0, -1.0, 1.0, -1.0, 1.0, -1.0, 1.0, -1.0, 1.0, -1.0])
+Rn_local = jnp.array([[1.0, 3.0, 2.0], [1.0, 3.0, 2.0], [1.0, 3.0, 2.0]])
+Rn_non_local = jnp.array([[[2.0], [2.0], [2.0]]])
+Local_coes = jnp.array([[4.00000, 57.74008, -25.81955],
+                        [6.000000, 73.85984, -47.87600],
+                        [6.000000, 73.85984, -47.87600]])
+Local_exps = jnp.array([[14.43502, 8.39889, 7.38188],
+                        [12.30997, 14.76962, 13.71419],
+                        [12.30997, 14.76962, 13.71419]])
+Non_local_coes = jnp.array([[52.13345], [85.86406], [85.86406]])
+Non_local_exps = jnp.array([[7.76079], [13.65512], [13.65512]])
 output = main(atoms=atoms,
               charges=charges,
               spins=spins,
               nelectrons=16,
               natoms=3,
               ndim=3,
-              batch_size=4,
-              iterations=1,
-              structure=structure)'''
+              batch_size=100,
+              iterations=100,
+              structure=structure,
+              Rn_local=Rn_local,
+              Local_coes=Local_coes,
+              Local_exps=Local_exps,
+              Rn_non_local=Rn_non_local,
+              Non_local_coes=Non_local_coes,
+              Non_local_exps=Non_local_exps,)

@@ -78,19 +78,13 @@ def total_energy_pseudopotential(get_local_pp_energy: pseudopotential.LocalPPEne
         output_OB = jnp.sum(jnp.array(pseudopotential.P_l(cos_theta_OB, list_l=list_l)) * ratios_OB, axis=-1)
         output_OC = jnp.sum(jnp.array(pseudopotential.P_l(cos_theta_OC, list_l=list_l)) * ratios_OC, axis=-1)
         output_OD = jnp.sum(jnp.array(pseudopotential.P_l(cos_theta_OD, list_l=list_l)) * ratios_OD, axis=-1)
-        #jax.debug.print("output_OA_shape:{}", output_OA.shape)
-        #jax.debug.print("nonlocal_paras_shape:{}", nonlocal_parameters.shape)
-        jax.debug.print("output_OA:{}", output_OA.shape)
-        jax.debug.print("nonlocal_parameters:{}", nonlocal_parameters.shape)
-
         OA_energy = multiply_test_parallel(output_OA, nonlocal_parameters)
         OB_energy = multiply_test_parallel(output_OB, nonlocal_parameters)
         OC_energy = multiply_test_parallel(output_OC, nonlocal_parameters)
         OD_energy = multiply_test_parallel(output_OD, nonlocal_parameters)
-        #jax.debug.print("OA_energy:{}", OA_energy.shape)
         nonlocal_energy = jnp.sum(jnp.sum(jnp.sum(OA_energy + OB_energy + OC_energy + OD_energy, axis=0), axis=-1), axis=-1)
         total_energy = local_pp_energy + nonlocal_energy
-        jax.debug.print("total_energy:{}", total_energy)
+        #jax.debug.print("total_energy:{}", total_energy)
         return total_energy
 
     return get_total_pp_energy

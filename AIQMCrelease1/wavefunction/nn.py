@@ -286,6 +286,7 @@ def make_ai_net(ndim: int,
 
 
 """This part for debugging this module."""
+'''
 key = jax.random.PRNGKey(1)
 spins = jnp.array([1.0, -1.0, 1.0, -1.0, 1.0, -1.0])
 temp = jnp.reshape(spins, (6, 1)) #6 is the number of electrons.
@@ -319,3 +320,4 @@ network = make_ai_net(ndim=3,
 
 params = network.init(key)
 output = network.apply(params, pos, atoms, charges=jnp.array([4, 6, 6]))
+'''

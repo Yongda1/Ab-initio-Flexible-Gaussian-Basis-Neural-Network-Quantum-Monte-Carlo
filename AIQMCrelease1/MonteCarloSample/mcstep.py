@@ -3,11 +3,9 @@
 import chex
 from AIQMCrelease1.wavefunction import nn
 import jax
-from jax import lax
 from jax import numpy as jnp
-from AIQMCrelease1.main import main_adam
+#from AIQMCrelease1.main import main_adam
 from AIQMCrelease1.utils import utils
-import kfac_jax
 
 
 def limdrift(g, tau, acyrus):
@@ -113,7 +111,7 @@ def main_monte_carlo(f: nn.AINetLike, key: chex.PRNGKey, params: nn.ParamTree, b
             new_data, newkeys = mc_parallel(params, data, keys_batched)
             data = new_data
             keys_batched = newkeys
-            jax.debug.print("data:{}", data.positions)
+            #jax.debug.print("data:{}", data.positions)
         return data
 
     return mc_step
