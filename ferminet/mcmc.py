@@ -141,6 +141,7 @@ def mh_update(
 
     x1 = jnp.reshape(x1, [n, -1])
     x2 = jnp.reshape(x2, [n, -1])
+  jax.debug.print("ratio:{}", ratio)
   x_new, key, lp_new, num_accepts = mh_accept(
       x1, x2, lp_1, lp_2, ratio, key, num_accepts)
   new_data = networks.FermiNetData(**(dict(data) | {'positions': x_new}))
@@ -259,8 +260,8 @@ def make_mcmc_step(batch_network,
       updated RNG state and pmove the average probability a move was accepted.
     """
     pos = data.positions
-    jax.debug.print("***************")
-    jax.debug.print("pos:{}", pos)
+    #jax.debug.print("***************")
+    #jax.debug.print("pos:{}", pos)
     def step_fn(i, x):
       return inner_fun(
           params,
@@ -273,9 +274,9 @@ def make_mcmc_step(batch_network,
           i=i)
 
     nsteps = steps * blocks
-    jax.debug.print("-----------------")
-    jax.debug.print("data:{}", data)
-    jax.debug.print("-----------------")
+    #jax.debug.print("-----------------")
+    #jax.debug.print("data:{}", data)
+    #jax.debug.print("-----------------")
     logprob = 2.0 * batch_network(
         params, pos, data.spins, data.atoms, data.charges
     )

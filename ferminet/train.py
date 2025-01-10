@@ -500,6 +500,8 @@ def train(cfg: ml_collections.ConfigDict, writer_manager=None):
   key, subkey = jax.random.split(key)
   params = network.init(subkey)
   params = kfac_jax.utils.replicate_all_local_devices(params)
+  jax.debug.print("params:{}", params)
+
   signed_network = network.apply
   # Often just need log|psi(x)|.
   if cfg.system.get('states', 0):

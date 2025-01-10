@@ -1,3 +1,5 @@
+"""we test kfac for the all electrons' calculation here."""
+
 import time
 from typing import Optional, Tuple, Union
 from absl import logging
@@ -10,7 +12,7 @@ import jax.numpy as jnp
 from typing_extensions import Protocol
 from jax.experimental import multihost_utils
 from AIQMCrelease1.wavefunction import nn
-from AIQMCrelease1.MonteCarloSample import mcstep
+#from AIQMCrelease1.MonteCarloSample import mcstep
 from AIQMCrelease1.Loss import pploss as qmc_loss_functions
 from AIQMCrelease1 import constants
 from AIQMCrelease1.Energy import hamiltonian
@@ -60,8 +62,7 @@ class OptUpdate(Protocol):
         """Evaluates the loss and gradients and updates the parameters accordingly."""
 
 
-StepResults = Tuple[
-    nn.AINetData, nn.ParamTree, Optional[optax.OptState], jnp.ndarray, qmc_loss_functions.AuxiliaryLossData,]
+StepResults = Tuple[nn.ParamTree, Optional[optax.OptState], jnp.ndarray, qmc_loss_functions.AuxiliaryLossData,]
 
 
 class Step(Protocol):
@@ -69,35 +70,22 @@ class Step(Protocol):
             -> StepResults:
         """Performs one set of MCMC moves and an optimization step."""
 
-    """Returns an OptUpdate function for performing a parameter update.
-    So far ,we have not solved the spin configuration problem yet. But we got one more task about writing the loss function.
-    Let's go back to main.py 14.08.2024. We cannot finished all functions now. Because we need guarrante all input data format fixed and
-    Loss.py, hamiltonian.py, utils.py and pseudopotential.py form an entire part. So, next fews steps, we need move stepy by step."""
 
+def make_kfac_training_step(damping: float, optimizer: kfac_jax.Optimizer,) -> Step:
+    """Factory to create training step for Kfac optimizers."""
+    shared_mom = kfac_jax.utils.replicate_all_local_devices(jnp.zeros([]))
+    shared_damping = kfac_jax.utils.replicate_all_local_devices(jnp.asarray(damping))
 
-def make_opt_update_step(evaluate_loss: qmc_loss_functions.LossAINet,
-                         optimizer: optax.GradientTransformation) -> OptUpdate:
-    loss_and_grad = jax.value_and_grad(evaluate_loss, argnums=0, has_aux=True)
+    def step(data: nn.AINetData, params: nn.ParamTree, state: kfac_jax.Optimizer.State, key: chex.PRNGKey) \
+            -> StepResults:
 
-    def opt_update(params: nn.ParamTree, data: nn.AINetData, opt_state: Optional[optax.OptState],
-                   key: chex.PRNGKey) -> OptUpdateResults:
-        (loss, aux_data), grad = loss_and_grad(params, key, data)
-        updates, opt_state = optimizer.update(grad, opt_state, params)
-        params = optax.apply_updates(params, updates)
-        return params, opt_state, loss, aux_data
-
-    return opt_update
-
-
-def make_training_step(optimizer_step: OptUpdate) -> Step:
-    @functools.partial(constants.pmap, donate_argnums=(2))
-    def step(data: nn.AINetData,
-             params: nn.ParamTree,
-             state: Optional[optax.OptState],
-             key: chex.PRNGKey, ) -> StepResults:
-        mcmc_key, loss_key = jax.random.split(key, num=2)
-        new_params, new_state, loss, aux_data = optimizer_step(params, data, state, loss_key)
-        return data, new_params, new_state, loss, aux_data
+        mc_keys, loss_keys = kfac_jax.utils.p_split(key)
+        jax.debug.print("--------------------")
+        jax.debug.print("data:{}", data)
+        jax.debug.print("--------------------")
+        new_params, new_state, stats = optimizer.step(params=params, state=state, rng=loss_keys, batch=data,
+                                                      momentum=shared_mom, damping=shared_damping)
+        return new_params, new_state, stats['loss'], stats['aux']
 
     return step
 
@@ -166,21 +154,17 @@ def main(atoms: jnp.array,
     params = network.init(subkey)
     params = kfac_jax.utils.replicate_all_local_devices(params)
     signed_network = network.apply
-    #jax.debug.print("charges:{}", charges)
 
     def log_network(*args, **kwargs):
         phase, mag = signed_network(*args, **kwargs)
         return mag + 1.j * phase
 
     print('''--------------Main training-------------''')
-    """to be continued...21.12.2024"""
     print('''--------------Start Monte Carlo process------------''')
     sharded_key = kfac_jax.utils.make_different_rng_key_on_all_devices(key)
     sharded_key, subkeys = kfac_jax.utils.p_split(sharded_key)
+    '''
     mc_step = mcstep.main_monte_carlo(f=signed_network,
-                                      key=subkeys,
-                                      params=params,
-                                      batch_size=batch_size,
                                       tstep=tstep,
                                       ndim=ndim,
                                       nelectrons=nelectrons)
@@ -195,27 +179,47 @@ def main(atoms: jnp.array,
         nelectrons=nelectrons,
         ndim=ndim)
 
-    """so far, we have not constructed the pp module. Currently, we only execute all electrons calculation.  """
     evaluate_loss = qmc_loss_functions.make_loss(log_network, local_energy=localenergy)
-    """18.10.2024, we will continue later."""
 
     def learning_rate_schedule(t_: jnp.array, rate=0.05, delay=1.0, decay=10000) -> jnp.array:
-        return rate * jnp.power(1.0 / (1.0 + (t_ / delay)), decay)
+        return rate * jnp.power(1.0/(1.0 + (t_/delay)), decay)
 
-    """the setup of adam optimzier."""
-    optimizer = optax.chain(optax.scale_by_adam(b1=0.9, b2=0.999, eps=1.0e-9, eps_root=0.0),
-                            optax.scale_by_schedule(learning_rate_schedule),
-                            optax.scale(-1.))
+    val_and_grad = jax.value_and_grad(evaluate_loss, argnums=0, has_aux=True)
 
-    opt_state = jax.pmap(optimizer.init)(params)
-    step = make_training_step(optimizer_step=make_opt_update_step(evaluate_loss, optimizer))
+    optimizer = kfac_jax.Optimizer(
+        val_and_grad,
+        l2_reg=0.0,
+        norm_constraint=0.001,
+        value_func_has_aux=True,
+        value_func_has_rng=True,
+        learning_rate_schedule=learning_rate_schedule,
+        curvature_ema=0.95,
+        inverse_update_period=1,
+        min_damping=1.0e-4,
+        num_burnin_steps=0,
+        register_only_generic=False,
+        estimation_mode='fisher_exact',
+        multi_device=True,
+        pmap_axis_name=constants.PMAP_AXIS_NAME,
+        auto_register_kwargs=dict(graph_patterns=curvature_tags_and_blocks.GRAPH_PATTERNS)
+    )  # this line to be done!!! we need read the paper of Kfac.
+
     sharded_key = kfac_jax.utils.make_different_rng_key_on_all_devices(key)
     sharded_key, subkeys = kfac_jax.utils.p_split(sharded_key)
+    opt_state = optimizer.init(params=params, rng=subkeys, batch=data)
+    # jax.debug.print("opt_state:{}", opt_state)
+    """the default option is Kfac. It could be the problem of parallirization. 23.10.2024."""
+    if isinstance(optimizer, kfac_jax.Optimizer):
+        step_kfac = make_kfac_training_step(damping=0.001, optimizer=optimizer)
 
     """main training loop"""
     for t in range(0, iterations):
         sharded_key, subkeys = kfac_jax.utils.p_split(sharded_key)
-        data = mc_step(nsteps=50, data=data)
-        data, params, opt_state, loss, aux_data, = step(data, params, opt_state, subkeys)
-
-    # return signed_network, data, params, log_network
+        data = mc_step(params, data)
+        # jax.debug.print("data_before:{}", data)
+        # jax.debug.print("params:{}", params)
+        # sharded_key1, subkeys1 = kfac_jax.utils.p_split(subkeys)
+        params, opt_state, loss, aux_data, = step_kfac(data=data, params=params, state=opt_state, key=subkeys, )
+        loss = loss[0]
+    '''
+    return signed_network, data, params, log_network

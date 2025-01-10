@@ -32,6 +32,7 @@ class MakeLocalEnergy(Protocol):
 KineticEnergy = Callable[[nn.ParamTree, nn.AINetData], jnp.array]
 KineticEnergy_DMC = Callable[[nn.ParamTree, jnp.array, jnp.array, jnp.array], jnp.array]
 
+
 def local_kinetic_energy(f: nn.AINetLike) -> KineticEnergy:
     """Create the function for the local kinetic energy, -1/2 \nabla^2 ln|f|.
     29.08.2024 here our codes will be completely different from other codes due to the introduction of angular functions.
@@ -130,6 +131,8 @@ def local_energy(signed_network: nn.AINetLike,
         r_ee = jnp.reshape(r_ee, (nelectrons, nelectrons, 1))
         r_ae = jnp.reshape(r_ae, (nelectrons, natoms, 1))
         kinetic = lap_over_f(params, data)
+        jax.debug.print("data.positions:{}", data.positions)
+        jax.debug.print("r_ee:{}", r_ee)
         potential_ee = potential_electron_electron(r_ee)
         potential_ae = potential_electron_nuclear(r_ae, charges=data.charges)
         potential_aa = potential_nuclear_nuclear(charges=data.charges, atoms=data.atoms)

@@ -234,6 +234,7 @@ def potential_electron_electron(r_ee: Array) -> jnp.ndarray:
       between electrons i and j. Other elements in the final axes are not
       required.
   """
+  jax.debug.print("r_ee:{}", r_ee)
   r_ee = r_ee[jnp.triu_indices_from(r_ee[..., 0], 1)]
   return (1.0 / r_ee).sum()
 
