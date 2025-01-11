@@ -8,6 +8,7 @@ import numpy as np
 from typing_extensions import Protocol
 from AIQMCrelease1.wavefunction import nn
 import chex
+from jax import lax
 import kfac_jax
 
 
@@ -32,7 +33,7 @@ class MakeLocalEnergy(Protocol):
 KineticEnergy = Callable[[nn.ParamTree, nn.AINetData], jnp.array]
 KineticEnergy_DMC = Callable[[nn.ParamTree, jnp.array, jnp.array, jnp.array], jnp.array]
 
-
+'''
 def local_kinetic_energy(f: nn.AINetLike) -> KineticEnergy:
     """Create the function for the local kinetic energy, -1/2 \nabla^2 ln|f|.
     29.08.2024 here our codes will be completely different from other codes due to the introduction of angular functions.
@@ -56,6 +57,41 @@ def local_kinetic_energy(f: nn.AINetLike) -> KineticEnergy:
         return kinetic_energy
 
     return _lapl_over_f
+'''
+
+
+def local_kinetic_energy(f: nn.AINetLike) -> KineticEnergy:
+    """Create the function for the local kinetic energy, -1/2 \nabla^2 ln|f|.
+    29.08.2024 here our codes will be completely different from other codes due to the introduction of angular functions.
+    I need take some notes on my slides.
+    29.08.2024 I dont understand angular functions, complex number? how to calculate kinetic energy by real number? Why is it a real number?"""
+    phase_f = utils.select_output(f, 0)
+    logabs_f = utils.select_output(f, 1)
+
+    def _lapl_over_f(params, data):
+        n = data.positions.shape[0]
+        eye = jnp.eye(n)
+        grad_f = jax.grad(logabs_f, argnums=1)
+
+        def grad_f_closure(x):
+            return grad_f(params, x, data.atoms, data.charges)
+
+        primal, dgrad_f = jax.linearize(grad_f_closure, data.positions)
+        grad_phase = jax.grad(phase_f, argnums=1)
+
+        def grad_phase_closure(x):
+            return grad_phase(params, x, data.atoms, data.charges)
+
+        phase_primal, dgrad_phase = jax.linearize(grad_phase_closure, data.positions)
+        hessian_diagonal = (lambda i: dgrad_f(eye[i])[i] + 1.j * dgrad_phase(eye[i])[i])
+        result = -0.5 * lax.fori_loop(0, n, lambda i, val: val + hessian_diagonal(i), 0.0)
+        result -= 0.5 * jnp.sum(primal ** 2)
+        result += 0.5 * jnp.sum(phase_primal ** 2)
+        result -= 1.j * jnp.sum(primal * phase_primal)
+        return result
+
+    return _lapl_over_f
+
 
 
 """we solve the VMC part first.26.12.2024."""

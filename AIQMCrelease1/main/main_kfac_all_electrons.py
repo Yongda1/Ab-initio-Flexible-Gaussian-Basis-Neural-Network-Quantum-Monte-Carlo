@@ -12,7 +12,7 @@ import jax.numpy as jnp
 from typing_extensions import Protocol
 from jax.experimental import multihost_utils
 from AIQMCrelease1.wavefunction import nn
-#from AIQMCrelease1.MonteCarloSample import mcstep
+from AIQMCrelease1.MonteCarloSample import mcstep
 from AIQMCrelease1.Loss import pploss as qmc_loss_functions
 from AIQMCrelease1 import constants
 from AIQMCrelease1.Energy import hamiltonian
@@ -161,13 +161,8 @@ def main(atoms: jnp.array,
 
     print('''--------------Main training-------------''')
     print('''--------------Start Monte Carlo process------------''')
-    sharded_key = kfac_jax.utils.make_different_rng_key_on_all_devices(key)
-    sharded_key, subkeys = kfac_jax.utils.p_split(sharded_key)
-    '''
-    mc_step = mcstep.main_monte_carlo(f=signed_network,
-                                      tstep=tstep,
-                                      ndim=ndim,
-                                      nelectrons=nelectrons)
+
+    mc_step = mcstep.main_monte_carlo(f=signed_network, tstep=0.1, ndim=3, nelectrons=2, nsteps=50, batch_size=4)
     """to be continued...24.12.2024."""
 
     """we need add the pseudopotential module into the hamiltonian module."""
@@ -215,11 +210,9 @@ def main(atoms: jnp.array,
     """main training loop"""
     for t in range(0, iterations):
         sharded_key, subkeys = kfac_jax.utils.p_split(sharded_key)
-        data = mc_step(params, data)
-        # jax.debug.print("data_before:{}", data)
-        # jax.debug.print("params:{}", params)
-        # sharded_key1, subkeys1 = kfac_jax.utils.p_split(subkeys)
-        params, opt_state, loss, aux_data, = step_kfac(data=data, params=params, state=opt_state, key=subkeys, )
+        mc_step_parallel = jax.pmap(mc_step)
+        new_data = mc_step_parallel(params=params, data=data, key=subkeys)
+        params, opt_state, loss, aux_data, = step_kfac(data=new_data, params=params, state=opt_state, key=subkeys, )
         loss = loss[0]
-    '''
-    return signed_network, data, params, log_network
+
+    #return signed_network, data, params, log_network

@@ -4,7 +4,7 @@ import chex
 from AIQMCrelease1.wavefunction import nn
 import jax
 from jax import numpy as jnp
-from AIQMCrelease1.main.main_kfac_all_electrons import main
+#from AIQMCrelease1.main.main_kfac_all_electrons import main
 from AIQMCrelease1.utils import utils
 from jax import lax
 import kfac_jax
@@ -69,45 +69,32 @@ def walkers_update(logabs_f: nn.AINetLike,
     #jax.debug.print("changed_configuration:{}", changed_configuration)
     x2 = jnp.reshape(x2, (batch_size, nelectrons, -1))
     grad_new = jax.vmap(jax.vmap(grad_f_closure, in_axes=0, out_axes=0), in_axes=0)(x2)
-    #grad_new = jnp.reshape(jnp.reshape(grad_new, (batch_size, -1, ndim)), (batch_size, 1, -1))
-    #grad_new = jnp.reshape(jnp.repeat(grad_new, nelectrons, axis=1), (batch_size, nelectrons, nelectrons, ndim))
-    #jax.debug.print("grad_new:{}", grad_new)
-
     grad = jnp.repeat(grad, nelectrons, axis=0)
     grad = jnp.reshape(grad, (batch_size, nelectrons, -1))
-    #jax.debug.print("grad:{}", grad)
     gauss = jax.random.normal(key=key, shape=(jnp.shape(grad)))
     forward = gauss ** 2
     backward = (gauss + (grad + grad_new) * tstep) ** 2
     t_probability = jnp.exp((forward - backward)/(2 * tstep))
     t_probability = jnp.reshape(t_probability, (batch_size, nelectrons, nelectrons, ndim))
-
     t_probability = jnp.sum(t_probability, axis=-1)
 
-
-    def return_t(t_pro: jnp.array):
-       return jnp.diagonal(t_pro)
+    def return_t(t_pro_inner: jnp.array):
+        return jnp.diagonal(t_pro_inner)
 
     return_t_parallel = jax.vmap(return_t, in_axes=0)
     t_pro = return_t_parallel(t_probability)
-    #jax.debug.print("t_pro:{}", t_pro)
     logabs_f_vmap = jax.vmap(jax.vmap(logabs_f, in_axes=(None, 0, None, None,)), in_axes=(None, 0, None, None))
-    #jax.debug.print("x1:{}", x1)
     wave_x2 = logabs_f_vmap(params, x2, atoms, charges)
     x1 = jnp.reshape(x1, (batch_size, nelectrons, -1))
     wave_x1 = logabs_f_vmap(params, x1, atoms, charges)
-    #jax.debug.print("wave_x2:{}", wave_x2)
-    #jax.debug.print("wave_x1:{}", wave_x1)
     acceptance = jnp.abs(jnp.exp(wave_x2 - wave_x1)) ** 2 * t_pro
-    #jax.debug.print("acc:{}", acceptance)
-    #jax.debug.print("init:{}", initial_configuration)
-    #jax.debug.print("changed:{}", changed_configuration)
     final_configuration, newkey = walkers_accept(initial_configuration,
-                                                changed_configuration,
-                                                acceptance,
-                                                key,
-                                                nelectrons,
-                                                batch_size)
+                                                 changed_configuration,
+                                                 acceptance,
+                                                 key,
+                                                 nelectrons,
+                                                 batch_size)
+    jax.debug.print("i:{}", i)
     jax.debug.print("final:{}", final_configuration)
     final_configuration = jnp.reshape(final_configuration, (batch_size, -1))
     new_data = nn.AINetData(**(dict(data) | {'positions': final_configuration}))
@@ -141,7 +128,7 @@ def main_monte_carlo(f: nn.AINetLike,
 
     return mc_step
 
-
+'''
 structure = jnp.array([[10, 0, 0],
                        [0, 10, 0],
                        [0, 0, 10]])
@@ -167,4 +154,4 @@ mc_step = main_monte_carlo(f=signed_network, tstep=0.1, ndim=3, nelectrons=2, ns
 mc_step_parallel = jax.pmap(mc_step)
 new_data = mc_step_parallel(params=params, data=data, key=subkeys)
 jax.debug.print("new_data:{}", new_data)
-
+'''

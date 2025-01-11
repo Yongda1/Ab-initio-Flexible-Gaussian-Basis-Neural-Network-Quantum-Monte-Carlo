@@ -177,13 +177,7 @@ def main(atoms: jnp.array,
     print('''--------------Start Monte Carlo process------------''')
     sharded_key = kfac_jax.utils.make_different_rng_key_on_all_devices(key)
     sharded_key, subkeys = kfac_jax.utils.p_split(sharded_key)
-    mc_step = mcstep.main_monte_carlo(f=signed_network,
-                                      key=subkeys,
-                                      params=params,
-                                      batch_size=batch_size,
-                                      tstep=tstep,
-                                      ndim=ndim,
-                                      nelectrons=nelectrons)
+    mc_step = mcstep.main_monte_carlo(f=signed_network, tstep=0.1, ndim=3, nelectrons=2, nsteps=50, batch_size=4)
     """to be continued...24.12.2024."""
 
     """we need add the pseudopotential module into the hamiltonian module."""
@@ -215,7 +209,8 @@ def main(atoms: jnp.array,
     """main training loop"""
     for t in range(0, iterations):
         sharded_key, subkeys = kfac_jax.utils.p_split(sharded_key)
-        data = mc_step(nsteps=50, data=data)
-        data, params, opt_state, loss, aux_data, = step(data, params, opt_state, subkeys)
+        mc_step_parallel = jax.pmap(mc_step)
+        new_data = mc_step_parallel(params=params, data=data, key=subkeys)
+        data, params, opt_state, loss, aux_data, = step(new_data, params, opt_state, subkeys)
 
     # return signed_network, data, params, log_network
