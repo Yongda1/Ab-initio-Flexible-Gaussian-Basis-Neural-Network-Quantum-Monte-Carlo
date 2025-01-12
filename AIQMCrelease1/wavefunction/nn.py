@@ -89,7 +89,7 @@ class Network:
 
 
 def construct_input_features(pos: jnp.array, atoms: jnp.array, ndim: int = 3) \
-        -> Tuple[jnp.array, jnp.array]:
+        -> Tuple[jnp.array, jnp.array, jnp.array, jnp.array]:
     """Construct inputs to AINet from raw electron and atomic positions.
     Here, we assume that the electron spin is up and down along the axis=0 in array pos.
     So, the pairwise distance ae also follows this order.
@@ -97,8 +97,11 @@ def construct_input_features(pos: jnp.array, atoms: jnp.array, ndim: int = 3) \
         atoms: atom positions. Shape(natoms, ndim)
     """
     ae = jnp.reshape(pos, [-1, 1, ndim]) - atoms[None, ...]
-    ee = jnp.reshape(pos, [1, -1, ndim]) - jnp.reshape(pos, [-1, 1, ndim]) + 0.1
-    return ae, ee
+    ee = jnp.reshape(pos, [1, -1, ndim]) - jnp.reshape(pos, [-1, 1, ndim])
+    r_ae = jnp.linalg.norm(ae, axis=2, keepdims=True)
+    n = ee.shape[0]
+    r_ee = (jnp.linalg.norm(ee + jnp.eye(n)[..., None], axis=-1) * (1.0 - jnp.eye(n)))
+    return ae, ee, r_ae, r_ee[..., None]
 
 
 def make_ainet_features(natoms: int, nelectrons: int, ndim: int) -> FeatureLayer:
@@ -108,22 +111,25 @@ def make_ainet_features(natoms: int, nelectrons: int, ndim: int) -> FeatureLayer
         We need use two streams for ae and ee. And it is different from FermiNet. Because our convolution layer has
         a different structure.For simplicity, we only use the full connected layer.
         Maybe later, we will spend some time to rewrite this part."""
-        return (natoms * ndim, nelectrons * ndim), {}
+        return (natoms * (ndim + 1), ndim + 1), {}
 
-    def apply(ae: jnp.array, ee: jnp.array) -> Tuple[jnp.ndarray, jnp.ndarray]:
-        ae_features = ae
-        ae_features = jnp.reshape(ae_features, [jnp.shape(ae_features)[0], -1]) #reshape the ae vector to a line.
-        """to be continued here, 23.22.2024"""
-        ee_features = ee
+    def apply(ae_inner, r_ae_inner, ee_inner, r_ee_inner) -> Tuple[jnp.array, jnp.array]:
+        log_r_ae = jnp.log(1 + r_ae_inner)
+        ae_features = jnp.concatenate((log_r_ae, ae_inner * log_r_ae / r_ae_inner), axis=2)
+        log_r_ee = jnp.log(1 + r_ee_inner)
+        ee_features = jnp.concatenate((log_r_ee, ee_inner * log_r_ee / r_ee_inner), axis=2)
+        ae_features = jnp.reshape(ae_features, [jnp.shape(ae_features)[0], -1])
         return ae_features, ee_features
 
     return FeatureLayer(init=init, apply=apply)
 
 
-def construct_symmetric_features(ae_features: jnp.array, ee_features: jnp.array, nelectrons: int) -> jnp.array:
-    """here, we dont split spin up and spin down electrons, so this function is not necessary."""
-    ee_features = jnp.reshape(ee_features, [nelectrons, -1])
-    h = jnp.concatenate((ae_features, ee_features), axis=-1)
+def construct_symmetric_features(h_one: jnp.array, h_two: jnp.array, nelectrons: int) -> jnp.array:
+    """here, we dont split spin up and spin down electrons, so this function is not necessary.
+    to be continued..., probably, I made a mistake about the wavefunction format."""
+    #ee_features = jnp.reshape(ee_features, [nelectrons, -1])
+    #h = jnp.concatenate((ae_features, ee_features), axis=-1)
+    h = jnp.concatenate(h_one, h_two)
     return h
 
 
@@ -288,11 +294,11 @@ def make_ai_net(ndim: int,
 
 
 """This part for debugging this module."""
-'''
+
 key = jax.random.PRNGKey(1)
-spins = jnp.array([1.0, -1.0, 1.0, -1.0, 1.0, -1.0])
-temp = jnp.reshape(spins, (6, 1)) #6 is the number of electrons.
-spins = jnp.reshape(spins, (1, 6))
+spins = jnp.array([1.0, -1.0])
+temp = jnp.reshape(spins, (2, 1)) #6 is the number of electrons.
+spins = jnp.reshape(spins, (1, 2))
 spins_total = spins * temp
 spins_total_uptriangle = jnp.triu(spins_total, k=1)
 sample = jnp.zeros_like(a=spins_total_uptriangle)
@@ -306,20 +312,26 @@ n_parallel = len(parallel_indices[0])
 n_antiparallel = len(antiparallel_indices[0])
 
 """for debug."""
-pos = jnp.array([1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18])
-atoms = jnp.array([[1, 1, 1], [2, 2, 2], [3, 3, 3]])
+pos = jnp.array([1, 2, 3, 4, 5, 6])
+atoms = jnp.array([[1, 1, 1], [2, 2, 2]])
+ae, ee, r_ae, r_ee = construct_input_features(pos, atoms, ndim=3)
+jax.debug.print("ae:{}", ae)
+jax.debug.print("ee:{}", ee)
+jax.debug.print("r_ae:{}", r_ae)
+jax.debug.print("r_ee:{}", r_ee)
 
+'''
 network = make_ai_net(ndim=3,
                       natoms=3,
-                      nelectrons=6,
+                      nelectrons=2,
                       num_angular=4,
                       n_parallel=n_parallel,
                       n_antiparallel=n_antiparallel,
                       parallel_indices=parallel_indices,
                       antiparallel_indices=antiparallel_indices,
-                      charges=jnp.array([4, 6, 6]),
+                      charges=jnp.array([1, 1]),
                       full_det=True)
 
 params = network.init(key)
-output = network.apply(params, pos, atoms, charges=jnp.array([4, 6, 6]))
+output = network.apply(params, pos, atoms, charges=jnp.array([1, 1]))
 '''

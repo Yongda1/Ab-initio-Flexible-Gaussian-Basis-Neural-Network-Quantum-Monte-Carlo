@@ -203,7 +203,7 @@ def main(atoms: jnp.array,
     sharded_key, subkeys = kfac_jax.utils.p_split(sharded_key)
     opt_state = optimizer.init(params=params, rng=subkeys, batch=data)
     # jax.debug.print("opt_state:{}", opt_state)
-    """the default option is Kfac. It could be the problem of parallirization. 23.10.2024."""
+    """the default option is Kfac. It could be the problem of parallelization. 23.10.2024."""
     if isinstance(optimizer, kfac_jax.Optimizer):
         step_kfac = make_kfac_training_step(damping=0.001, optimizer=optimizer)
 
