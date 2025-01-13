@@ -828,16 +828,19 @@ def make_fermi_net_layers(
         dims_aux = 0
 
       dims_one_in = nfeatures(dims_one_in, dims_two_embedding, dims_aux)
-      jax.debug.print("dims_one_in:{}", dims_one_in)
+
+
       # Layer initialisation
       dims_one_out, dims_two_out = options.hidden_dims[i]
+      jax.debug.print("dims_one_in:{}", dims_one_in)
+      jax.debug.print("dims_one_out:{}", dims_one_out)
       layer_params['single'] = network_blocks.init_linear_layer(
           single_key,
           in_dim=dims_one_in,
           out_dim=dims_one_out,
           include_bias=True,
       )
-
+      jax.debug.print("layer_params['single']:{}", layer_params['single'])
       if i < len(options.hidden_dims) - 1 or options.use_last_layer:
         ndouble_channels = 2 if options.separate_spin_channels else 1
         layer_params['double'] = []

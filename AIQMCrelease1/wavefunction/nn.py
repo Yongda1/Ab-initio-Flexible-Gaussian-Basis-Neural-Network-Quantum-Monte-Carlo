@@ -116,10 +116,6 @@ def make_ainet_features(natoms: int, nelectrons: int, ndim: int) -> FeatureLayer
         return (natoms * (ndim + 1), ndim + 1), {}
 
     def apply(ae_inner, r_ae_inner, ee_inner, r_ee_inner) -> Tuple[jnp.array, jnp.array]:
-        jax.debug.print("ae_inner:{}", ae_inner)
-        jax.debug.print("r_ae_inner:{}", r_ae_inner)
-        jax.debug.print("ee_inner:{}", ee_inner)
-        jax.debug.print("r_ee_inner:{}", r_ee_inner)
         ae_features = jnp.concatenate((r_ae_inner, ae_inner), axis=2)
         ee_features = jnp.concatenate((r_ee_inner, ee_inner), axis=2)
         ae_features = jnp.reshape(ae_features, [jnp.shape(ae_features)[0], -1])
@@ -128,21 +124,20 @@ def make_ainet_features(natoms: int, nelectrons: int, ndim: int) -> FeatureLayer
     return FeatureLayer(init=init, apply=apply)
 
 
-def construct_symmetric_features(h_one: jnp.array, h_two: jnp.array, nelectrons: int) -> jnp.array:
+def construct_symmetric_features(h_one: jnp.array, h_two: jnp.array) -> jnp.array:
     """here, we dont split spin up and spin down electrons, so this function is not necessary.
     to be continued..., probably, I made a mistake about the wavefunction format."""
     #ee_features = jnp.reshape(ee_features, [nelectrons, -1])
     #h = jnp.concatenate((ae_features, ee_features), axis=-1)
-    jax.debug.print("h_one:{}", h_one)
-    jax.debug.print("h_two:{}", h_two)
+    #jax.debug.print("h_one:{}", h_one)
+    #jax.debug.print("h_two:{}", h_two)
     g_one = [jnp.mean(h, axis=0, keepdims=True) for h in h_one]
     #g_one = [jnp.tile(g, [h_one.shape[0], 1]) for g in g_one]
     g_two = [jnp.mean(h, axis=0, keepdims=True) for h in h_two]
-    jax.debug.print("g_one:{}", g_one)
-    jax.debug.print("g_two:{}", g_two)
-    #features = [h_one] + g_one + g_two
-    #jax.debug.print("features:{}", features)
-    return jnp.concatenate([h_one, jnp.array(g_one)], axis=1)
+    #jax.debug.print("g_one:{}", g_one)
+    g_two = jnp.reshape(jnp.array(g_two), (-1, 4))
+    #jax.debug.print("g_two:{}", g_two)
+    return jnp.concatenate([h_one, jnp.array(g_one), g_two], axis=1)
 
 
 def make_ainet_layers(feature_layer) -> Tuple[InitLayersFn, ApplyLayersFn]:
@@ -159,44 +154,69 @@ def make_ainet_layers(feature_layer) -> Tuple[InitLayersFn, ApplyLayersFn]:
         params = {}
         (num_one_features, num_two_features), params['input'] = feature_layer.init()
         key, subkey = jax.random.split(key)
-        nfeatures = num_one_features + num_two_features
-        layers = []
-        hidden_dims = jnp.array([4, 4, nfeatures])
-        dims_in = nfeatures
-        for i in range(len(hidden_dims)):
-            layer_params = {}
-            dims_out = hidden_dims[i]
-            layer_params['ae_ee'] = nnblocks.init_linear_layer(key, in_dim=dims_in, out_dim=dims_out, include_bias=True)
-            layers.append(layer_params)
-            dims_in = dims_out
 
+        def nfeatures(out1, out2):
+            return out1 + out2 + 1
+        
+        dims_one_in = num_one_features
+        dims_two_in = num_two_features
+
+        layers = []
+        hidden_dims = ((4, 2),)
+        dims_one_in = nfeatures(dims_one_in, dims_two_in)
+        for i in range(len(hidden_dims)):
+            dims_one_out, dims_two_out = hidden_dims[i]
+
+            jax.debug.print("dims_one_in:{}", dims_one_in)
+            jax.debug.print("dims_one_out:{}", dims_one_out)
+            layer_params = {}
+            layer_params['single'] = nnblocks.init_linear_layer(key,
+                                                                in_dim=dims_one_in,
+                                                                out_dim=dims_one_out,
+                                                                include_bias=True)
+            layer_params['double'] = nnblocks.init_linear_layer(subkey,
+                                                                in_dim=dims_two_in,
+                                                                out_dim=dims_two_out,
+                                                                include_bias=True)
+
+            layers.append(layer_params)
+            dims_one_in = dims_one_out
+            dims_two_in = dims_two_out
         params['linear_layer'] = layers
-        output_dims = nfeatures
+        output_dims = nfeatures(dims_one_in, dims_two_in)
         return output_dims, params
 
-    def apply_layer(params: Mapping[str, ParamTree], h_in: jnp.array) -> jnp.array:
-        h_next = jnp.tanh(nnblocks.linear_layer(h_in, w=params['ae_ee']['w'], b=params['ae_ee']['b']))
-        return h_next
+    def apply_layer(params: Mapping[str, ParamTree], h_one: jnp.array, h_two: jnp.array) -> jnp.array:
+        """rewrite this function.
+        the input dimension is wrong for the loop. 13.1.2025. we solve tomm."""
+        residual = lambda x, y: (x + y) / jnp.square(2.0)
+        h_one_in = construct_symmetric_features(h_one, h_two)
+        jax.debug.print("h_one_in:{}", h_one_in)
+        h_one_next = jnp.tanh(nnblocks.vmap_linear_layer(h_one_in, params['single']['w'], params['single']['b']))
+        jax.debug.print("h_one_next:{}", h_one_next)
+        #h_one = residual(h_one, h_one_next)
+        jax.debug.print("h_two:{}", h_two)
+        jax.debug.print("params['single']:{}", params['single'])
+        jax.debug.print("params['double']:{}", params['double'])
+        #h_two_next = [jnp.tanh]
+
+        #return h_next
 
     def apply(params, ae: jnp.array, ee: jnp.array, r_ae: jnp.array, r_ee: jnp.array, nelectrons: int) -> jnp.array:
         ae_features, ee_features = feature_layer.apply(ae_inner=ae,  ee_inner=ee, r_ae_inner=r_ae, r_ee_inner=r_ee)
-        jax.debug.print("ae_features:{}", ae_features)
-        jax.debug.print("ee_features:{}", ee_features)
         (num_one_features, num_two_features), params['input'] = feature_layer.init()
         nfeatures = num_one_features + num_two_features
         hidden_dims = jnp.array([4, 4, nfeatures])
-        h_in = construct_symmetric_features(ae_features, ee_features, nelectrons)
-        #jax.debug.print("h_in:{}", h_in)
-        '''
+        h_one = ae_features
+        h_two = [ee_features]
+
         """here, please notice that with calculating more iterations, the dimension of h will be added one more."""
         for i in range(len(hidden_dims)):
-            h = apply_layer(params['linear_layer'][i], h_in=h_in)
-            h_in = h
+            h = apply_layer(params['linear_layer'][i], h_one=h_one, h_two=h_two)
+        #h_to_orbitals = h
+        #return h_to_orbitals
 
-        h_to_orbitals = h
-        return h_to_orbitals
 
-    '''
     return init, apply
 
 
@@ -342,7 +362,7 @@ atoms = jnp.array([[1, 1, 1], [2, 2, 2]])
 #ae, ee, r_ae, r_ee = construct_input_features(pos, atoms, ndim=3)
 
 network = make_ai_net(ndim=3,
-                      natoms=3,
+                      natoms=2,
                       nelectrons=2,
                       num_angular=4,
                       n_parallel=n_parallel,
