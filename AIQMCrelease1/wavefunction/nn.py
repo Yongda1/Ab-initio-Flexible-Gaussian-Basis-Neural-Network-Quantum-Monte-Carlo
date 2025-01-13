@@ -61,7 +61,7 @@ class InitLayersFn(Protocol):
 
 
 class ApplyLayersFn(Protocol):
-    def __call__(self, params, ae: jnp.array, ee: jnp.array, nelectrons: int = 4) -> jnp.array:
+    def __call__(self, params, ae: jnp.array, ee: jnp.array, r_ae: jnp.array, r_ee: jnp.array, nelectrons: int) -> jnp.array:
         """Forward evaluation of the interaction layers."""
 
 
@@ -110,14 +110,18 @@ def make_ainet_features(natoms: int, nelectrons: int, ndim: int) -> FeatureLayer
         """This is the number of per electron-atom pair, electron-electron features.
         We need use two streams for ae and ee. And it is different from FermiNet. Because our convolution layer has
         a different structure.For simplicity, we only use the full connected layer.
-        Maybe later, we will spend some time to rewrite this part."""
+        Maybe later, we will spend some time to rewrite this part
+        Different from FermiNet, they just use the following format because they did the average for the two electrons stream, 
+        then add it into the input vector. The second number ndim + 1 does not mean the number of two electrons features."""
         return (natoms * (ndim + 1), ndim + 1), {}
 
     def apply(ae_inner, r_ae_inner, ee_inner, r_ee_inner) -> Tuple[jnp.array, jnp.array]:
-        log_r_ae = jnp.log(1 + r_ae_inner)
-        ae_features = jnp.concatenate((log_r_ae, ae_inner * log_r_ae / r_ae_inner), axis=2)
-        log_r_ee = jnp.log(1 + r_ee_inner)
-        ee_features = jnp.concatenate((log_r_ee, ee_inner * log_r_ee / r_ee_inner), axis=2)
+        jax.debug.print("ae_inner:{}", ae_inner)
+        jax.debug.print("r_ae_inner:{}", r_ae_inner)
+        jax.debug.print("ee_inner:{}", ee_inner)
+        jax.debug.print("r_ee_inner:{}", r_ee_inner)
+        ae_features = jnp.concatenate((r_ae_inner, ae_inner), axis=2)
+        ee_features = jnp.concatenate((r_ee_inner, ee_inner), axis=2)
         ae_features = jnp.reshape(ae_features, [jnp.shape(ae_features)[0], -1])
         return ae_features, ee_features
 
@@ -129,8 +133,16 @@ def construct_symmetric_features(h_one: jnp.array, h_two: jnp.array, nelectrons:
     to be continued..., probably, I made a mistake about the wavefunction format."""
     #ee_features = jnp.reshape(ee_features, [nelectrons, -1])
     #h = jnp.concatenate((ae_features, ee_features), axis=-1)
-    h = jnp.concatenate(h_one, h_two)
-    return h
+    jax.debug.print("h_one:{}", h_one)
+    jax.debug.print("h_two:{}", h_two)
+    g_one = [jnp.mean(h, axis=0, keepdims=True) for h in h_one]
+    #g_one = [jnp.tile(g, [h_one.shape[0], 1]) for g in g_one]
+    g_two = [jnp.mean(h, axis=0, keepdims=True) for h in h_two]
+    jax.debug.print("g_one:{}", g_one)
+    jax.debug.print("g_two:{}", g_two)
+    #features = [h_one] + g_one + g_two
+    #jax.debug.print("features:{}", features)
+    return jnp.concatenate([h_one, jnp.array(g_one)], axis=1)
 
 
 def make_ainet_layers(feature_layer) -> Tuple[InitLayersFn, ApplyLayersFn]:
@@ -166,12 +178,16 @@ def make_ainet_layers(feature_layer) -> Tuple[InitLayersFn, ApplyLayersFn]:
         h_next = jnp.tanh(nnblocks.linear_layer(h_in, w=params['ae_ee']['w'], b=params['ae_ee']['b']))
         return h_next
 
-    def apply(params, ae: jnp.array, ee: jnp.array, nelectrons: int) -> jnp.array:
-        ae_features, ee_features = feature_layer.apply(ae, ee,)
+    def apply(params, ae: jnp.array, ee: jnp.array, r_ae: jnp.array, r_ee: jnp.array, nelectrons: int) -> jnp.array:
+        ae_features, ee_features = feature_layer.apply(ae_inner=ae,  ee_inner=ee, r_ae_inner=r_ae, r_ee_inner=r_ee)
+        jax.debug.print("ae_features:{}", ae_features)
+        jax.debug.print("ee_features:{}", ee_features)
         (num_one_features, num_two_features), params['input'] = feature_layer.init()
         nfeatures = num_one_features + num_two_features
         hidden_dims = jnp.array([4, 4, nfeatures])
         h_in = construct_symmetric_features(ae_features, ee_features, nelectrons)
+        #jax.debug.print("h_in:{}", h_in)
+        '''
         """here, please notice that with calculating more iterations, the dimension of h will be added one more."""
         for i in range(len(hidden_dims)):
             h = apply_layer(params['linear_layer'][i], h_in=h_in)
@@ -180,6 +196,7 @@ def make_ainet_layers(feature_layer) -> Tuple[InitLayersFn, ApplyLayersFn]:
         h_to_orbitals = h
         return h_to_orbitals
 
+    '''
     return init, apply
 
 
@@ -224,8 +241,15 @@ def make_orbitals(natoms: int,
         return params
 
     def apply(params, pos: jnp.array, atoms: jnp.array, charges: jnp.array):
-        ae, ee = construct_input_features(pos, atoms, ndim=3)
-        h_to_orbitals = equivariant_layers_apply(params=params['layers'], ae=ae, ee=ee, nelectrons=nelectrons)
+        ae, ee, r_ae, r_ee = construct_input_features(pos, atoms, ndim=3)
+        jax.debug.print("ae:{}", ae)
+        jax.debug.print("r_ae:{}", r_ae)
+        h_to_orbitals = equivariant_layers_apply(params=params['layers'],
+                                                 ae=ae, ee=ee,
+                                                 r_ae=r_ae,
+                                                 r_ee=r_ee,
+                                                 nelectrons=nelectrons)
+        '''
         envelope_factor = envelope.apply(ae, xi=params['envelope']['xi'], natoms=natoms, nelectrons=nelectrons)
         r_effective = jnp.array([nnblocks.linear_layer_no_b(h, **p) for h, p in zip(h_to_orbitals, params['orbital'])])
         diffuse_part = jnp.array([nnblocks.linear_layer_no_b(h, **p) for h, p in zip(h_to_orbitals, params['diffuse'])])
@@ -247,7 +271,8 @@ def make_orbitals(natoms: int,
                                            antiparallel_indices=antiparallel_indices,
                                            params=params['jastrow_ee'])/nelectrons)
         wave_function = jastrow * orbitals_end
-        return wave_function
+        '''
+        #return wave_function
 
     return init, apply
 
@@ -287,8 +312,8 @@ def make_ai_net(ndim: int,
         """the shape of orbitals is not correct. We can solve this problem tomorrow.22.08.2024."""
         orbitals = orbitals_apply(params, pos, atoms, charges)
         #jax.debug.print("orbitals:{}", orbitals)
-        orbitals = jnp.reshape(orbitals, (-1, nelectrons))
-        return nnblocks.slogdet(orbitals)
+        #orbitals = jnp.reshape(orbitals, (-1, nelectrons))
+        #return nnblocks.slogdet(orbitals)
 
     return Network(init=init, apply=apply, orbitals=orbitals_apply)
 
@@ -312,15 +337,10 @@ n_parallel = len(parallel_indices[0])
 n_antiparallel = len(antiparallel_indices[0])
 
 """for debug."""
-pos = jnp.array([1, 2, 3, 4, 5, 6])
+pos = jnp.array([1.1, 1.2, 1.3, 2.1, 2.2, 2.3])
 atoms = jnp.array([[1, 1, 1], [2, 2, 2]])
-ae, ee, r_ae, r_ee = construct_input_features(pos, atoms, ndim=3)
-jax.debug.print("ae:{}", ae)
-jax.debug.print("ee:{}", ee)
-jax.debug.print("r_ae:{}", r_ae)
-jax.debug.print("r_ee:{}", r_ee)
+#ae, ee, r_ae, r_ee = construct_input_features(pos, atoms, ndim=3)
 
-'''
 network = make_ai_net(ndim=3,
                       natoms=3,
                       nelectrons=2,
@@ -334,4 +354,3 @@ network = make_ai_net(ndim=3,
 
 params = network.init(key)
 output = network.apply(params, pos, atoms, charges=jnp.array([1, 1]))
-'''

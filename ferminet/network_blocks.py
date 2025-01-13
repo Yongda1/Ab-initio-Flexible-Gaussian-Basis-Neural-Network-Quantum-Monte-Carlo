@@ -100,7 +100,10 @@ def linear_layer(x: jnp.ndarray,
   Returns:
     x w + b if b is given, x w otherwise.
   """
+  #jax.debug.print("x:{}", x)
+  #jax.debug.print("w:{}", w)
   y = jnp.dot(x, w)
+  #jax.debug.print("y:{}", y)
   return y + b if b is not None else y
 
 vmap_linear_layer = jax.vmap(linear_layer, in_axes=(0, None, None), out_axes=0)

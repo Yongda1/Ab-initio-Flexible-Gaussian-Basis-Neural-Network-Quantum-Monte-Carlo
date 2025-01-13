@@ -778,6 +778,7 @@ def make_fermi_net_layers(
     # We don't create features for spin channels
     # which contain no electrons (i.e. spin-polarised systems).
     nchannels = len([nspin for nspin in nspins if nspin > 0])
+    jax.debug.print("nchannels:{}", nchannels)
 
     def nfeatures(out1, out2, aux):
       return (nchannels + 1) * out1 + nchannels * out2 + aux
@@ -790,6 +791,8 @@ def make_fermi_net_layers(
     #    vector (dim) and distance (1))
     dims_one_in = num_one_features
     dims_two_in = num_two_features
+    jax.debug.print("num_one_features:{}", num_one_features)
+    jax.debug.print("num_two_features:{}", num_two_features)
     # Note SchNet-style convolution with a electron-nuclear stream assumes
     # FermiNet features currently.
     dims_e_aux_in = num_one_features // natoms
@@ -825,7 +828,7 @@ def make_fermi_net_layers(
         dims_aux = 0
 
       dims_one_in = nfeatures(dims_one_in, dims_two_embedding, dims_aux)
-
+      jax.debug.print("dims_one_in:{}", dims_one_in)
       # Layer initialisation
       dims_one_out, dims_two_out = options.hidden_dims[i]
       layer_params['single'] = network_blocks.init_linear_layer(
@@ -927,7 +930,8 @@ def make_fermi_net_layers(
       assert len(h_two) == 1
 
     residual = lambda x, y: (x + y) / jnp.sqrt(2.0) if x.shape == y.shape else y
-
+    jax.debug.print("h_one:{}", h_one)
+    jax.debug.print("h_two:{}", h_two)
     # Permutation-equivariant block.
     h_two_embedding = electron_electron_convolution(params, h_one, h_two)
     if options.schnet_electron_nuclear_convolutions:
@@ -939,11 +943,14 @@ def make_fermi_net_layers(
     h_one_in = construct_symmetric_features(
         h_one, h_two_embedding, nspins, h_aux=h_aux
     )
-
+    jax.debug.print("h_one_in:{}", h_one_in)
     # Execute next layer.
+    jax.debug.print("-----------------")
     h_one_next = jnp.tanh(
         network_blocks.linear_layer(h_one_in, **params['single'])
     )
+    jax.debug.print("h_one_next:{}", h_one_next)
+    jax.debug.print("-----------------")
     h_one = residual(h_one, h_one_next)
     # Only perform the auxiliary streams if parameters are present (ie not the
     # final layer of the network if use_last_layer is False).
@@ -997,7 +1004,8 @@ def make_fermi_net_layers(
     ae_features, ee_features = options.feature_layer.apply(
         ae=ae, r_ae=r_ae, ee=ee, r_ee=r_ee, **params['input']
     )
-
+    jax.debug.print("ae_features:{}", ae_features)
+    jax.debug.print("ee_features:{}", ee_features)
     if options.electron_nuclear_aux_dims:
       # Electron-ion auxiliary stream just takes electron-ion vectors and
       # distances.
@@ -1006,7 +1014,7 @@ def make_fermi_net_layers(
       h_elec_ion = None
 
     h_one = ae_features  # single-electron features
-    #jax.debug.print("h_one:{}", h_one)
+    jax.debug.print("h_one:{}", h_one)
 
     if options.separate_spin_channels:
       # Use the same stream for spin-parallel and spin-antiparallel electrons.
