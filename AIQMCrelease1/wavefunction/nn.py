@@ -153,7 +153,7 @@ def make_ainet_layers(feature_layer) -> Tuple[InitLayersFn, ApplyLayersFn]:
     def init(key: chex.PRNGKey) -> Tuple[int, ParamTree]:
         params = {}
         (num_one_features, num_two_features), params['input'] = feature_layer.init()
-        key, subkey = jax.random.split(key)
+        key, subkey, single_shape_key, double_shape_key = jax.random.split(key, num=4)
 
         def nfeatures(out1, out2):
             return out1 + out2 + 1
@@ -162,26 +162,24 @@ def make_ainet_layers(feature_layer) -> Tuple[InitLayersFn, ApplyLayersFn]:
         dims_two_in = num_two_features
 
         layers = []
-        hidden_dims = ((4, 2),)
+        hidden_dims = ((4, 2), (4, 2), (4, 2), (4, 2))
+
         dims_one_in = nfeatures(dims_one_in, dims_two_in)
         for i in range(len(hidden_dims)):
             dims_one_out, dims_two_out = hidden_dims[i]
-
-            jax.debug.print("dims_one_in:{}", dims_one_in)
-            jax.debug.print("dims_one_out:{}", dims_one_out)
             layer_params = {}
             layer_params['single'] = nnblocks.init_linear_layer(key,
                                                                 in_dim=dims_one_in,
                                                                 out_dim=dims_one_out,
                                                                 include_bias=True)
-            layer_params['double'] = nnblocks.init_linear_layer(subkey,
-                                                                in_dim=dims_two_in,
-                                                                out_dim=dims_two_out,
-                                                                include_bias=True)
+            layer_params['single_shape_control'] = nnblocks.init_linear_layer(single_shape_key,
+                                                                              in_dim=dims_one_out,
+                                                                              out_dim=num_one_features,
+                                                                              include_bias=True)
 
             layers.append(layer_params)
-            dims_one_in = dims_one_out
-            dims_two_in = dims_two_out
+            #dims_one_in = dims_one_out
+            #dims_two_in = dims_two_out
         params['linear_layer'] = layers
         output_dims = nfeatures(dims_one_in, dims_two_in)
         return output_dims, params
@@ -191,16 +189,10 @@ def make_ainet_layers(feature_layer) -> Tuple[InitLayersFn, ApplyLayersFn]:
         the input dimension is wrong for the loop. 13.1.2025. we solve tomm."""
         residual = lambda x, y: (x + y) / jnp.square(2.0)
         h_one_in = construct_symmetric_features(h_one, h_two)
-        jax.debug.print("h_one_in:{}", h_one_in)
         h_one_next = jnp.tanh(nnblocks.vmap_linear_layer(h_one_in, params['single']['w'], params['single']['b']))
-        jax.debug.print("h_one_next:{}", h_one_next)
-        #h_one = residual(h_one, h_one_next)
-        jax.debug.print("h_two:{}", h_two)
-        jax.debug.print("params['single']:{}", params['single'])
-        jax.debug.print("params['double']:{}", params['double'])
-        #h_two_next = [jnp.tanh]
-
-        #return h_next
+        h_one_next_reshape = jnp.tanh(nnblocks.vmap_linear_layer(h_one_next, params['single_shape_control']['w'], params['single_shape_control']['b']))
+        h_one = residual(h_one, h_one_next_reshape)
+        return h_one, h_two
 
     def apply(params, ae: jnp.array, ee: jnp.array, r_ae: jnp.array, r_ee: jnp.array, nelectrons: int) -> jnp.array:
         ae_features, ee_features = feature_layer.apply(ae_inner=ae,  ee_inner=ee, r_ae_inner=r_ae, r_ee_inner=r_ee)
@@ -208,11 +200,11 @@ def make_ainet_layers(feature_layer) -> Tuple[InitLayersFn, ApplyLayersFn]:
         nfeatures = num_one_features + num_two_features
         hidden_dims = jnp.array([4, 4, nfeatures])
         h_one = ae_features
-        h_two = [ee_features]
+        h_two = ee_features
 
         """here, please notice that with calculating more iterations, the dimension of h will be added one more."""
         for i in range(len(hidden_dims)):
-            h = apply_layer(params['linear_layer'][i], h_one=h_one, h_two=h_two)
+            h_one, h_two = apply_layer(params['linear_layer'][i], h_one=h_one, h_two=h_two)
         #h_to_orbitals = h
         #return h_to_orbitals
 
