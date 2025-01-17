@@ -94,8 +94,8 @@ def walkers_update(logabs_f: nn.AINetLike,
                                                  key,
                                                  nelectrons,
                                                  batch_size)
-    jax.debug.print("i:{}", i)
-    jax.debug.print("final:{}", final_configuration)
+    #jax.debug.print("i:{}", i)
+    #jax.debug.print("final:{}", final_configuration)
     final_configuration = jnp.reshape(final_configuration, (batch_size, -1))
     new_data = nn.AINetData(**(dict(data) | {'positions': final_configuration}))
     return new_data, newkey

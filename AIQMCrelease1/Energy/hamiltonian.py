@@ -7,6 +7,7 @@ import jax.numpy as jnp
 import numpy as np
 from typing_extensions import Protocol
 from AIQMCrelease1.wavefunction import nn
+from AIQMCrelease1.wavefunction.nn import construct_input_features
 import chex
 from jax import lax
 import kfac_jax
@@ -33,7 +34,7 @@ class MakeLocalEnergy(Protocol):
 KineticEnergy = Callable[[nn.ParamTree, nn.AINetData], jnp.array]
 KineticEnergy_DMC = Callable[[nn.ParamTree, jnp.array, jnp.array, jnp.array], jnp.array]
 
-'''
+
 def local_kinetic_energy(f: nn.AINetLike) -> KineticEnergy:
     """Create the function for the local kinetic energy, -1/2 \nabla^2 ln|f|.
     29.08.2024 here our codes will be completely different from other codes due to the introduction of angular functions.
@@ -72,6 +73,7 @@ def local_kinetic_energy(f: nn.AINetLike) -> KineticEnergy:
         n = data.positions.shape[0]
         eye = jnp.eye(n)
         grad_f = jax.grad(logabs_f, argnums=1)
+        jax.debug.print("data:{}", data)
 
         def grad_f_closure(x):
             return grad_f(params, x, data.atoms, data.charges)
@@ -83,6 +85,8 @@ def local_kinetic_energy(f: nn.AINetLike) -> KineticEnergy:
             return grad_phase(params, x, data.atoms, data.charges)
 
         phase_primal, dgrad_phase = jax.linearize(grad_phase_closure, data.positions)
+        jax.debug.print("primal:{}", primal)
+        jax.debug.print("primal:{}", phase_primal)
         hessian_diagonal = (lambda i: dgrad_f(eye[i])[i] + 1.j * dgrad_phase(eye[i])[i])
         result = -0.5 * lax.fori_loop(0, n, lambda i, val: val + hessian_diagonal(i), 0.0)
         result -= 0.5 * jnp.sum(primal ** 2)
@@ -91,7 +95,7 @@ def local_kinetic_energy(f: nn.AINetLike) -> KineticEnergy:
         return result
 
     return _lapl_over_f
-
+'''
 
 
 """we solve the VMC part first.26.12.2024."""
@@ -159,16 +163,10 @@ def local_energy(signed_network: nn.AINetLike,
         """after we change the parallel, we also need rewrite this part. we will solve this later, 31.10.2024.
         This is the version for test. Be careful of the input. we need change the last three variabls to data.3.11.2024.
         We leave it to monday."""
-
-        ee = jnp.reshape(data.positions, [1, -1, ndim]) - jnp.reshape(data.positions, [-1, 1, ndim])
-        ae = jnp.reshape(data.positions, [-1, 1, ndim]) - data.atoms[None, ...]
-        r_ae = jnp.linalg.norm(ae, axis=-1)
-        r_ee = jnp.linalg.norm(ee, axis=-1)
-        r_ee = jnp.reshape(r_ee, (nelectrons, nelectrons, 1))
-        r_ae = jnp.reshape(r_ae, (nelectrons, natoms, 1))
+        ae, ee, r_ae, r_ee = construct_input_features(data.positions, data.atoms, ndim=3)
         kinetic = lap_over_f(params, data)
-        jax.debug.print("data.positions:{}", data.positions)
-        jax.debug.print("r_ee:{}", r_ee)
+        #jax.debug.print("data.positions:{}", data.positions)
+        #jax.debug.print("r_ee:{}", r_ee)
         potential_ee = potential_electron_electron(r_ee)
         potential_ae = potential_electron_nuclear(r_ae, charges=data.charges)
         potential_aa = potential_nuclear_nuclear(charges=data.charges, atoms=data.atoms)

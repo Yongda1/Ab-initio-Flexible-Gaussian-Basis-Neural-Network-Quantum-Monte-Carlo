@@ -132,7 +132,7 @@ def main(atoms: jnp.array,
     batch_charges = kfac_jax.utils.replicate_all_local_devices(batch_charges)
     pos, spins = init_electrons(subkey, structure=structure, atoms=atoms, charges=charges,
                                 electrons=spins,
-                                batch_size=host_batch_size, init_width=1.0)
+                                batch_size=host_batch_size, init_width=0.2)
 
     batch_pos = jnp.reshape(pos, data_shape + (-1,))
     batch_pos = kfac_jax.utils.broadcast_all_local_devices(batch_pos)
@@ -151,6 +151,20 @@ def main(atoms: jnp.array,
     n_antiparallel = len(antiparallel_indices[0])
     jax.debug.print("n_parallel:{}", n_parallel)
 
+    charges_jastrow = np.array(charges)
+    charges_indices_jastrow = np.arange(natoms)
+    atom_jastrow_indices = []
+    charged_jastrow_needed = []
+    for i in range(len(charges_indices_jastrow)):
+        temp = np.repeat(charges_indices_jastrow[i], charges_jastrow[i])
+        temp1 = np.repeat(charges_jastrow[i], charges_jastrow[i])
+        jax.debug.print("temp:{}", temp)
+        atom_jastrow_indices.append(temp)
+        charged_jastrow_needed.append(temp1)
+
+    atom_jastrow_indices = jnp.array(np.hstack(np.array(atom_jastrow_indices)))
+    charged_jastrow_needed = jnp.array(np.hstack(np.array(charged_jastrow_needed)))
+
     """we already write the envelope function in the nn.py."""
     network = nn.make_ai_net(ndim=ndim,
                              natoms=natoms,
@@ -161,6 +175,8 @@ def main(atoms: jnp.array,
                              parallel_indices=parallel_indices,
                              antiparallel_indices=antiparallel_indices,
                              charges=charges,
+                             atom_jastrow_indices=atom_jastrow_indices,
+                             charged_jastrow_needed=charged_jastrow_needed,
                              full_det=True)
 
     params = network.init(subkey)
@@ -177,7 +193,7 @@ def main(atoms: jnp.array,
     print('''--------------Start Monte Carlo process------------''')
     sharded_key = kfac_jax.utils.make_different_rng_key_on_all_devices(key)
     sharded_key, subkeys = kfac_jax.utils.p_split(sharded_key)
-    mc_step = mcstep.main_monte_carlo(f=signed_network, tstep=0.1, ndim=3, nelectrons=2, nsteps=50, batch_size=4)
+    mc_step = mcstep.main_monte_carlo(f=signed_network, tstep=0.05, ndim=3, nelectrons=2, nsteps=1, batch_size=4)
     """to be continued...24.12.2024."""
 
     """we need add the pseudopotential module into the hamiltonian module."""

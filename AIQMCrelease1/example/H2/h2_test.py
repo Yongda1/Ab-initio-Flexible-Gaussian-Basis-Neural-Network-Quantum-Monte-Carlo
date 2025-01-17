@@ -19,6 +19,6 @@ output = main(atoms=atoms,
               natoms=2,
               ndim=3,
               batch_size=4,
-              iterations=100,
+              iterations=10,
               structure=structure,)
 
