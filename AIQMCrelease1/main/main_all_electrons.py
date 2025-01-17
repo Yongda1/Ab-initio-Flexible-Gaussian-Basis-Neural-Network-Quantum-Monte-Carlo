@@ -14,6 +14,7 @@ from AIQMCrelease1.MonteCarloSample import mcstep
 from AIQMCrelease1.Loss import pploss as qmc_loss_functions
 from AIQMCrelease1 import constants
 from AIQMCrelease1.Energy import hamiltonian
+from AIQMCrelease1 import checkpoint
 from AIQMCrelease1 import curvature_tags_and_blocks
 import functools
 
@@ -111,6 +112,8 @@ def main(atoms: jnp.array,
          ndim: int,
          batch_size: int,
          iterations: int,
+         save_path: Optional[str],
+         restore_path: Optional[str],
          structure: jnp.array,):
     print("Quantum Monte Carlo Start running")
     num_devices = jax.local_device_count()  # the amount of GPU per host
@@ -123,21 +126,41 @@ def main(atoms: jnp.array,
     seed = jnp.asarray([1e6 * time.time()])
     seed = int(multihost_utils.broadcast_one_to_all(seed)[0])
     key = jax.random.PRNGKey(seed)
-    key, subkey = jax.random.split(key)
-    data_shape = (num_devices, device_batch_size)
-    """Here, we use [None, ...] to enlarge one dimension of the array 'atoms'. """
-    batch_atoms = jnp.tile(atoms[None, ...], [device_batch_size, 1, 1])
-    batch_atoms = kfac_jax.utils.replicate_all_local_devices(batch_atoms)
-    batch_charges = jnp.tile(charges[None, ...], [device_batch_size, 1])
-    batch_charges = kfac_jax.utils.replicate_all_local_devices(batch_charges)
-    pos, spins = init_electrons(subkey, structure=structure, atoms=atoms, charges=charges,
-                                electrons=spins,
-                                batch_size=host_batch_size, init_width=0.2)
 
-    batch_pos = jnp.reshape(pos, data_shape + (-1,))
-    batch_pos = kfac_jax.utils.broadcast_all_local_devices(batch_pos)
-    data = nn.AINetData(positions=batch_pos, atoms=batch_atoms, charges=batch_charges)
-    #jax.debug.print("batch_charges:{}", batch_charges)
+
+    ckpt_save_path = checkpoint.create_save_path(save_path=save_path)
+    ckpt_restore_path = checkpoint.get_restore_path(restore_path=restore_path)
+
+    ckpt_restore_filename = (checkpoint.find_last_checkpoint(ckpt_save_path) or
+                             checkpoint.find_last_checkpoint(ckpt_restore_path))
+
+    if ckpt_restore_filename:
+        (t_init,
+         data,
+         params,
+         opt_state_ckpt,) = checkpoint.restore(ckpt_restore_filename, host_batch_size)
+    else:
+        logging.info('No checkpoint found. Training new model.')
+        t_init = 0
+        opt_state_ckpt = None
+
+        key, subkey = jax.random.split(key)
+        data_shape = (num_devices, device_batch_size)
+        """Here, we use [None, ...] to enlarge one dimension of the array 'atoms'. """
+        batch_atoms = jnp.tile(atoms[None, ...], [device_batch_size, 1, 1])
+        batch_atoms = kfac_jax.utils.replicate_all_local_devices(batch_atoms)
+        batch_charges = jnp.tile(charges[None, ...], [device_batch_size, 1])
+        batch_charges = kfac_jax.utils.replicate_all_local_devices(batch_charges)
+        pos, spins = init_electrons(subkey, structure=structure, atoms=atoms, charges=charges,
+                                    electrons=spins,
+                                    batch_size=host_batch_size, init_width=0.2)
+
+        batch_pos = jnp.reshape(pos, data_shape + (-1,))
+        batch_pos = kfac_jax.utils.broadcast_all_local_devices(batch_pos)
+        data = nn.AINetData(positions=batch_pos, atoms=batch_atoms, charges=batch_charges)
+
+
+
     spins_total = jnp.reshape(spins, (1, nelectrons)) * jnp.reshape(spins, (nelectrons, 1))
     spins_total_uptriangle = jnp.triu(spins_total, k=1)
     sample = jnp.zeros_like(a=spins_total_uptriangle)
@@ -149,7 +172,7 @@ def main(atoms: jnp.array,
     antiparallel_indices = jnp.array(antiparallel_indices)
     n_parallel = len(parallel_indices[0])
     n_antiparallel = len(antiparallel_indices[0])
-    jax.debug.print("n_parallel:{}", n_parallel)
+    #jax.debug.print("n_parallel:{}", n_parallel)
 
     charges_jastrow = np.array(charges)
     charges_indices_jastrow = np.arange(natoms)
@@ -191,8 +214,8 @@ def main(atoms: jnp.array,
     print('''--------------Main training-------------''')
     """to be continued...21.12.2024"""
     print('''--------------Start Monte Carlo process------------''')
-    sharded_key = kfac_jax.utils.make_different_rng_key_on_all_devices(key)
-    sharded_key, subkeys = kfac_jax.utils.p_split(sharded_key)
+    #sharded_key = kfac_jax.utils.make_different_rng_key_on_all_devices(key)
+    #sharded_key, subkeys = kfac_jax.utils.p_split(sharded_key)
     mc_step = mcstep.main_monte_carlo(f=signed_network, tstep=0.05, ndim=3, nelectrons=2, nsteps=1, batch_size=4)
     """to be continued...24.12.2024."""
 
@@ -218,12 +241,14 @@ def main(atoms: jnp.array,
                             optax.scale(-1.))
 
     opt_state = jax.pmap(optimizer.init)(params)
+    opt_state = opt_state_ckpt or opt_state
     step = make_training_step(optimizer_step=make_opt_update_step(evaluate_loss, optimizer))
     sharded_key = kfac_jax.utils.make_different_rng_key_on_all_devices(key)
     sharded_key, subkeys = kfac_jax.utils.p_split(sharded_key)
 
     """main training loop"""
-    for t in range(0, iterations):
+    """we also need rewrite the output method. writers.py.17.1.2025."""
+    for t in range(t_init, iterations):
         sharded_key, subkeys = kfac_jax.utils.p_split(sharded_key)
         mc_step_parallel = jax.pmap(mc_step)
         new_data = mc_step_parallel(params=params, data=data, key=subkeys)
