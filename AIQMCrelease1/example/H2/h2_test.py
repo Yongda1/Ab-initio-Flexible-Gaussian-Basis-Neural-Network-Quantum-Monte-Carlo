@@ -14,11 +14,16 @@ spins = jnp.array([1.0, -1.0])
 output = main(atoms=atoms,
               charges=charges,
               spins=spins,
-              tstep=0.02,
+              tstep=0.1,
+              nsteps=10,
               nelectrons=2,
               natoms=2,
               ndim=3,
               batch_size=4,
-              iterations=10,
+              iterations=1000,
+              save_path='F:\Ab-initio-Flexible-Gaussian-Basis-Neural-Network-Quantum-Monte-Carlo\AIQMCrelease1\example\H2',
+              restore_path=None,
+              save_frequency=0.01,
               structure=structure,)
+"""to be continued ..."""
 

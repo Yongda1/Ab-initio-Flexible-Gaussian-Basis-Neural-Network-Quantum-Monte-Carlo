@@ -574,10 +574,12 @@ def train(cfg: ml_collections.ConfigDict, writer_manager=None):
     # For excited states, each device has a batch of walkers, where each walker
     # is nstates * nelectrons. The vmap over nstates is handled in the function
     # created in make_total_ansatz
+    jax.debug.print("spins:{}", spins)
     pos = jnp.reshape(pos, data_shape + (-1,))
     pos = kfac_jax.utils.broadcast_all_local_devices(pos)
     spins = jnp.reshape(spins, data_shape + (-1,))
     spins = kfac_jax.utils.broadcast_all_local_devices(spins)
+    jax.debug.print("spins:{}", spins)
     data = networks.FermiNetData(
         positions=pos, spins=spins, atoms=batch_atoms, charges=batch_charges
     )

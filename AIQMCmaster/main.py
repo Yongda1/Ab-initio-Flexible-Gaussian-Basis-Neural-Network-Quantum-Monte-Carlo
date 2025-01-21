@@ -78,7 +78,7 @@ class Step(Protocol):
     """Returns an OptUpdate function for performing a parameter update.
     So far ,we have not solved the spin configuration problem yet. But we got one more task about writing the loss function.
     Let's go back to main.py 14.08.2024. We cannot finished all functions now. Because we need guarrante all input data format fixed and
-    Loss.py, hamiltonian.py, utils.py and pseudopotential.py form an entire part. So, next fews steps, we need move stepy by step."""
+    Loss.py, hamiltonian_wrong.py, utils.py and pseudopotential.py form an entire part. So, next fews steps, we need move stepy by step."""
 
 
 def make_opt_update_step(evaluate_loss: qmc_loss_function.LossAINet, optimizer: optax.GradientTransformation) -> OptUpdate:
@@ -147,7 +147,7 @@ def main(batch_size=4, structure = jnp.array([[10, 0, 0],
     seed = int(multihost_utils.broadcast_one_to_all(seed)[0])
     key = jax.random.PRNGKey(seed)
     #feature_layer1 = nn.make_ainet_features(natoms=2, nelectrons=4, ndim=3)
-    """we already write the envelope function in the nn.py."""
+    """we already write the envelope function in the nn_wrong.py."""
     network = nn.make_ai_net(charges=jnp.array([2, 2]), ndim=3, full_det=True)
     key, subkey = jax.random.split(key)
     params = network.init(subkey)
@@ -168,7 +168,7 @@ def main(batch_size=4, structure = jnp.array([[10, 0, 0],
     non_phase_network = jax.vmap(phase_network, in_axes=(None, 1, None, None), out_axes=0)
     non_batch_network = jax.vmap(logabs_network, in_axes=(None, 1, None, None), out_axes=0)
     """here, we have one problem about the format of pos, spins, batch_atoms, batch_charges.
-    These formats can be easily changed in nn.py. so, before we do this, we need know which format should be used in the loss function 16.08.2024."""
+    These formats can be easily changed in nn_wrong.py. so, before we do this, we need know which format should be used in the loss function 16.08.2024."""
     "currently, we dont need check points. So, we ignore this part."
     '''--------------Main training-------------'''
     #Construct MC step

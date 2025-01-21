@@ -13,7 +13,7 @@ import jax.numpy as jnp
 from typing_extensions import Protocol
 from jax.experimental import multihost_utils
 from AIQMCrelease1.wavefunction import nn
-from AIQMCrelease1.MonteCarloSample import mcstep
+from AIQMCrelease1.MonteCarloSample import VMCmcstep
 from AIQMCrelease1.Loss import pploss as qmc_loss_functions
 from AIQMCrelease1 import constants
 from AIQMCrelease1.Energy import pphamiltonian
@@ -73,7 +73,7 @@ class Step(Protocol):
     """Returns an OptUpdate function for performing a parameter update.
     So far ,we have not solved the spin configuration problem yet. But we got one more task about writing the loss function.
     Let's go back to main.py 14.08.2024. We cannot finished all functions now. Because we need guarrante all input data format fixed and
-    Loss.py, hamiltonian.py, utils.py and pseudopotential.py form an entire part. So, next fews steps, we need move stepy by step."""
+    Loss.py, hamiltonian_wrong.py, utils.py and pseudopotential.py form an entire part. So, next fews steps, we need move stepy by step."""
 
 
 def make_opt_update_step(evaluate_loss: qmc_loss_functions.LossAINet, optimizer: optax.GradientTransformation) -> OptUpdate:
@@ -153,7 +153,7 @@ def main(atoms: jnp.array,
     n_parallel = len(parallel_indices[0])
     n_antiparallel = len(antiparallel_indices[0])
 
-    """we already write the envelope function in the nn.py."""
+    """we already write the envelope function in the nn_wrong.py."""
     network = nn.make_ai_net(ndim=ndim,
                              natoms=natoms,
                              nelectrons=nelectrons,

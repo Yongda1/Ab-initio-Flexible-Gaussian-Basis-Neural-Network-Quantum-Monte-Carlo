@@ -114,7 +114,7 @@ def walkers_update(params: nn.ParamTree, batch_phase:nn.LogAINetLike, batch_f: n
 #jax.debug.print("new_data:{}", new_data)
 #output1 = walkers_accept(x1=x1, x2=x2, ratio=ratio, key=key)
 """28.08.2024, we have one problem about the loop calculation. we are not sure about how to do the loop. Our one step calculation is working well. But the loop not. I dont understand.
-We are still not sure which part is wrong, nn.py or this loop?"""
+We are still not sure which part is wrong, nn_wrong.py or this loop?"""
 
 #new_data, next_key = walkers_update(params=batchparams, batch_phase=phasenetwork, batch_f=batchnetwork, single_f=signednetwork, tstep=0.1, data=data, key=key)
 

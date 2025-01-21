@@ -1,132 +1,128 @@
 """This moudle tells us how to move the walkers i.e. the calculation of T and A . We dont use the algorithm in Ferminet."""
 
 import chex
-from AIQMCrelease1.wavefunction import nn
+from AIQMCrelease1.wavefunction_f import nn
+from AIQMCrelease1 import constants
+import numpy as np
 import jax
 from jax import numpy as jnp
-#from AIQMCrelease1.main.main_kfac_all_electrons import main
-from AIQMCrelease1.utils import utils
 from jax import lax
-import kfac_jax
 
 
-'''
-def limdrift(g, tau, acyrus):
-    v2 = jnp.sum(g**2)
-    taueff = (jnp.sqrt(1 + 2 * tau * acyrus * v2) - 1)/ (acyrus * v2)
-    return g * taueff
-'''
+def _harmonic_mean(x, atoms):
+    """Calculates the harmonic mean of each electron distance to the nuclei."""
+    ae = x - atoms[None, ...]
+    r_ae = jnp.linalg.norm(ae, axis=-1, keepdims=True)
+    return 1.0 / jnp.mean(1.0 / r_ae, axis=-2, keepdims=True)
 
-def walkers_accept(x1, x2, acceptance, key, nelectrons: int, batch_size: int):
+
+def _log_prob_gaussian(x, mu, sigma):
+    """Calculates the log probability of Gaussian with diagonal covariance."""
+    numer = jnp.sum(-0.5 * ((x - mu) ** 2) / (sigma ** 2), axis=[1, 2, 3])
+    denom = x.shape[-1] * jnp.sum(jnp.log(sigma), axis=[1, 2, 3])
+    return numer - denom
+
+
+def mh_accept(x1, x2, lp_1, lp_2, ratio, key, num_accepts):
+    """Given state, proposal, and probabilities, execute MH accept/reject step."""
     key, subkey = jax.random.split(key)
-    rnd = jax.random.uniform(subkey, shape=acceptance.shape, minval=0, maxval=1.0)
-    cond = acceptance > rnd
-    cond = jnp.reshape(cond, (4, nelectrons, 1))
-    x_new = jnp.where(cond, x2, x1)
-    return x_new, subkey
+    rnd = jnp.log(jax.random.uniform(subkey, shape=ratio.shape))
+    cond = ratio > rnd
+    x_new = jnp.where(cond[..., None], x2, x1)
+    lp_new = jnp.where(cond, lp_2, lp_1)
+    num_accepts += jnp.sum(cond)
+    return x_new, key, lp_new, num_accepts
 
 
-def walkers_update(logabs_f: nn.AINetLike,
-                   params: nn.ParamTree,
-                   data: nn.AINetData,
-                   key: chex.PRNGKey,
-                   tstep: float,
-                   ndim: int,
-                   nelectrons: int,
-                   batch_size: int,
-                   i=0):
-    """params: batch_params"""
+def mh_update(
+        params: nn.ParamTree,
+        f: nn.AINetLike,
+        data: nn.AINetData,
+        key: chex.PRNGKey,
+        lp_1,
+        num_accepts,
+        stddev=0.02,
+        atoms=None,
+        ndim=3,
+        blocks=1,
+        i=0, ):
+    del i, blocks  # electron index ignored for all-electron moves
     key, subkey = jax.random.split(key)
     x1 = data.positions
+    n = x1.shape[0]
+    x1 = jnp.reshape(x1, [n, -1, 1, ndim])
+    hmean1 = _harmonic_mean(x1, atoms)
+    x2 = x1 + stddev * hmean1 * jax.random.normal(subkey, shape=x1.shape)
+    lp_2 = 2.0 * f(params, x2, data.spins, data.atoms, data.charges)
+    hmean2 = _harmonic_mean(x2, atoms)
+    lq_1 = _log_prob_gaussian(x1, x2, stddev * hmean1)
+    lq_2 = _log_prob_gaussian(x2, x1, stddev * hmean2)
+    ratio = lp_2 + lq_2 - lp_1 - lq_1
+    x1 = jnp.reshape(x1, [n, -1])
+    x2 = jnp.reshape(x2, [n, -1])
+    x_new, key, lp_new, num_accepts = mh_accept(x1, x2, lp_1, lp_2, ratio, key, num_accepts)
+    new_data = nn.AINetData(**(dict(data) | {'positions': x_new}))
+    return new_data, key, lp_new, num_accepts
 
-    grad_value = jax.grad(logabs_f, argnums=1)
-    atoms = data.atoms[0]
-    charges = data.charges[0]
 
-    def grad_f_closure(x):
-        return grad_value(params, x, atoms, charges)
-
-    grad_f = jax.vmap(grad_f_closure, in_axes=0)
-    grad = grad_f(x1)
-    initial_configuration = jnp.reshape(x1, (batch_size, nelectrons, ndim))
-    x1 = jnp.reshape(jnp.reshape(x1, (batch_size, -1, ndim)), (batch_size, 1, -1))
-    x1 = jnp.reshape(jnp.repeat(x1, nelectrons, axis=1), (batch_size, nelectrons, nelectrons, ndim))
-    gauss = jax.random.normal(key=key, shape=(jnp.shape(grad)))
-    g = grad * tstep + gauss
-    g = jnp.reshape(g, (batch_size, nelectrons, ndim))
-    order = jnp.arange(0, nelectrons, step=1)
-    order = jnp.repeat(order[None, ...], batch_size, axis=0)
-
-    def change_configurations(order: jnp.array, g: jnp.array):
-        z = jnp.zeros((nelectrons, ndim))
-        temp = z.at[order].add(g[order])
-        return temp
-
-    change_configurations_parallel = jax.vmap(jax.vmap(change_configurations, in_axes=(0, None)), in_axes=(0, 0), out_axes=0)
-    z = change_configurations_parallel(order, g)
-    x2 = x1 + z
-    changed_configuration = g + initial_configuration
-    #jax.debug.print("changed_configuration:{}", changed_configuration)
-    x2 = jnp.reshape(x2, (batch_size, nelectrons, -1))
-    grad_new = jax.vmap(jax.vmap(grad_f_closure, in_axes=0, out_axes=0), in_axes=0)(x2)
-    grad = jnp.repeat(grad, nelectrons, axis=0)
-    grad = jnp.reshape(grad, (batch_size, nelectrons, -1))
-    gauss = jax.random.normal(key=key, shape=(jnp.shape(grad)))
-    forward = gauss ** 2
-    backward = (gauss + (grad + grad_new) * tstep) ** 2
-    t_probability = jnp.exp((forward - backward)/(2 * tstep))
-    t_probability = jnp.reshape(t_probability, (batch_size, nelectrons, nelectrons, ndim))
-    t_probability = jnp.sum(t_probability, axis=-1)
-
-    def return_t(t_pro_inner: jnp.array):
-        return jnp.diagonal(t_pro_inner)
-
-    return_t_parallel = jax.vmap(return_t, in_axes=0)
-    t_pro = return_t_parallel(t_probability)
-    logabs_f_vmap = jax.vmap(jax.vmap(logabs_f, in_axes=(None, 0, None, None,)), in_axes=(None, 0, None, None))
-    wave_x2 = logabs_f_vmap(params, x2, atoms, charges)
-    x1 = jnp.reshape(x1, (batch_size, nelectrons, -1))
-    wave_x1 = logabs_f_vmap(params, x1, atoms, charges)
-    acceptance = jnp.abs(jnp.exp(wave_x2 - wave_x1)) ** 2 * t_pro
-    final_configuration, newkey = walkers_accept(initial_configuration,
-                                                 changed_configuration,
-                                                 acceptance,
-                                                 key,
-                                                 nelectrons,
-                                                 batch_size)
-    #jax.debug.print("i:{}", i)
-    #jax.debug.print("final:{}", final_configuration)
-    final_configuration = jnp.reshape(final_configuration, (batch_size, -1))
-    new_data = nn.AINetData(**(dict(data) | {'positions': final_configuration}))
-    return new_data, newkey
-
-'''
-def generate_batch_key(batch_size: int):
-    def get_keys(key: chex.PRNGKey):
-        keys = jax.random.split(key, num=batch_size)
-        return keys
-    return get_keys
-'''
-
-def main_monte_carlo(f: nn.AINetLike,
-                     tstep: float,
-                     ndim: int,
-                     nelectrons: int,
-                     nsteps: int,
-                     batch_size: int):
-    """create mont carlo sample loop. One loop is used here. However, we should circumvent it. Later, we optimize it."""
-    logabs_f = utils.select_output(f, 1)
+def make_mcmc_step(batch_network,
+                   batch_per_device,
+                   steps=10,
+                   atoms=None,
+                   ndim=3,
+                   blocks=1):
+    """Creates the MCMC step function."""
+    inner_fun = mh_update
 
     @jax.jit
-    def mc_step(params: nn.ParamTree, data: nn.AINetData, key: chex.PRNGKey,):
+    def mcmc_step(params, data, key, width):
+        """Performs a set of MCMC steps."""
+        pos = data.positions
 
         def step_fn(i, x):
-            return walkers_update(logabs_f, params, *x, tstep=tstep, ndim=ndim, nelectrons=nelectrons, batch_size=batch_size, i=i)
+            return inner_fun(
+                params,
+                batch_network,
+                *x,
+                stddev=width,
+                atoms=atoms,
+                ndim=ndim,
+                blocks=blocks,
+                i=i)
 
-        new_data, key = lax.fori_loop(lower=0, upper=nsteps, body_fun=step_fn, init_val=(data, key))
-        return new_data
+        nsteps = steps * blocks
+        logprob = 2.0 * batch_network(
+            params, pos, data.spins, data.atoms, data.charges
+        )
+        new_data, key, _, num_accepts = lax.fori_loop(
+            0, nsteps, step_fn, (data, key, logprob, 0.0)
+        )
+        pmove = jnp.sum(num_accepts) / (nsteps * batch_per_device)
+        pmove = constants.pmean(pmove)
+        return new_data, pmove
 
-    return mc_step
+    return mcmc_step
+
+
+def update_mcmc_width(
+        t: int,
+        width: jnp.ndarray,
+        adapt_frequency: int,
+        pmove: jnp.ndarray,
+        pmoves: np.ndarray,
+        pmove_max: float = 0.55,
+        pmove_min: float = 0.5,
+) -> tuple[jnp.ndarray, np.ndarray]:
+    t_since_mcmc_update = t % adapt_frequency
+    # update `pmoves`; `pmove` should be the same across devices
+    pmoves[t_since_mcmc_update] = pmove.reshape(-1)[0].item()
+    if t > 0 and t_since_mcmc_update == 0:
+        if np.mean(pmoves) > pmove_max:
+            width *= 1.1
+        elif np.mean(pmoves) < pmove_min:
+            width /= 1.1
+    return width, pmoves
+
 
 '''
 structure = jnp.array([[10, 0, 0],

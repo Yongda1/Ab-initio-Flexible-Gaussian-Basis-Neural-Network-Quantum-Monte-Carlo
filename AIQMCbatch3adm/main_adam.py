@@ -86,7 +86,7 @@ class Step(Protocol):
     """Returns an OptUpdate function for performing a parameter update.
     So far ,we have not solved the spin configuration problem yet. But we got one more task about writing the loss function.
     Let's go back to main.py 14.08.2024. We cannot finished all functions now. Because we need guarrante all input data format fixed and
-    Loss.py, hamiltonian.py, utils.py and pseudopotential.py form an entire part. So, next fews steps, we need move stepy by step."""
+    Loss.py, hamiltonian_wrong.py, utils.py and pseudopotential.py form an entire part. So, next fews steps, we need move stepy by step."""
 
 
 def make_opt_update_step(evaluate_loss: qmc_loss_functions.LossAINet, optimizer: optax.GradientTransformation) -> OptUpdate:
@@ -136,7 +136,7 @@ def main(batch_size=4, structure = jnp.array([[10, 0, 0],
     seed = jnp.asarray([1e6 * time.time()])
     seed = int(multihost_utils.broadcast_one_to_all(seed)[0])
     key = jax.random.PRNGKey(seed)
-    """we already write the envelope function in the nn.py."""
+    """we already write the envelope function in the nn_wrong.py."""
     network = nn.make_ai_net(ndim=3, natoms=3, nelectrons=16, num_angular=4, charges=charges, full_det=True)
     key, subkey = jax.random.split(key)
     params = network.init(subkey)

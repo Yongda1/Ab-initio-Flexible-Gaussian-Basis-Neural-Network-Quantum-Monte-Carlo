@@ -19,9 +19,10 @@ from typing import Any, Iterable, Mapping, MutableMapping, Optional, Sequence, T
 
 import attr
 import chex
-from ferminet import envelopes
-from ferminet import jastrows
-from ferminet import network_blocks
+from AIQMCrelease1.wavefunction_f import envelopes
+from AIQMCrelease1.wavefunction_f import envelope_test
+from AIQMCrelease1.wavefunction_f import jastrows
+from AIQMCrelease1.wavefunction_f import network_blocks
 import jax
 import jax.numpy as jnp
 from typing_extensions import Protocol
@@ -39,7 +40,7 @@ Param = MutableMapping[str, jnp.ndarray]
 
 
 @chex.dataclass
-class FermiNetData:
+class AINetData:
   """Data passed to network.
 
   Shapes given for an unbatched element (i.e. a single MCMC configuration).
@@ -73,7 +74,7 @@ class FermiNetData:
 ## Interfaces (public) ##
 
 
-class InitFermiNet(Protocol):
+class InitAINet(Protocol):
 
   def __call__(self, key: chex.PRNGKey) -> ParamTree:
     """Returns initialized parameters for the network.
@@ -83,7 +84,7 @@ class InitFermiNet(Protocol):
     """
 
 
-class FermiNetLike(Protocol):
+class AINetLike(Protocol):
 
   def __call__(
       self,
@@ -105,7 +106,7 @@ class FermiNetLike(Protocol):
     """
 
 
-class LogFermiNetLike(Protocol):
+class LogAINetLike(Protocol):
 
   def __call__(
       self,
@@ -127,7 +128,7 @@ class LogFermiNetLike(Protocol):
     """
 
 
-class OrbitalFnLike(Protocol):
+class OrbitalAILike(Protocol):
 
   def __call__(
       self,
@@ -151,7 +152,7 @@ class OrbitalFnLike(Protocol):
     """
 
 
-class InitLayersFn(Protocol):
+class InitLayersAI(Protocol):
 
   def __call__(self, key: chex.PRNGKey) -> Tuple[int, ParamTree]:
     """Returns output dim and initialized parameters for the interaction layers.
@@ -161,7 +162,7 @@ class InitLayersFn(Protocol):
     """
 
 
-class ApplyLayersFn(Protocol):
+class ApplyLayersAI(Protocol):
 
   def __call__(
       self,
@@ -282,7 +283,7 @@ class BaseNetworkOptions:
   """
 
   ndim: int = 3
-  determinants: int = 16
+  determinants: int = 1
   states: int = 0
   full_det: bool = True
   rescale_inputs: bool = False
@@ -297,7 +298,7 @@ class BaseNetworkOptions:
 
 
 @attr.s(auto_attribs=True, kw_only=True)
-class FermiNetOptions(BaseNetworkOptions):
+class AINetOptions(BaseNetworkOptions):
   """Options controlling the FermiNet architecture.
 
   Attributes:
@@ -340,9 +341,9 @@ class FermiNetOptions(BaseNetworkOptions):
 @attr.s(auto_attribs=True)
 class Network:
   options: BaseNetworkOptions
-  init: InitFermiNet
-  apply: FermiNetLike
-  orbitals: OrbitalFnLike
+  init: InitAINet
+  apply: AINetLike
+  orbitals: OrbitalAILike
 
 
 # Internal utilities
@@ -674,8 +675,8 @@ def make_schnet_electron_nuclear_convolution() -> ...:
 
 
 def make_fermi_net_layers(
-    nspins: Tuple[int, int], natoms: int, options: FermiNetOptions
-) -> Tuple[InitLayersFn, ApplyLayersFn]:
+    nspins: Tuple[int, int], natoms: int, options: AINetOptions
+) -> Tuple[InitLayersAI, ApplyLayersAI]:
   """Creates the permutation-equivariant and interaction layers for FermiNet.
 
   Args:
@@ -778,7 +779,7 @@ def make_fermi_net_layers(
     # We don't create features for spin channels
     # which contain no electrons (i.e. spin-polarised systems).
     nchannels = len([nspin for nspin in nspins if nspin > 0])
-    jax.debug.print("nchannels:{}", nchannels)
+    #jax.debug.print("nchannels:{}", nchannels)
 
     def nfeatures(out1, out2, aux):
       return (nchannels + 1) * out1 + nchannels * out2 + aux
@@ -791,8 +792,8 @@ def make_fermi_net_layers(
     #    vector (dim) and distance (1))
     dims_one_in = num_one_features
     dims_two_in = num_two_features
-    jax.debug.print("num_one_features:{}", num_one_features)
-    jax.debug.print("num_two_features:{}", num_two_features)
+    #jax.debug.print("num_one_features:{}", num_one_features)
+    #jax.debug.print("num_two_features:{}", num_two_features)
     # Note SchNet-style convolution with a electron-nuclear stream assumes
     # FermiNet features currently.
     dims_e_aux_in = num_one_features // natoms
@@ -832,8 +833,8 @@ def make_fermi_net_layers(
 
       # Layer initialisation
       dims_one_out, dims_two_out = options.hidden_dims[i]
-      jax.debug.print("dims_one_in:{}", dims_one_in)
-      jax.debug.print("dims_one_out:{}", dims_one_out)
+      #jax.debug.print("dims_one_in:{}", dims_one_in)
+      #jax.debug.print("dims_one_out:{}", dims_one_out)
       layer_params['single'] = network_blocks.init_linear_layer(
           single_key,
           in_dim=dims_one_in,
@@ -946,7 +947,7 @@ def make_fermi_net_layers(
     h_one_in = construct_symmetric_features(
         h_one, h_two_embedding, nspins, h_aux=h_aux
     )
-    jax.debug.print("h_one_in:{}", h_one_in)
+    #jax.debug.print("h_one_in:{}", h_one_in)
     # Execute next layer.
     #jax.debug.print("-----------------")
     h_one_next = jnp.tanh(
@@ -1077,7 +1078,7 @@ def make_orbitals(
     nspins: Tuple[int, int],
     charges: jnp.ndarray,
     options: BaseNetworkOptions,
-    equivariant_layers: Tuple[InitLayersFn, ApplyLayersFn],
+    equivariant_layers: Tuple[InitLayersAI, ApplyLayersAI],
 ) -> ...:
   """Returns init, apply pair for orbitals.
 
@@ -1093,6 +1094,7 @@ def make_orbitals(
 
   # Optional Jastrow factor.
   jastrow_init, jastrow_apply = jastrows.get_jastrow(options.jastrow)
+  envelope_t = envelope_test.make_GTO_envelope()
 
   def init(key: chex.PRNGKey) -> ParamTree:
     """Returns initial random parameters for creating orbitals.
@@ -1141,6 +1143,7 @@ def make_orbitals(
     params['envelope'] = options.envelope.init(
         natom=natom, output_dims=output_dims, ndim=options.ndim
     )
+    #params['envelope_t'] = envelope_t.init(natoms=2, nelectrons=2)
 
     # Jastrow params.
     if jastrow_init is not None:
@@ -1148,20 +1151,33 @@ def make_orbitals(
 
     # orbital shaping
     orbitals = []
+    diffuse_coefficients = []
+    exponent = []
     for nspin_orbital in nspin_orbitals:
 
       key, subkey = jax.random.split(key)
-      jax.debug.print("nspins_orbitals:{}", nspin_orbital)
+      #jax.debug.print("nspins_orbitals:{}", nspin_orbital)
       orbitals.append(
           network_blocks.init_linear_layer(
               subkey,
               in_dim=dims_orbital_in,
               out_dim=nspin_orbital,
               include_bias=options.bias_orbitals,
-          )
-      )
+          ))
+      diffuse_coefficients.append(network_blocks.init_linear_layer(
+          subkey,
+          in_dim=dims_orbital_in,
+          out_dim=nspin_orbital,
+          include_bias=True))
+      exponent.append(network_blocks.init_linear_layer(
+          subkey,
+          in_dim=2,
+          out_dim=2,
+          include_bias=True))
     params['orbital'] = orbitals
-    jax.debug.print("params_orbitals:{}", orbitals)
+    params['diffuse'] = diffuse_coefficients
+    params['exponent'] = exponent
+    #jax.debug.print("params_orbitals:{}", orbitals)
 
     return params
 
@@ -1198,7 +1214,7 @@ def make_orbitals(
         spins=spins,
         charges=charges,
     )
-    jax.debug.print("h_two_orbitals:{}", h_to_orbitals)
+    #jax.debug.print("h_two_orbitals:{}", h_to_orbitals)
 
     if options.envelope.apply_type == envelopes.EnvelopeType.PRE_ORBITAL:
       envelope_factor = options.envelope.apply(
@@ -1220,13 +1236,15 @@ def make_orbitals(
         network_blocks.linear_layer(h, **p)
         for h, p in zip(h_to_orbitals, params['orbital'])
     ]
-    jax.debug.print("orbitals_complex_before:{}", orbitals)
+    diffuse_part = [network_blocks.linear_layer(h, **p) for h, p in zip(h_to_orbitals, params['diffuse'])]
+    #jax.debug.print("orbitals_complex_before:{}", orbitals)
     if options.complex_output:
       # create imaginary orbitals
       orbitals = [
           orbital[..., ::2] + 1.0j * orbital[..., 1::2] for orbital in orbitals
       ]
-      jax.debug.print("orbitals_complex:{}", orbitals)
+      diffuse_part = [diffuse[..., ::2] + 1.0j * diffuse[..., 1::2] for diffuse in diffuse_part]
+      #jax.debug.print("orbitals_complex:{}", orbitals)
 
     # Apply envelopes if required.
     if options.envelope.apply_type == envelopes.EnvelopeType.PRE_DETERMINANT:
@@ -1250,8 +1268,12 @@ def make_orbitals(
         jnp.reshape(orbital, shape) for orbital, shape in zip(orbitals, shapes)
     ]
     orbitals = [jnp.transpose(orbital, (1, 0, 2)) for orbital in orbitals]
+    diffuse_part = [jnp.reshape(diffuse, shape) for diffuse, shape in zip(diffuse_part, shapes)]
+    diffuse_part = [jnp.transpose(diffuse, (1, 0, 2)) for diffuse in diffuse_part]
     if options.full_det:
-      orbitals = [jnp.concatenate(orbitals, axis=1)]
+      #orbitals = [jnp.concatenate(orbitals, axis=1)]
+      orbitals = jnp.concatenate(orbitals, axis=1)
+      diffuse_part = jnp.concatenate(diffuse_part, axis=1)
 
 
     # Optionally apply Jastrow factor for electron cusp conditions.
@@ -1262,6 +1284,17 @@ def make_orbitals(
       )
       orbitals = [orbital * jastrow for orbital in orbitals]
 
+    #r_effective = orbitals
+    diffuse_part = jnp.exp(-1 * diffuse_part) + 1
+    #jax.debug.print("diffuse_part:{}", diffuse_part)
+    #envelope_factor = envelope_t.apply(ae, xi=params['envelope_t']['xi'], natoms=2, nelectrons=2)
+    #envelope_factor = jnp.reshape(envelope_factor, (1, 2, 2)) # 1 is the number of dets
+    #jax.debug.print("envelope_factor:{}", envelope_factor)
+    #exponent_part = jnp.array([network_blocks.linear_layer(h, **p) for h, p in zip(r_effective, params['exponent'])])
+    #jax.debug.print("exponent_part:{}", exponent_part)
+    orbitals = [orbitals * diffuse_part]
+    #jax.debug.print("orbitals_full_det:{}", orbitals)
+
     return orbitals
 
   return init, apply
@@ -1270,7 +1303,7 @@ def make_orbitals(
 ## Excited States  ##
 
 
-def make_state_matrix(signed_network: FermiNetLike, n: int) -> FermiNetLike:
+def make_state_matrix(signed_network: AINetLike, n: int) -> AINetLike:
   """Construct a matrix-output ansatz which gives the Slater matrix of states.
 
   Let signed_network(params, pos, spins, options) be a function which returns
@@ -1310,7 +1343,7 @@ def make_state_matrix(signed_network: FermiNetLike, n: int) -> FermiNetLike:
   return state_matrix
 
 
-def make_total_ansatz(signed_network: FermiNetLike, n: int) -> FermiNetLike:
+def make_total_ansatz(signed_network: AINetLike, n: int) -> AINetLike:
   """Construct a single-output ansatz which gives the meta-Slater determinant.
 
   Let signed_network(params, pos, spins, options) be a function which returns
@@ -1352,7 +1385,7 @@ def make_fermi_net(
     charges: jnp.ndarray,
     *,
     ndim: int = 3,
-    determinants: int = 16,
+    determinants: int = 1,
     states: int = 0,
     envelope: Optional[envelopes.Envelope] = None,
     feature_layer: Optional[FeatureLayer] = None,
@@ -1362,7 +1395,7 @@ def make_fermi_net(
     full_det: bool = True,
     rescale_inputs: bool = False,
     # FermiNet-specific kwargs below.
-    hidden_dims: FermiLayers = ((256, 32), (256, 32), (256, 32)),
+    hidden_dims: FermiLayers = ((4, 2), (4, 2), (4, 2)),
     use_last_layer: bool = False,
     separate_spin_channels: bool = False,
     schnet_electron_electron_convolutions: Tuple[int, ...] = tuple(),
@@ -1433,7 +1466,7 @@ def make_fermi_net(
     else:
       jastrow = jastrows.JastrowType[jastrow.upper()]
 
-  options = FermiNetOptions(
+  options = AINetOptions(
       ndim=ndim,
       determinants=determinants,
       states=states,
@@ -1496,7 +1529,7 @@ def make_fermi_net(
     #jax.debug.print("vmap_charges:{}", charges)
 
     orbitals = orbitals_apply(params, pos, spins, atoms, charges)
-    jax.debug.print("orbitals__:{}", orbitals)
+    #jax.debug.print("orbitals__:{}", orbitals)
     if options.states:
       batch_logdet_matmul = jax.vmap(network_blocks.logdet_matmul, in_axes=0)
       orbitals = [

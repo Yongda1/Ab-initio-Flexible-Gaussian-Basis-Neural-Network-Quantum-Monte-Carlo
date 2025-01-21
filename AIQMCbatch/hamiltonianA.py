@@ -14,7 +14,7 @@ from typing_extensions import Protocol
 from AIQMCbatch import nn
 #from AIQMCbatch import main_kfac
 
-"""the hamilonianA module is only for one configuration. Because this function will be vmapped in loss.py, i.e. loss function.
+"""the hamilonianA module is only for one configuration. Because this function will be vmapped in loss_wrong.py, i.e. loss function.
  So, the input is just like this:.
 """
 #pos = [0.04145381, -0.01200894, -0.1026478 , -0.13694875, -0.09510095, -0.01401753,  0.36738175,  0.13366607,
@@ -56,7 +56,7 @@ def local_kinetic_energy(f: nn.AINetLike) -> KineticEnergy:
     def _lapl_over_f(params, pos: jnp.array, atoms: jnp.array, charges: jnp.array):
         """29.08.2024 take care of the following function, we need write argnums=1 two times."""
         """here, we also need use both pmap and vmap.
-        2.11.2024, this means the vmap should be done in loss.py.  """
+        2.11.2024, this means the vmap should be done in loss_wrong.py.  """
         second_grad_value = jax.jacfwd(jax.jacrev(logabs_f, argnums=1), argnums=1)
         #jax.debug.print("pos:{}", pos)
         hessian_value_logabs = second_grad_value(params, pos, atoms, charges)

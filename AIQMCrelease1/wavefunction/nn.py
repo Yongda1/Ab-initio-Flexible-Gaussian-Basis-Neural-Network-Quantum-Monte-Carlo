@@ -12,6 +12,7 @@ import jax
 import chex
 import jax.numpy as jnp
 from typing_extensions import Protocol
+import numpy as np
 from jax.config import config; config.update("jax_enable_x64", True)
 
 
@@ -255,6 +256,7 @@ def make_orbitals(natoms: int,
         params['orbital'] = orbitals
         params['diffuse'] = diffuse_coefficients
         params['exponent'] = exponent
+        jax.debug.print("orbitals:{}", orbitals)
         return params
 
     def apply(params, pos: jnp.array, atoms: jnp.array, charges: jnp.array):
@@ -265,11 +267,18 @@ def make_orbitals(natoms: int,
                                                  ae=ae, ee=ee,
                                                  r_ae=r_ae,
                                                  r_ee=r_ee,)
-        #jax.debug.print("h_to_orbitals:{}", h_to_orbitals)
+        jax.debug.print("h_to_orbitals:{}", h_to_orbitals)
         envelope_factor = envelope.apply(ae, xi=params['envelope']['xi'], natoms=natoms, nelectrons=nelectrons)
+        for h, p in zip(h_to_orbitals, params['orbital']):
+            jax.debug.print("h:{}", h)
+            jax.debug.print("p:{}", p)
+            x = nnblocks.linear_layer_no_b(h, **p)
+            jax.debug.print("x:{}", x)
+
         r_effective = jnp.array([nnblocks.linear_layer_no_b(h, **p) for h, p in zip(h_to_orbitals, params['orbital'])])
         diffuse_part = jnp.array([nnblocks.linear_layer_no_b(h, **p) for h, p in zip(h_to_orbitals, params['diffuse'])])
         r_effective = r_effective**2
+        jax.debug.print("r_effective:{}", r_effective)
         diffuse_part = jnp.exp(-1 * diffuse_part) + 1
         #jax.debug.print("r_effective:{}", r_effective)
         #jax.debug.print("diffuse_part:{}", diffuse_part)
@@ -368,6 +377,21 @@ n_antiparallel = len(antiparallel_indices[0])
 pos = jnp.array([1.1, 1.2, 1.3, 2.1, 2.2, 2.3])
 atoms = jnp.array([[1, 1, 1], [2, 2, 2]])
 #ae, ee, r_ae, r_ee = construct_input_features(pos, atoms, ndim=3)
+charges=jnp.array([1, 1])
+natoms=2
+charges_jastrow = np.array(charges)
+charges_indices_jastrow = np.arange(natoms)
+atom_jastrow_indices = []
+charged_jastrow_needed = []
+for i in range(len(charges_indices_jastrow)):
+    temp = np.repeat(charges_indices_jastrow[i], charges_jastrow[i])
+    temp1 = np.repeat(charges_jastrow[i], charges_jastrow[i])
+    atom_jastrow_indices.append(temp)
+    charged_jastrow_needed.append(temp1)
+
+atom_jastrow_indices = jnp.array(np.hstack(np.array(atom_jastrow_indices)))
+charged_jastrow_needed = jnp.array(np.hstack(np.array(charged_jastrow_needed)))
+
 
 network = make_ai_net(ndim=3,
                       natoms=2,
@@ -377,6 +401,8 @@ network = make_ai_net(ndim=3,
                       n_antiparallel=n_antiparallel,
                       parallel_indices=parallel_indices,
                       antiparallel_indices=antiparallel_indices,
+                      atom_jastrow_indices=atom_jastrow_indices,
+                      charged_jastrow_needed=charged_jastrow_needed,
                       charges=jnp.array([1, 1]),
                       full_det=True)
 

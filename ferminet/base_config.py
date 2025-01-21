@@ -54,7 +54,7 @@ def default() -> ml_collections.ConfigDict:
       'config_module': __name__,
       'optim': {
           'objective': 'vmc',  # objective type. Either 'vmc' or 'wqmc'
-          'iterations': 1000000,  # number of iterations
+          'iterations': 1000,  # number of iterations
           'optimizer': 'kfac',  # one of adam, kfac, lamb, none
           'laplacian': 'default',  # of of default or folx (for forward lapl)
           'lr': {
@@ -252,7 +252,7 @@ def default() -> ml_collections.ConfigDict:
               'use_layer_norm': False,
           },
           # Config common to all architectures.
-          'determinants': 16,  # Number of determinants.
+          'determinants': 1,  # Number of determinants.
           'bias_orbitals': False,  # include bias in last layer to orbitals
           # If true, determinants are dense rather than block-sparse
           'full_det': True,

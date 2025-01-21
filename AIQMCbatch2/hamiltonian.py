@@ -13,7 +13,7 @@ import chex
 from jax import lax
 import kfac_jax
 
-"""the hamilonianA module is only for one configuration. Because this function will be vmapped in loss.py, i.e. loss function.
+"""the hamilonianA module is only for one configuration. Because this function will be vmapped in loss_wrong.py, i.e. loss function.
  So, the input is just like this:.
 """
 

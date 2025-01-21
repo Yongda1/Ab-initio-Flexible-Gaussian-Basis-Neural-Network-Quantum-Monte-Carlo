@@ -12,10 +12,10 @@ import jax.numpy as jnp
 from typing_extensions import Protocol
 from jax.experimental import multihost_utils
 from AIQMCrelease1.wavefunction import nn
-from AIQMCrelease1.MonteCarloSample import mcstep
+from AIQMCrelease1.MonteCarloSample import VMCmcstep
 from AIQMCrelease1.Loss import pploss as qmc_loss_functions
 from AIQMCrelease1 import constants
-from AIQMCrelease1.Energy import hamiltonian
+from AIQMCrelease1.Energy import hamiltonian_wrong
 from AIQMCrelease1 import curvature_tags_and_blocks
 import functools
 
@@ -139,7 +139,7 @@ def main(atoms: jnp.array,
     n_antiparallel = len(antiparallel_indices[0])
     jax.debug.print("n_parallel:{}", n_parallel)
 
-    """we already write the envelope function in the nn.py."""
+    """we already write the envelope function in the nn_wrong.py."""
     network = nn.make_ai_net(ndim=ndim,
                              natoms=natoms,
                              nelectrons=nelectrons,
@@ -168,7 +168,7 @@ def main(atoms: jnp.array,
     """we need add the pseudopotential module into the hamiltonian module."""
     """be aware of the list_l, this variable means the angular momentum function max indice in pseudopotential file.7.1.2025."""
 
-    localenergy = hamiltonian.local_energy(
+    localenergy = hamiltonian_wrong.local_energy(
         signed_network=signed_network,
         natoms=natoms,
         nelectrons=nelectrons,
