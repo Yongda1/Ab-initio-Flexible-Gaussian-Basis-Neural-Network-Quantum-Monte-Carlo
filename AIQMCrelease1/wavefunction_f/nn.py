@@ -1271,8 +1271,8 @@ def make_orbitals(
     diffuse_part = [jnp.reshape(diffuse, shape) for diffuse, shape in zip(diffuse_part, shapes)]
     diffuse_part = [jnp.transpose(diffuse, (1, 0, 2)) for diffuse in diffuse_part]
     if options.full_det:
-      #orbitals = [jnp.concatenate(orbitals, axis=1)]
-      orbitals = jnp.concatenate(orbitals, axis=1)
+      orbitals = [jnp.concatenate(orbitals, axis=1)]
+      #orbitals = jnp.concatenate(orbitals, axis=1)
       diffuse_part = jnp.concatenate(diffuse_part, axis=1)
 
 
@@ -1285,14 +1285,14 @@ def make_orbitals(
       orbitals = [orbital * jastrow for orbital in orbitals]
 
     #r_effective = orbitals
-    diffuse_part = jnp.exp(-1 * diffuse_part) + 1
+    #diffuse_part = jnp.exp(-1 * diffuse_part) + 1
     #jax.debug.print("diffuse_part:{}", diffuse_part)
     #envelope_factor = envelope_t.apply(ae, xi=params['envelope_t']['xi'], natoms=2, nelectrons=2)
     #envelope_factor = jnp.reshape(envelope_factor, (1, 2, 2)) # 1 is the number of dets
     #jax.debug.print("envelope_factor:{}", envelope_factor)
     #exponent_part = jnp.array([network_blocks.linear_layer(h, **p) for h, p in zip(r_effective, params['exponent'])])
     #jax.debug.print("exponent_part:{}", exponent_part)
-    orbitals = [orbitals * diffuse_part]
+    #orbitals = [orbitals * diffuse_part]
     #jax.debug.print("orbitals_full_det:{}", orbitals)
 
     return orbitals

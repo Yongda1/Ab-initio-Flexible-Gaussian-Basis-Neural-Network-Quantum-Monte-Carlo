@@ -17,7 +17,6 @@
 import functools
 import itertools
 from typing import MutableMapping, Optional, Sequence, Tuple
-
 import chex
 import jax
 import jax.numpy as jnp
