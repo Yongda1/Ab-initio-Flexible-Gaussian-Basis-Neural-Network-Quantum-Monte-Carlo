@@ -1,7 +1,7 @@
 """This moudle tells us how to move the walkers i.e. the calculation of T and A . We dont use the algorithm in Ferminet."""
 
 import chex
-from AIQMCrelease1.wavefunction_f import nn
+from AIQMCrelease2.wavefunction import nn
 import jax
 from jax import numpy as jnp
 #from AIQMCrelease1.main.main_kfac_all_electrons import main
@@ -10,12 +10,13 @@ from jax import lax
 import kfac_jax
 
 
-'''
+
 def limdrift(g, tau, acyrus):
     v2 = jnp.sum(g**2)
-    taueff = (jnp.sqrt(1 + 2 * tau * acyrus * v2) - 1)/ (acyrus * v2)
+    taueff = (jnp.sqrt(1 + 2 * tau * acyrus * v2) - 1) / (acyrus * v2)
     return g * taueff
-'''
+
+
 
 def walkers_accept(x1, x2, acceptance, key, nelectrons: int, batch_size: int):
     key, subkey = jax.random.split(key)
@@ -53,8 +54,11 @@ def walkers_update(logabs_f: nn.AINetLike,
     initial_configuration = jnp.reshape(x1, (batch_size, nelectrons, ndim))
     x1 = jnp.reshape(jnp.reshape(x1, (batch_size, -1, ndim)), (batch_size, 1, -1))
     x1 = jnp.reshape(jnp.repeat(x1, nelectrons, axis=1), (batch_size, nelectrons, nelectrons, ndim))
-    gauss = jax.random.normal(key=key, shape=(jnp.shape(grad)))
-    g = grad * tstep + gauss
+    gauss = jnp.sqrt(tstep) * jax.random.normal(key=key, shape=(jnp.shape(grad)))
+
+    grad_eff = limdrift(grad, tstep, 0.25)
+
+    g = grad_eff * tstep + gauss
     g = jnp.reshape(g, (batch_size, nelectrons, ndim))
     order = jnp.arange(0, nelectrons, step=1)
     order = jnp.repeat(order[None, ...], batch_size, axis=0)
@@ -71,11 +75,12 @@ def walkers_update(logabs_f: nn.AINetLike,
     #jax.debug.print("changed_configuration:{}", changed_configuration)
     x2 = jnp.reshape(x2, (batch_size, nelectrons, -1))
     grad_new = jax.vmap(jax.vmap(grad_f_closure, in_axes=0, out_axes=0), in_axes=0)(x2)
-    grad = jnp.repeat(grad, nelectrons, axis=0)
-    grad = jnp.reshape(grad, (batch_size, nelectrons, -1))
-    gauss = jax.random.normal(key=key, shape=(jnp.shape(grad)))
+    grad_new_eff = limdrift(grad_new, tstep, 0.25)
+    grad_eff = jnp.repeat(grad_eff, nelectrons, axis=0)
+    grad_eff = jnp.reshape(grad_eff, (batch_size, nelectrons, -1))
+    gauss = jnp.sqrt(tstep) * jax.random.normal(key=key, shape=(jnp.shape(grad_eff)))
     forward = gauss ** 2
-    backward = (gauss + (grad + grad_new) * tstep) ** 2
+    backward = (gauss + (grad_eff + grad_new_eff) * tstep) ** 2
     t_probability = jnp.exp((forward - backward)/(2 * tstep))
     t_probability = jnp.reshape(t_probability, (batch_size, nelectrons, nelectrons, ndim))
     t_probability = jnp.sum(t_probability, axis=-1)

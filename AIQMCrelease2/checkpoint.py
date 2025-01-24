@@ -67,6 +67,6 @@ def restore(restore_filename: str, batch_size: Optional[int] = None):
         ckpt_data = np.load(f, allow_pickle=True)
         t = ckpt_data['t'].tolist() + 1
         data = nn.AINetData(**ckpt_data['data'].item())
-        params = ckpt_data['params'].tolist
+        params = ckpt_data['params'].tolist()
         opt_state = ckpt_data['opt_state'].tolist()
     return t, data, params, opt_state
