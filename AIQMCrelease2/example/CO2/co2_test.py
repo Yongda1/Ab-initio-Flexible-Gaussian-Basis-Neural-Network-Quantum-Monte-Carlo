@@ -1,5 +1,5 @@
 import jax.numpy as jnp
-from AIQMCrelease1.main.main_adam import main
+from AIQMCrelease2.main.main_pp import main
 
 structure = jnp.array([[10, 0, 0],
                        [0, 10, 0],
@@ -24,7 +24,7 @@ output = main(atoms=atoms,
               nelectrons=16,
               natoms=3,
               ndim=3,
-              batch_size=100,
+              batch_size=4,
               iterations=100,
               structure=structure,
               Rn_local=Rn_local,

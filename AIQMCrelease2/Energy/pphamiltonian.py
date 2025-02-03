@@ -51,50 +51,23 @@ class MakeLocalEnergy(Protocol):
     def __call__(
             self,
             f: nn.AINetLike,
+            lognetwork: nn.LogAINetLike,
             charges: jnp.ndarray,
             nspins: Sequence[int],
             use_scan: bool = False,
             complex_output: bool = False,
             **kwargs: Any
     ) -> LocalEnergy:
-        """Builds the LocalEnergy function.
-
-    Args:
-      f: Callable which evaluates the sign and log of the magnitude of the
-        wavefunction.
-      charges: nuclear charges.
-      nspins: Number of particles of each spin.
-      use_scan: Whether to use a `lax.scan` for computing the laplacian.
-      complex_output: If true, the output of f is complex-valued.
-      **kwargs: additional kwargs to use for creating the specific Hamiltonian.
-    """
+        """Builds the LocalEnergy function."""
 
 
-KineticEnergy = Callable[
-    [nn.ParamTree, nn.AINetData], jnp.ndarray
-]
+KineticEnergy = Callable[[nn.ParamTree, nn.AINetData], jnp.ndarray]
 
 
 def local_kinetic_energy(
         f: nn.AINetLike,
         use_scan: bool = False,
         complex_output: bool = True,) -> KineticEnergy:
-    r"""Creates a function to for the local kinetic energy, -1/2 \nabla^2 ln|f|.
-
-  Args:
-    f: Callable which evaluates the wavefunction as a
-      (sign or phase, log magnitude) tuple.
-    use_scan: Whether to use a `lax.scan` for computing the laplacian.
-    complex_output: If true, the output of f is complex-valued.
-    laplacian_method: Laplacian calculation method. One of:
-      'default': take jvp(grad), looping over inputs
-      'folx': use Microsoft's implementation of forward laplacian
-
-  Returns:
-    Callable which evaluates the local kinetic energy,
-    -1/2f \nabla^2 f = -1/2 (\nabla^2 log|f| + (\nabla log|f|)^2).
-  """
-
     phase_f = utils.select_output(f, 0)
     logabs_f = utils.select_output(f, 1)
 
@@ -131,81 +104,18 @@ def local_kinetic_energy(
             result -= 1.j * jnp.sum(primal * phase_primal)
         return result
     return _lapl_over_f
-'''
 
 
-def local_kinetic_energy(f: nn.AINetLike) -> KineticEnergy:
-    phase_f = utils.select_output(f, 0)
-    logabs_f = utils.select_output(f, 1)
-    second_grad_value = jax.jacfwd(jax.jacrev(logabs_f, argnums=1), argnums=1)
-    angle_grad_hessian = jax.jacfwd(jax.jacrev(phase_f, argnums=1), argnums=1)
-    grad_phase = jax.grad(phase_f, argnums=1)
-    grad_f = jax.grad(logabs_f, argnums=1)
-
-    def _lapl_over_f(params, data):
-        hessian_value_logabs = second_grad_value(params, data.positions, data.spins, data.atoms, data.charges)
-        hessian_value_logabs = jnp.diagonal(hessian_value_logabs)
-        jax.debug.print("hessian_value_logabs:{}", hessian_value_logabs)
-        """This hessian method has some problems. 23.1.2025."""
-        hessian_value_angle_f = angle_grad_hessian(params, data.positions, data.spins, data.atoms, data.charges)
-        hessian_value_angle_f = jnp.diagonal(hessian_value_angle_f)
-        jax.debug.print("hessian_value_angle_f:{}", hessian_value_angle_f)
-
-        def grad_phase_closure(x):
-            return grad_phase(params, x, data.spins, data.atoms, data.charges)
-
-        def grad_f_closure(x):
-            return grad_f(params, x, data.spins, data.atoms, data.charges)
-
-        first_derivative_angle, dgrad_phase = jax.linearize(grad_phase_closure, data.positions)
-        first_derivative_f, dgrad_f = jax.linearize(grad_f_closure, data.positions)
-        jax.debug.print("dgrad_f:{}", dgrad_f)
-        jax.debug.print("dgrad_phase:{}", dgrad_phase)
-
-        #first_derivative_angle = grad_phase(params, data.positions, data.spins, data.atoms, data.charges)
-        #first_derivative_f = grad_f(params, data.positions, data.spins, data.atoms, data.charges)
-
-        #jax.debug.print("first_derivative_f:{}", first_derivative_f)
-        #jax.debug.print("first_derivative_angle:{}", first_derivative_angle)
-        kinetic_energy = -1/2 * (jnp.sum(hessian_value_logabs) + 1.j * jnp.sum(hessian_value_angle_f) +\
-                         jnp.sum(jnp.square(first_derivative_f)) - jnp.sum(jnp.square(first_derivative_angle)) + \
-                         jnp.sum(1.j * 2 * first_derivative_angle * first_derivative_f))
-        jax.debug.print("kinetic_energy:{}", kinetic_energy)
-        return kinetic_energy
-
-    return _lapl_over_f
-'''
 def potential_electron_electron(r_ee: Array) -> jnp.ndarray:
-    """Returns the electron-electron potential.
-
-  Args:
-    r_ee: Shape (neletrons, nelectrons, :). r_ee[i,j,0] gives the distance
-      between electrons i and j. Other elements in the final axes are not
-      required.
-  """
-    #jax.debug.print("r_ee:{}", r_ee)
     r_ee = r_ee[jnp.triu_indices_from(r_ee[..., 0], 1)]
     return (1.0 / r_ee).sum()
 
 
 def potential_electron_nuclear(charges: Array, r_ae: Array) -> jnp.ndarray:
-    """Returns the electron-nuclearpotential.
-
-  Args:
-    charges: Shape (natoms). Nuclear charges of the atoms.
-    r_ae: Shape (nelectrons, natoms). r_ae[i, j] gives the distance between
-      electron i and atom j.
-  """
     return -jnp.sum(charges / r_ae[..., 0])
 
 
 def potential_nuclear_nuclear(charges: Array, atoms: Array) -> jnp.ndarray:
-    """Returns the electron-nuclearpotential.
-
-  Args:
-    charges: Shape (natoms). Nuclear charges of the atoms.
-    atoms: Shape (natoms, ndim). Positions of the atoms.
-  """
     r_aa = jnp.linalg.norm(atoms[None, ...] - atoms[:, None], axis=-1)
     return jnp.sum(
         jnp.triu((charges[None, ...] * charges[..., None]) / r_aa, k=1))
@@ -213,29 +123,13 @@ def potential_nuclear_nuclear(charges: Array, atoms: Array) -> jnp.ndarray:
 
 def potential_energy(r_ee: Array, atoms: Array,
                      charges: Array) -> jnp.ndarray:
-    """Returns the potential energy for this electron configuration.
-
-  Args:
-    r_ae: Shape (nelectrons, natoms). r_ae[i, j] gives the distance between
-      electron i and atom j.
-    r_ee: Shape (neletrons, nelectrons, :). r_ee[i,j,0] gives the distance
-      between electrons i and j. Other elements in the final axes are not
-      required.
-    atoms: Shape (natoms, ndim). Positions of the atoms.
-    charges: Shape (natoms). Nuclear charges of the atoms.
-  """
-    # jax.debug.print("r_ae:{}", r_ae)
-    # jax.debug.print("r_ee:{}", r_ee)
-    #jax.debug.print("potential_nuclear_nuclear:{}", potential_nuclear_nuclear(charges, atoms))
-    #jax.debug.print("potential_electron_electron:{}", potential_electron_electron(r_ee))
-    #jax.debug.print(" potential_electron_nuclear:{}", potential_electron_nuclear(charges, r_ae))
     return (potential_electron_electron(r_ee) +
             potential_nuclear_nuclear(charges, atoms))
 
 
 def local_energy(
         f: nn.AINetLike,
-        lognetwork: nn.AINetLike,
+        lognetwork,
         charges: jnp.array,
         nspins: Sequence[int],
         rn_local: jnp.array,
