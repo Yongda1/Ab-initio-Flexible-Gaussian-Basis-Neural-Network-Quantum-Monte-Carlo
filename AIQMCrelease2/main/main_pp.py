@@ -5,6 +5,7 @@ import optax
 import logging
 import time
 import jax.numpy as jnp
+import numpy as np
 import kfac_jax
 from typing_extensions import Protocol
 from typing import Optional, Tuple, Union
@@ -17,6 +18,8 @@ from AIQMCrelease2.Energy import pphamiltonian
 from AIQMCrelease2.Loss import pploss as qmc_loss_functions
 from AIQMCrelease2 import constants
 from AIQMCrelease2 import curvature_tags_and_blocks
+from AIQMCrelease2.Optimizer.kfac import make_kfac_training_step
+from AIQMCrelease1.utils import writers
 import functools
 
 
@@ -114,7 +117,7 @@ def main(atoms: jnp.array,
         nelectrons=nelectrons,
         nsteps=nsteps,
         batch_size=batch_size)
-    mc_step_parallel = jax.pmap(mc_step)
+    mc_step_parallel = jax.pmap(mc_step, donate_argnums=1)
     logging.info('--------------Create Hamiltonian--------------')
 
     localenergy = pphamiltonian.local_energy(f=signed_network,
@@ -142,3 +145,64 @@ def main(atoms: jnp.array,
                                                  center_at_clipped_energy=True,
                                                  complex_output=True,
                                                  )
+
+    val_and_grad = jax.value_and_grad(evaluate_loss, argnums=0, has_aux=True)
+
+    def learning_rate_schedule(t_: jnp.array, rate=0.05, delay=1.0, decay=10000) -> jnp.array:
+        return rate * jnp.power(1.0 / (1.0 + (t_ / delay)), decay)
+
+    optimizer = kfac_jax.Optimizer(
+        val_and_grad,
+        l2_reg=0.0,
+        norm_constraint=0.001,
+        value_func_has_aux=True,
+        value_func_has_rng=True,
+        learning_rate_schedule=learning_rate_schedule,
+        curvature_ema=0.95,
+        inverse_update_period=1,
+        min_damping=1.0e-4,
+        num_burnin_steps=0,
+        register_only_generic=False,
+        estimation_mode='fisher_exact',
+        multi_device=True,
+        pmap_axis_name=constants.PMAP_AXIS_NAME,
+        auto_register_kwargs=dict(graph_patterns=curvature_tags_and_blocks.GRAPH_PATTERNS)
+    )
+
+    sharded_key = kfac_jax.utils.make_different_rng_key_on_all_devices(key)
+    sharded_key, subkeys = kfac_jax.utils.p_split(sharded_key)
+    opt_state = optimizer.init(params=params, rng=subkeys, batch=data)
+
+    step_kfac = make_kfac_training_step(
+        damping=0.001,
+        optimizer=optimizer,
+        reset_if_nan=False)
+
+
+    train_schema = ['step', 'energy']
+    writer_manager = writers.Writer(
+        name='train_states',
+        schema=train_schema,
+        directory=ckpt_save_path,
+        iteration_key=None,
+        log=False
+    )
+    time_of_last_ckpt = time.time()
+    """main training loop"""
+    with writer_manager as writer:
+        for t in range(t_init, t_init+iterations):
+            sharded_key, subkeys = kfac_jax.utils.p_split(sharded_key)
+            data = mc_step_parallel(params, data, subkeys)
+            data, params, opt_state, loss, aux_data = step_kfac(data, params, opt_state, subkeys)
+            loss = loss[0]
+            logging_str = ('Step %05d: ', '%03.4f E_h,')
+            logging_args = t, loss,
+            writer_kwargs = {
+                'step': t,
+                'energy': np.asarray(loss),
+            }
+            logging.info(logging_str, *logging_args)
+            writer.write(t, **writer_kwargs)
+            if time.time() - time_of_last_ckpt > save_frequency * 60:
+                checkpoint.save(ckpt_save_path, t, data, params, opt_state)
+                time_of_last_ckpt = time.time()

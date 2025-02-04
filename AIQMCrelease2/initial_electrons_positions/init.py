@@ -1,6 +1,8 @@
 import jax
 import jax.numpy as jnp
 import numpy as np
+from typing import Tuple
+
 
 def init_electrons(key, structure: jnp.array, atoms: jnp.array, charges: jnp.array,
                    electrons: jnp.array, batch_size: int, init_width: float) -> Tuple[jnp.array, jnp.array]:

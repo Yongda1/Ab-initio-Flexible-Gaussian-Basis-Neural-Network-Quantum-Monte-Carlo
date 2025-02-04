@@ -286,23 +286,22 @@ def get_P_l(nelectrons: int, natoms: int, ndim: int, log_network_inner: nn.AINet
                                       in_axes=(None, 0, 0))
 
     batch_lognetwork = jax.vmap(jax.vmap(jax.vmap(log_network_inner,
-                                                  in_axes=(None, 0, None, None), out_axes=0),
-                                         in_axes=(None, 0, None, None), out_axes=0),
-                                in_axes=(None, 0, None, None), out_axes=0)
+                                                  in_axes=(None, 0, None, None, None), out_axes=0),
+                                         in_axes=(None, 0, None, None, None), out_axes=0),
+                                in_axes=(None, 0, None, None, None), out_axes=0)
 
     def generate_points_information(data: nn.AINetData, params: nn.ParamTree, Points: jnp.array, weights: float):
         ae = jnp.reshape(data.positions, [-1, 1, ndim]) - data.atoms[None, ...]
         r_ae = jnp.linalg.norm(ae, axis=-1)
         r_ae = jnp.reshape(r_ae, (nelectrons, natoms, 1))
-        denominator = log_network_inner(params, data.positions, data.atoms, data.charges)
+        denominator = log_network_inner(params, data.positions, data.spins, data.atoms, data.charges)
         roted_coords = rot_coords_parallel(r_ae, Points)
         cos_theta = calculate_cos_theta_parallel(ae, roted_coords)
         order = jnp.arange(0, nelectrons, step=1)
         x1 = data.positions
         x2 = jnp.reshape(x1, (nelectrons, ndim))
         roted_configurations = return_arrays_parallel(x2, roted_coords, order)
-        roted_wavefunciton_value = batch_lognetwork(params, roted_configurations, data.atoms, data.charges)
-        #jax.debug.print("denominator:{}", denominator)
+        roted_wavefunciton_value = batch_lognetwork(params, roted_configurations, data.spins, data.atoms, data.charges)
         ratios = roted_wavefunciton_value / denominator * weights
 
         return cos_theta, ratios, roted_configurations, weights, roted_coords
