@@ -208,7 +208,7 @@ def default() -> ml_collections.ConfigDict:
           'ferminet': {
               # FermiNet architecture: Pfau, Spencer, Matthews, Foulkes, Phys
               # Rev Research 033429 (2020).
-              'hidden_dims': ((4, 2), (4, 2), (4, 2), (4, 2)),
+              'hidden_dims': ((16, 8), (16, 8), (16, 8), (16, 8)),
               # Whether to use the last layer of the two-electron stream of the
               # FermiNet.
               'use_last_layer': False,

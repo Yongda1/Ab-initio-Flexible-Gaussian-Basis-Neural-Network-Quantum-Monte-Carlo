@@ -270,10 +270,8 @@ def get_P_l(nelectrons: int, natoms: int, ndim: int, log_network_inner: nn.AINet
         return jnp.sum(ae_inner_1 * roted_coords_inner_1, axis=-1) / \
                (jnp.linalg.norm(ae_inner_1) * jnp.linalg.norm(roted_coords_inner_1))
 
-
     calculate_cos_theta_parallel = jax.vmap(jax.vmap(calculate_cos_theta_single, in_axes=(0, 0), out_axes=0),
                                             in_axes=(0, 0))
-
 
     def return_arrays(x2: jnp.array, roted_coords: jnp.array, order1: jnp.array):
         temp = x2.at[order1].set(roted_coords)
