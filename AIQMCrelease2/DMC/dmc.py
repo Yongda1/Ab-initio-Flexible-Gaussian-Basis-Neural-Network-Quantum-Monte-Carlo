@@ -95,7 +95,7 @@ def P_l_theta(x: jnp.array, list_l: float):
                (3 * 2 + 1)/(4 * jnp.pi) * 0.5 * (5 * x * x * x - 3 * x)
 
 
-def compute_tmoves(lognetwork: nn.LogAINetLike, list_l: float, tstep: float):
+def compute_tmoves(list_l: float, tstep: float):
     """For a given electron, evaluate all possible t-moves.
     Here, we need read the paper about T-moves.
     The implementation of T-moves is from the paper,
@@ -103,15 +103,14 @@ def compute_tmoves(lognetwork: nn.LogAINetLike, list_l: float, tstep: float):
     We finished the pseudopotential part currently, now turn to the T-moves. 9.12.2024.
     we use the same strategy for this function. The input is just one configuration.
     """
-    def calculate_ratio_weight_tmoves(params: nn.ParamTree,
-                                      data: nn.AINetData,
+    def calculate_ratio_weight_tmoves(data: nn.AINetData,
                                       costheta: jnp.array,
                                       ratios: jnp.array,
                                       Rn_non_local: jnp.array,
                                       Non_local_coes: jnp.array,
                                       Non_local_exps: jnp.array):
 
-        output_P_l = jnp.array(P_l_theta(costheta, list_l=2.0))
+        output_P_l = jnp.array(P_l_theta(costheta, list_l=list_l))
         v_r_non_local = get_non_v_l(data, Rn_non_local, Non_local_coes, Non_local_exps)
         """we have some problems about the data type. It should be float32 but currently it is int32. Maybe it is a bug. We solve it later."""
         #jax.debug.print("v_r_non_local_shape:{}", v_r_non_local.shape)
@@ -135,8 +134,8 @@ def compute_tmoves(lognetwork: nn.LogAINetLike, list_l: float, tstep: float):
         return forward_probability_output
     return calculate_ratio_weight_tmoves
 
+ratio_weight = compute_tmoves(list_l=2, tstep=0.1)
 
-ratio_weight = compute_tmoves(lognetwork=log_network, list_l=2, tstep=0.1)
 
 
 def propose_t_moves(params: nn.ParamTree,

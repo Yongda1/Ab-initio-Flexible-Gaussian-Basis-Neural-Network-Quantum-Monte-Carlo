@@ -10,7 +10,7 @@ charges = jnp.array([4.0, 4.0])
 spins = jnp.array([1.0, -1.0, 1.0, -1.0, 1.0, -1.0, 1.0, -1.0])
 
 Rn_local = jnp.array([[1.0, 3.0, 2.0], [1.0, 3.0, 2.0]])
-Rn_non_local = jnp.array([[[2.0], [2.0]]])
+Rn_non_local = jnp.array([[2.0], [2.0]])
 Local_coes = jnp.array([[4.00000, 57.74008, -25.81955],
                         [4.00000, 57.74008, -25.81955]])
 Local_exps = jnp.array([[14.43502, 8.39889, 7.38188],

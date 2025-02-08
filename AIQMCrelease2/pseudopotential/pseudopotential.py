@@ -138,20 +138,27 @@ def get_non_v_l(ndim: int,
                 non_local_coefficient: jnp.array,
                 non_local_exponent: jnp.array) -> NonlocalPPcoes:
     """This function is working. Because the nonlocal part has only one parameter."""
-
+    """something is wrong. confusing..."""
     def exp_non_single(r_ae_inner: jnp.array,
                        rn_non_local_inner: jnp.array,
                        non_local_coefficient_inner: jnp.array,
                        non_local_exponent_inner: jnp.array):
+        jax.debug.print("r_ae_inner:{}", r_ae_inner)
+        jax.debug.print("rn_non_local_inner:{}", rn_non_local_inner)
+        jax.debug.print("non_local_coefficient_inner:{}", non_local_coefficient_inner)
+        jax.debug.print("non_local_exponent_inner:{}", non_local_exponent_inner)
         return non_local_coefficient_inner * (r_ae_inner ** rn_non_local_inner) * jnp.exp(-non_local_exponent_inner * jnp.square(r_ae_inner))
 
-    non_local_parallel = jax.vmap(exp_non_single, in_axes=(0, None, None, None), out_axes=0)
+    non_local_parallel = jax.vmap(jax.vmap(exp_non_single, in_axes=(0, 0, 0, 0)), in_axes=(0, None, None, None), out_axes=0)
 
     def get_non_local_coe(data: nn.AINetData):
         ae = jnp.reshape(data.positions, [-1, 1, ndim]) - data.atoms[None, ...]
         r_ae = jnp.linalg.norm(ae, axis=-1)
+        #jax.debug.print("r_ae:{}", r_ae)
         r_ae = jnp.reshape(r_ae, (nelectrons, natoms, 1))
-        non_local_output = non_local_parallel(r_ae, non_local_exponent, rn_non_local, non_local_coefficient)
+        #jax.debug.print("r_ae:{}", r_ae)
+        non_local_output = non_local_parallel(r_ae, rn_non_local, non_local_coefficient, non_local_exponent)
+        #jax.debug.print("non_local_output:{}", non_local_output)
         non_local_output = jnp.sum(non_local_output, axis=-1)
         return non_local_output
     """i dont know here is an warning. 27.12.2024."""

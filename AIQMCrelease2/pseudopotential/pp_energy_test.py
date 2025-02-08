@@ -64,8 +64,7 @@ def total_energy_pseudopotential(get_local_pp_energy: pseudopotential.LocalPPEne
         local_pp_energy = jnp.sum(jnp.sum(local_pp_energy, axis=-1), axis=-1)
         nonlocal_parameters = get_nonlocal_pp_coes(data)
         """we have to set batch_size=1 here."""
-        Points_OA, Points_OB, Points_OC, Points_OD, weights = pseudopotential.get_rot(batch_size=1,
-                                                                                      key=key)
+        Points_OA, Points_OB, Points_OC, Points_OD, weights = pseudopotential.get_rot(batch_size=1, key=key)
         cos_theta_OA, ratios_OA, roted_configurations_OA, weights_OA, roted_coords_OA = get_P_l_parallel(
             data, params, Points_OA, weights[0])
         cos_theta_OB, ratios_OB, roted_configurations_OB, weights_OB, roted_coords_OB = get_P_l_parallel(

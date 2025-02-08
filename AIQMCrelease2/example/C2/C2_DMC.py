@@ -9,14 +9,27 @@ atoms = jnp.array([[0.0, 0.0, -1.0], [0.0, 0.0, 1.0]])
 charges = jnp.array([4.0, 4.0])
 spins = jnp.array([1.0, -1.0, 1.0, -1.0, 1.0, -1.0, 1.0, -1.0])
 
-Rn_local = jnp.array([[1.0, 3.0, 2.0], [1.0, 3.0, 2.0]])
-Rn_non_local = jnp.array([[[2.0], [2.0]]])
+Rn_local = jnp.array([[1.0, 3.0, 2.0],
+                      [1.0, 3.0, 2.0]])
+Rn_non_local = jnp.array([[[2.0, 2.0], [2.0, 2.0], [2.0, 2.0]],
+                          [[2.0, 2.0], [2.0, 2.0], [2.0, 2.0]],])
 Local_coes = jnp.array([[4.00000, 57.74008, -25.81955],
                         [4.00000, 57.74008, -25.81955]])
 Local_exps = jnp.array([[14.43502, 8.39889, 7.38188],
                         [14.43502, 8.39889, 7.38188],])
-Non_local_coes = jnp.array([[52.13345], [52.13345]])
-Non_local_exps = jnp.array([[7.76079], [7.76079]])
+
+Non_local_coes = jnp.array([[[52.13345, 0], [0, 0], [0, 0]],
+                            [[52.13345, 0], [0, 0], [0, 0]],])
+'''
+Non_local_coes = jnp.array([[52.13345],
+                            [52.13345]])
+'''
+Non_local_exps = jnp.array([[[7.76079, 0], [0, 0], [0, 0]],
+                            [[7.76079, 0], [0, 0], [0, 0]],])
+'''
+Non_local_exps = jnp.array([[7.76079],
+                            [7.76079]])
+'''
 output = main(atoms=atoms,
               charges=charges,
               spins=spins,
