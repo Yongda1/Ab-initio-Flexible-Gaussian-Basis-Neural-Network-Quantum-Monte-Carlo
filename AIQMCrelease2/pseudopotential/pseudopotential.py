@@ -143,10 +143,10 @@ def get_non_v_l(ndim: int,
                        rn_non_local_inner: jnp.array,
                        non_local_coefficient_inner: jnp.array,
                        non_local_exponent_inner: jnp.array):
-        jax.debug.print("r_ae_inner:{}", r_ae_inner)
-        jax.debug.print("rn_non_local_inner:{}", rn_non_local_inner)
-        jax.debug.print("non_local_coefficient_inner:{}", non_local_coefficient_inner)
-        jax.debug.print("non_local_exponent_inner:{}", non_local_exponent_inner)
+        #jax.debug.print("r_ae_inner:{}", r_ae_inner)
+        #jax.debug.print("rn_non_local_inner:{}", rn_non_local_inner)
+        #jax.debug.print("non_local_coefficient_inner:{}", non_local_coefficient_inner)
+        #jax.debug.print("non_local_exponent_inner:{}", non_local_exponent_inner)
         return non_local_coefficient_inner * (r_ae_inner ** rn_non_local_inner) * jnp.exp(-non_local_exponent_inner * jnp.square(r_ae_inner))
 
     non_local_parallel = jax.vmap(jax.vmap(exp_non_single, in_axes=(0, 0, 0, 0)), in_axes=(0, None, None, None), out_axes=0)
