@@ -20,16 +20,10 @@ Local_exps = jnp.array([[14.43502, 8.39889, 7.38188],
 
 Non_local_coes = jnp.array([[[52.13345, 0], [0, 0], [0, 0]],
                             [[52.13345, 0], [0, 0], [0, 0]],])
-'''
-Non_local_coes = jnp.array([[52.13345],
-                            [52.13345]])
-'''
+
 Non_local_exps = jnp.array([[[7.76079, 0], [0, 0], [0, 0]],
                             [[7.76079, 0], [0, 0], [0, 0]],])
-'''
-Non_local_exps = jnp.array([[7.76079],
-                            [7.76079]])
-'''
+
 output = main(atoms=atoms,
               charges=charges,
               spins=spins,

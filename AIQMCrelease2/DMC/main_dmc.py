@@ -13,6 +13,8 @@ from AIQMCrelease2.utils import utils
 from AIQMCrelease2.DMC.drift_diffusion import propose_drift_diffusion
 from AIQMCrelease2.DMC.Tmoves import compute_tmoves
 from AIQMCrelease2.pseudopotential import pseudopotential
+from AIQMCrelease2.DMC.S_matrix import comput_S
+
 
 def main(atoms: jnp.array,
          charges: jnp.array,
@@ -76,9 +78,6 @@ def main(atoms: jnp.array,
         return mag + 1.j * phase
 
     logabs_f = utils.select_output(signed_network, 1)
-    #jax.debug.print("t_init:{}", t_init)
-    #jax.debug.print("data:{}", data)
-    #jax.debug.print("params:{}", params)
 
     drift_diffusion = propose_drift_diffusion(
         logabs_f=logabs_f,
@@ -88,18 +87,28 @@ def main(atoms: jnp.array,
         batch_size=batch_size)
     drift_diffusion_pmap = jax.pmap(drift_diffusion)
     tmoves = compute_tmoves(list_l=2,
-                   tstep=0.05,
-                   nelectrons=nelectrons,
-                   natoms=natoms,
-                   ndim=ndim,
-                   lognetwork=log_network,
-                   Rn_non_local=Rn_non_local,
-                   Non_local_coes=Non_local_coes,
-                   Non_local_exps=Non_local_exps)
+                            tstep=0.05,
+                            nelectrons=nelectrons,
+                            natoms=natoms,
+                            ndim=ndim,
+                            lognetwork=log_network,
+                            Rn_non_local=Rn_non_local,
+                            Non_local_coes=Non_local_coes,
+                            Non_local_exps=Non_local_exps)
 
     #jax.debug.print("subkeys:{}", subkeys)
     tmoves_pmap = jax.pmap(jax.vmap(tmoves, in_axes=(nn.AINetData(positions=0, spins=0, atoms=0, charges=0), None, None)))
     """we need check the drift_diffusion process is correct or not.5.2.2025."""
-    new_data, newkey, tdamp, grad_eff, grad_new_eff_s = drift_diffusion_pmap(params, sharded_key, data)
     #jax.debug.print("new_data:{}", new_data)
-    output = tmoves_pmap(data, params, subkeys)
+    pos, acceptance = tmoves_pmap(data, params, subkeys)
+    data = nn.AINetData(**(dict(data) | {'positions': pos}))
+    jax.debug.print("pos:{}", pos)
+    new_data, newkey, tdamp, grad_eff, grad_new_eff_s = drift_diffusion_pmap(params, sharded_key, data)
+    """we need do a summary for t-moves and drift-diffusion process."""
+    branchcut_start = 10
+    """we need debug the local energy module.10.2.2025."""
+
+    S_old = comput_S(e_trial=etrial, e_est=e_est, branchcut=branchcut_start, v2=jnp.square(grad_eff), tau=tstep,
+                     eloc=eloc_old, nelec=nelectrons)
+    S_new = comput_S(e_trial=etrial, e_est=e_est, branchcut=branchcut_start, v2=jnp.square(grad_new_eff_s), tau=tstep,
+                     eloc=eloc_new, nelec=nelectrons)
