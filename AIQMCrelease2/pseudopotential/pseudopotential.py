@@ -247,21 +247,26 @@ Points_OA, Points_OB, Points_OC, Points_OD, weights = get_rot(1, key=key)
 jax.debug.print("Points_OA:{}", Points_OA)
 '''
 
-def P_l(x, list_l: float):
+def P_l(x: jnp.array, list_l: float):
     """
     create the legendre polynomials functions
     :param x: cos(theta)
-    :param list_l: the angular momentum functions used in the calculation.
-    :return:
+    :return: the largest l in the pp file.
     """
     if list_l == 0:
-        return jnp.ones(x.shape)
+        return 1/(4 * jnp.pi) * jnp.ones(x.shape)
     if list_l == 1:
-        return jnp.ones(x.shape), x
+        return 1/(4 * jnp.pi) * jnp.ones(x.shape), \
+               (2 + 1)/(4 * jnp.pi) * x
     if list_l == 2:
-        return jnp.ones(x.shape), x, 0.5 * (3 * x * x - 1)
+        return 1/(4 * jnp.pi) * jnp.ones(x.shape), \
+               (2 + 1)/(4 * jnp.pi) * x, \
+               (2 * 2 + 1)/(4 * jnp.pi) * 0.5 * (3 * x * x - 1)
     if list_l == 3:
-        return jnp.ones(x.shape), x, 0.5 * (3 * x * x - 1), 0.5 * (5 * x * x * x - 3 * x)
+        return 1/(4 * jnp.pi) * jnp.ones(x.shape), \
+               (2 + 1)/(4 * jnp.pi) * x, \
+               (2 * 2 + 1)/(4 * jnp.pi) * 0.5 * (3 * x * x - 1), \
+               (3 * 2 + 1)/(4 * jnp.pi) * 0.5 * (5 * x * x * x - 3 * x)
 
 
 def get_P_l(nelectrons: int, natoms: int, ndim: int, log_network_inner: nn.AINetLike):

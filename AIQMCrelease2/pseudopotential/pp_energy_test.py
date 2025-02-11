@@ -56,8 +56,16 @@ def total_energy_pseudopotential(get_local_pp_energy: pseudopotential.LocalPPEne
         return a * b
 
     """here, 4 is the number of points."""
-    multiply_test_parallel = jax.vmap(multiply_test, in_axes=(0, 1), out_axes=0)
+    #multiply_test_parallel = jax.vmap(multiply_test, in_axes=(0, 1), out_axes=0)
+    multiply_test_parallel = jax.vmap(
+        jax.vmap(multiply_test, in_axes=(0, None), out_axes=0),
+        in_axes=(0, 2), out_axes=0)
     get_P_l_parallel = jax.vmap(get_P_l, in_axes=(None, None, 0, None))
+
+    def multiply_P_l_ratios(a: jnp.array, b: jnp.array):
+        return a * b
+
+    multiply_P_l_ratios_parallel = jax.vmap(multiply_P_l_ratios, in_axes=(0, None))
 
     def get_total_pp_energy(params: nn.ParamTree, key: chex.PRNGKey, data: nn.AINetData,):
         local_pp_energy = get_local_pp_energy(data)
@@ -73,15 +81,21 @@ def total_energy_pseudopotential(get_local_pp_energy: pseudopotential.LocalPPEne
             data, params, Points_OC, weights[2])
         cos_theta_OD, ratios_OD, roted_configurations_OD, weights_OD, roted_coords_OD = get_P_l_parallel(
             data, params, Points_OD, weights[3])
-        output_OA = jnp.sum(jnp.array(pseudopotential.P_l(cos_theta_OA, list_l=list_l)) * ratios_OA, axis=-1)
-        output_OB = jnp.sum(jnp.array(pseudopotential.P_l(cos_theta_OB, list_l=list_l)) * ratios_OB, axis=-1)
-        output_OC = jnp.sum(jnp.array(pseudopotential.P_l(cos_theta_OC, list_l=list_l)) * ratios_OC, axis=-1)
-        output_OD = jnp.sum(jnp.array(pseudopotential.P_l(cos_theta_OD, list_l=list_l)) * ratios_OD, axis=-1)
+
+        output_OA = jnp.sum(multiply_P_l_ratios_parallel(jnp.array(pseudopotential.P_l(cos_theta_OA, list_l=list_l)), ratios_OA), axis=-1)
+        output_OB = jnp.sum(multiply_P_l_ratios_parallel(jnp.array(pseudopotential.P_l(cos_theta_OB, list_l=list_l)), ratios_OB), axis=-1)
+        output_OC = jnp.sum(multiply_P_l_ratios_parallel(jnp.array(pseudopotential.P_l(cos_theta_OC, list_l=list_l)), ratios_OC), axis=-1)
+        output_OD = jnp.sum(multiply_P_l_ratios_parallel(jnp.array(pseudopotential.P_l(cos_theta_OD, list_l=list_l)), ratios_OD), axis=-1)
+        """output_OA shape should be l orbitals, 1, nelectrons, natoms."""
+        """nonlocal_parameters shape should be nelectrons, natoms, l orbitals."""
+        #jax.debug.print("output_OA_shape:{}", output_OA.shape)
         OA_energy = multiply_test_parallel(output_OA, nonlocal_parameters)
+        #jax.debug.print("OA_energy:{}", OA_energy.shape)
         OB_energy = multiply_test_parallel(output_OB, nonlocal_parameters)
         OC_energy = multiply_test_parallel(output_OC, nonlocal_parameters)
         OD_energy = multiply_test_parallel(output_OD, nonlocal_parameters)
-        nonlocal_energy = jnp.sum(jnp.sum(jnp.sum(OA_energy + OB_energy + OC_energy + OD_energy, axis=0), axis=-1), axis=-1)
+        nonlocal_energy = jnp.sum(jnp.sum(OA_energy + OB_energy + OC_energy + OD_energy, axis=0))
+        #jax.debug.print("nonlocal_energy:{}", nonlocal_energy)
         total_energy = local_pp_energy + nonlocal_energy
         #jax.debug.print("total_energy:{}", total_energy)
         return total_energy

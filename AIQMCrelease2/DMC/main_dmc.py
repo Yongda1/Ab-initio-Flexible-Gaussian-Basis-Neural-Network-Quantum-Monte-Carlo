@@ -14,6 +14,8 @@ from AIQMCrelease2.DMC.drift_diffusion import propose_drift_diffusion
 from AIQMCrelease2.DMC.Tmoves import compute_tmoves
 from AIQMCrelease2.pseudopotential import pseudopotential
 from AIQMCrelease2.DMC.S_matrix import comput_S
+from AIQMCrelease2.Energy import pphamiltonian
+from AIQMCrelease2.DMC.total_energy import calculate_total_energy
 
 
 def main(atoms: jnp.array,
@@ -64,6 +66,8 @@ def main(atoms: jnp.array,
     else:
         raise ValueError('DMC must use the wave function from VMC!')
 
+
+
     feature_layer = nn.make_ferminet_features(natoms=natoms, nspins=nspins, ndim=ndim, )
     network = nn.make_fermi_net(ndim=ndim,
                                 nspins=nspins,
@@ -78,6 +82,25 @@ def main(atoms: jnp.array,
         return mag + 1.j * phase
 
     logabs_f = utils.select_output(signed_network, 1)
+
+    localenergy = pphamiltonian.local_energy(f=signed_network,
+                                             lognetwork=log_network,
+                                             charges=charges,
+                                             nspins=spins,
+                                             rn_local=Rn_local,
+                                             local_coes=Local_coes,
+                                             local_exps=Local_exps,
+                                             rn_non_local=Rn_non_local,
+                                             non_local_coes=Non_local_coes,
+                                             non_local_exps=Non_local_exps,
+                                             natoms=natoms,
+                                             nelectrons=nelectrons,
+                                             ndim=ndim,
+                                             list_l=2,
+                                             use_scan=False)
+
+    total_e = calculate_total_energy(local_energy=localenergy)
+    total_e_parallel = jax.pmap(total_e)
 
     drift_diffusion = propose_drift_diffusion(
         logabs_f=logabs_f,
@@ -101,14 +124,21 @@ def main(atoms: jnp.array,
     """we need check the drift_diffusion process is correct or not.5.2.2025."""
     #jax.debug.print("new_data:{}", new_data)
     pos, acceptance = tmoves_pmap(data, params, subkeys)
-    data = nn.AINetData(**(dict(data) | {'positions': pos}))
+    #pos = jnp.reshape(pos, (batch_size, -1))
+    t_move_data = nn.AINetData(**(dict(data) | {'positions': pos}))
     jax.debug.print("pos:{}", pos)
-    new_data, newkey, tdamp, grad_eff, grad_new_eff_s = drift_diffusion_pmap(params, sharded_key, data)
+    new_data, newkey, tdamp, grad_eff, grad_new_eff_s = drift_diffusion_pmap(params, sharded_key, t_move_data)
     """we need do a summary for t-moves and drift-diffusion process."""
     branchcut_start = 10
     """we need debug the local energy module.10.2.2025."""
+    jax.debug.print("data:{}", data)
+    eloc_old = total_e_parallel(params, subkeys, data)
+    eloc_new = total_e_parallel(params, subkeys, new_data)
+    jax.debug.print("eloc_old:{}", eloc_old)
+    jax.debug.print("eloc_new:{}", eloc_new)
 
-    S_old = comput_S(e_trial=etrial, e_est=e_est, branchcut=branchcut_start, v2=jnp.square(grad_eff), tau=tstep,
-                     eloc=eloc_old, nelec=nelectrons)
-    S_new = comput_S(e_trial=etrial, e_est=e_est, branchcut=branchcut_start, v2=jnp.square(grad_new_eff_s), tau=tstep,
-                     eloc=eloc_new, nelec=nelectrons)
+
+    #S_old = comput_S(e_trial=etrial, e_est=e_est, branchcut=branchcut_start, v2=jnp.square(grad_eff), tau=tstep,
+    #                 eloc=eloc_old, nelec=nelectrons)
+    #S_new = comput_S(e_trial=etrial, e_est=e_est, branchcut=branchcut_start, v2=jnp.square(grad_new_eff_s), tau=tstep,
+    #                 eloc=eloc_new, nelec=nelectrons)

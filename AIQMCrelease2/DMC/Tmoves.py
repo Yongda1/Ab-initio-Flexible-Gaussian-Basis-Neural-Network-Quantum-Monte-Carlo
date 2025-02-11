@@ -56,7 +56,7 @@ def compute_tmoves(list_l: float,
     def multiply_weights(v_r_non_local: jnp.array, output_P_l: jnp.array):
         return (jnp.exp(-1 * tstep * v_r_non_local) - 1) * output_P_l
 
-    multiply_weights_parallel = jax.vmap( jax.vmap(jax.vmap( jax.vmap(multiply_weights, in_axes=(0, 0)), in_axes=(0, 0), out_axes=0),
+    multiply_weights_parallel = jax.vmap(jax.vmap(jax.vmap(jax.vmap(multiply_weights, in_axes=(0, 0)), in_axes=(0, 0), out_axes=0),
                                                    in_axes=(None, 0), out_axes=0),
                                           in_axes=(2, 0), out_axes=0)
 
@@ -85,13 +85,18 @@ def compute_tmoves(list_l: float,
 
         def calculate_forward(cos_theta: jnp.array, ratios: jnp.array):
             output_P_l = jnp.array(P_l_theta(cos_theta, list_l=list_l))
+            jax.debug.print("output_P_l_shape:{}", output_P_l.shape)
+            """output_P_l shape is l orbitals, 1, number of electrons, number of atoms, number of points"""
             v_r_non_local = get_non_local_coe(data)
+            jax.debug.print("v_r_non_local_shape:{}", v_r_non_local.shape)
             """the shape of v_r_non_local is number of electrons, number of atoms, number of l orbitals. correct. 8.2.2025
             the shape of output_P_l_OA is the number of l orbitals, 1, the number of electrons, the number of atoms, the number of points."""
             weights = multiply_weights_parallel(v_r_non_local, output_P_l)
             """the shape of weights is number of l orbitals, number of electrons, number of atoms, number of points.
             The l orbitals dimension here is shrunk."""
             weights = jnp.sum(weights, axis=0)
+            jax.debug.print("ratios_shape:{}", ratios.shape)
+            """ratios shape is 1, number of electrons, number of atoms, number of points."""
             """do summation along the l orbitals dimension"""
             #jax.debug.print("weights:{}", weights.shape)
             #jax.debug.print("ratios:{}", ratios.shape)
@@ -134,10 +139,10 @@ def compute_tmoves(list_l: float,
         forward_probability_output_total_final = jnp.reshape(forward_probability_output_total_final, (1, nelectrons, -1))
 
         forward_probability_output_total_final = jnp.concatenate([jnp.ones((1, nelectrons, 1)), forward_probability_output_total_final], axis=-1)
-        jax.debug.print("forward_probability_output_total_final_shape:{}", forward_probability_output_total_final.shape)
+        #jax.debug.print("forward_probability_output_total_final_shape:{}", forward_probability_output_total_final.shape)
         cdf = jnp.cumsum(forward_probability_output_total_final / norm, axis=-1)
         #ax.debug.print("cdf:{}", cdf)
-        jax.debug.print("cdf_shape:{}", cdf.shape)
+        #jax.debug.print("cdf_shape:{}", cdf.shape)
 
         def select_walker(a: jnp.array):
             r = jax.random.uniform(key) + 1
@@ -154,15 +159,15 @@ def compute_tmoves(list_l: float,
         order = jnp.arange(0, nelectrons, step=1)
         pos_temp = data.positions
         pos_temp = jnp.reshape(pos_temp, (-1, 3))
-        jax.debug.print("roted_coords_OA:{}", roted_coords_OA.shape)
-        jax.debug.print("roted_coords_OB:{}", roted_coords_OB.shape)
+        #jax.debug.print("roted_coords_OA:{}", roted_coords_OA.shape)
+        #jax.debug.print("roted_coords_OB:{}", roted_coords_OB.shape)
         #jax.debug.print("roted_coords_OA:{}", roted_configurations_OA)
 
         roted_coords_total = jnp.concatenate([roted_coords_OA, roted_coords_OB, roted_coords_OC, roted_coords_OD],
                                              axis=3)
-        jax.debug.print("roted_coords_total_shape:{}", roted_coords_total.shape)
+        #jax.debug.print("roted_coords_total_shape:{}", roted_coords_total.shape)
         roted_coords_total = jnp.reshape(roted_coords_total, (nelectrons, -1, ndim))
-        jax.debug.print("roted_coords_total_shape:{}", roted_coords_total.shape)
+        #jax.debug.print("roted_coords_total_shape:{}", roted_coords_total.shape)
 
         ratios_total = jnp.concatenate([ratios_OA, ratios_OB, ratios_OC, ratios_OD], axis=-1)
         ratios_total = jnp.reshape(ratios_total, (nelectrons, -1))
@@ -171,11 +176,11 @@ def compute_tmoves(list_l: float,
         total_configuration = jnp.concatenate([pos_temp, roted_coords_total], axis=1)
         ratio_ones = jnp.ones((nelectrons, 1))
         ratio_total_final = jnp.concatenate([ratio_ones, ratios_total], axis=1)
-        jax.debug.print("move_selected_final:{}", move_selected_final)
-        jax.debug.print("order:{}", order)
-        jax.debug.print("ratio_total_final:{}", ratio_total_final.shape)
-        jax.debug.print("roted_coords_total:{}", total_configuration.shape)
-        jax.debug.print("forward_probability_output_total_final:{}", forward_probability_output_total_final.shape)
+        #jax.debug.print("move_selected_final:{}", move_selected_final)
+        #jax.debug.print("order:{}", order)
+        #jax.debug.print("ratio_total_final:{}", ratio_total_final.shape)
+        #jax.debug.print("roted_coords_total:{}", total_configuration.shape)
+        #jax.debug.print("forward_probability_output_total_final:{}", forward_probability_output_total_final.shape)
 
         def selected_configurations(move_selected_final: jnp.array, order: jnp.array,
                                    ratio_total: jnp.array, roted_coords_total: jnp.array, t_amp: jnp.array):
@@ -188,18 +193,18 @@ def compute_tmoves(list_l: float,
         selcted_configurations_parallel = jax.vmap(selected_configurations, in_axes=(0, 0, None, None, None))
         """to keep the same shape"""
         move_selected_final = jnp.reshape(move_selected_final, -1)
-        jax.debug.print("move_selected_final:{}", move_selected_final)
+        #jax.debug.print("move_selected_final:{}", move_selected_final)
         forward_probability_output_total_final = jnp.reshape(forward_probability_output_total_final, (nelectrons, -1))
         new_configuration, back_amplitudes = selcted_configurations_parallel(move_selected_final, order,
                                                                              ratio_total_final, total_configuration,
                                                                              forward_probability_output_total_final)
-        jax.debug.print("new_configuration:{}", new_configuration)
-        jax.debug.print("new_configuration:{}", new_configuration.shape)
+        #jax.debug.print("new_configuration:{}", new_configuration)
+        #jax.debug.print("new_configuration:{}", new_configuration.shape)
         #jax.debug.print("back_amplitudes:{}", back_amplitudes)
         no_move_weights = jnp.array([[0.0]])
         weights_final = jnp.concatenate([no_move_weights, weights])
-        jax.debug.print("weights_final:{}", weights_final)
-        jax.debug.print("back_amplitudes:{}", back_amplitudes.shape)
+        #jax.debug.print("weights_final:{}", weights_final)
+        #jax.debug.print("back_amplitudes:{}", back_amplitudes.shape)
         back_amplitudes_norm = 1.0 + jnp.sum(weights_final[0] * back_amplitudes[:, 0], axis=-1) + \
                                jnp.sum(weights_final[1] * back_amplitudes[:, 1:19], axis=-1) + \
                                jnp.sum(weights_final[2] * back_amplitudes[:, 19:55], axis=-1) + \
@@ -208,8 +213,8 @@ def compute_tmoves(list_l: float,
 
         acceptance = norm / back_amplitudes_norm
         acceptance = jnp.reshape(acceptance.real, (-1, 1))
-        jax.debug.print("acceptance:{}", acceptance.shape)
-        jax.debug.print("acceptance:{}", acceptance)
+        #jax.debug.print("acceptance:{}", acceptance.shape)
+        #jax.debug.print("acceptance:{}", acceptance)
         key, subkey = jax.random.split(key)
         rnd = jax.random.uniform(subkey, shape=acceptance.shape, minval=0, maxval=1.0)
         cond = acceptance > rnd
@@ -217,6 +222,7 @@ def compute_tmoves(list_l: float,
         x1 = jnp.reshape(x1, (-1, 3))
         final_configuration = jnp.where(cond, new_configuration, x1)
         jax.debug.print("final_configuration:{}", final_configuration)
+        final_configuration = jnp.reshape(final_configuration, (-1))
         return final_configuration, acceptance
     return calculate_ratio_weight_tmoves
 
