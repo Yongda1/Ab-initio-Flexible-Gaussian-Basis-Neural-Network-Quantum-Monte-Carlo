@@ -17,6 +17,7 @@ from AIQMCrelease2.utils import utils
 from AIQMCrelease2.Energy import pphamiltonian
 from AIQMCrelease2.DMC.total_energy import calculate_total_energy
 from AIQMCrelease2.DMC.dmc import dmc_propagate
+from AIQMCrelease2.DMC.branch import branch
 
 
 def main(atoms: jnp.array,
@@ -131,6 +132,10 @@ def main(atoms: jnp.array,
                             Non_local_coes=Non_local_coes,
                             Non_local_exps=Non_local_exps)
     branchcut_start = jnp.ones(shape=(1, batch_size)) * 10
+
+    branch_parallel = jax.pmap(branch, in_axes=(0, 0, 0))
+    """here, we can start the loop."""
+
     Energy_avg, weights, new_data = dmc_run(params,
                                             subkeys,
                                             data,
@@ -140,6 +145,9 @@ def main(atoms: jnp.array,
                                             e_est,)
 
     jax.debug.print("weights:{}", weights)
+    jax.debug.print("subkeys:{}", subkeys)
+    output = branch_parallel(data, weights, subkeys)
+
     '''
     localenergy = pphamiltonian.local_energy(f=signed_network,
                                              lognetwork=log_network,
