@@ -10,12 +10,13 @@ from absl import logging
 from AIQMCrelease2 import checkpoint
 from AIQMCrelease2.wavefunction import nn
 from AIQMCrelease2.utils import utils
-from AIQMCrelease2.DMC.drift_diffusion import propose_drift_diffusion
-from AIQMCrelease2.DMC.Tmoves import compute_tmoves
-from AIQMCrelease2.pseudopotential import pseudopotential
-from AIQMCrelease2.DMC.S_matrix import comput_S
+#from AIQMCrelease2.DMC.drift_diffusion import propose_drift_diffusion
+#from AIQMCrelease2.DMC.Tmoves import compute_tmoves
+#from AIQMCrelease2.pseudopotential import pseudopotential
+#from AIQMCrelease2.DMC.S_matrix import comput_S
 from AIQMCrelease2.Energy import pphamiltonian
 from AIQMCrelease2.DMC.total_energy import calculate_total_energy
+from AIQMCrelease2.DMC.dmc import dmc_propagate
 
 
 def main(atoms: jnp.array,
@@ -101,6 +102,63 @@ def main(atoms: jnp.array,
 
     total_e = calculate_total_energy(local_energy=localenergy)
     total_e_parallel = jax.pmap(total_e)
+    jax.debug.print("data:{}", data)
+
+    e_trial, variance_trial = total_e_parallel(params, subkeys, data)
+    e_est, variance_est = total_e_parallel(params, subkeys, data)
+    """we need think more about the parallel strategy. So later, we have to modify the shape of weights and branchcut."""
+    weights = jnp.ones(shape=(1, batch_size))
+    jax.debug.print("e_trial:{}", e_trial)
+    jax.debug.print("weights:{}", weights)
+    esigma = jnp.std(e_est)
+    jax.debug.print("esigma:{}", esigma)
+    dmc_run = dmc_propagate(signed_network=signed_network,
+                            log_network=log_network,
+                            logabs_f=logabs_f,
+                            list_l=2,
+                            nelectrons=nelectrons,
+                            natoms=natoms,
+                            ndim=ndim,
+                            batch_size=batch_size,
+                            tstep=tstep,
+                            nsteps=nsteps,
+                            charges=charges,
+                            spins=spins,
+                            Rn_local=Rn_local,
+                            Local_coes=Local_coes,
+                            Local_exps=Local_exps,
+                            Rn_non_local=Rn_non_local,
+                            Non_local_coes=Non_local_coes,
+                            Non_local_exps=Non_local_exps)
+    branchcut_start = jnp.ones(shape=(1, batch_size)) * 10
+    Energy_avg, weights, new_data = dmc_run(params,
+                                            subkeys,
+                                            data,
+                                            weights,
+                                            branchcut_start * esigma,
+                                            e_trial,
+                                            e_est,)
+
+    jax.debug.print("weights:{}", weights)
+    '''
+    localenergy = pphamiltonian.local_energy(f=signed_network,
+                                             lognetwork=log_network,
+                                             charges=charges,
+                                             nspins=spins,
+                                             rn_local=Rn_local,
+                                             local_coes=Local_coes,
+                                             local_exps=Local_exps,
+                                             rn_non_local=Rn_non_local,
+                                             non_local_coes=Non_local_coes,
+                                             non_local_exps=Non_local_exps,
+                                             natoms=natoms,
+                                             nelectrons=nelectrons,
+                                             ndim=ndim,
+                                             list_l=2,
+                                             use_scan=False)
+
+    total_e = calculate_total_energy(local_energy=localenergy)
+    total_e_parallel = jax.pmap(total_e)
 
     drift_diffusion = propose_drift_diffusion(
         logabs_f=logabs_f,
@@ -142,3 +200,4 @@ def main(atoms: jnp.array,
     #                 eloc=eloc_old, nelec=nelectrons)
     #S_new = comput_S(e_trial=etrial, e_est=e_est, branchcut=branchcut_start, v2=jnp.square(grad_new_eff_s), tau=tstep,
     #                 eloc=eloc_new, nelec=nelectrons)
+    '''

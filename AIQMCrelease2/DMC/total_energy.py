@@ -22,7 +22,7 @@ def calculate_total_energy(local_energy: pphamiltonian.LocalEnergy,):
     def total_energy(
             params: nn.ParamTree,
             key: chex.PRNGKey,
-            data: nn.AINetData,) -> Tuple[jnp.array, jnp.array]:
+            data: nn.AINetData,):
         """Evaluates the total energy of the network for a batch of configurations."""
         keys = jax.random.split(key, num=data.positions.shape[0])
         e_l, e_l_mat = batch_local_energy(params, keys, data)
@@ -30,5 +30,5 @@ def calculate_total_energy(local_energy: pphamiltonian.LocalEnergy,):
         loss_diff = e_l - loss
         variance = constants.pmean(jnp.mean(loss_diff * jnp.conj(loss_diff)))
         #jax.debug.print("loss:{}", loss)
-        return loss, variance
+        return e_l, variance
     return total_energy

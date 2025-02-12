@@ -166,7 +166,7 @@ def make_loss(network,
         loss = constants.pmean(jnp.mean(e_l))
         loss_diff = e_l - loss
         variance = constants.pmean(jnp.mean(loss_diff * jnp.conj(loss_diff)))
-        jax.debug.print("loss:{}", loss)
+        #jax.debug.print("loss:{}", loss)
         return loss, AuxiliaryLossData(
             variance=variance.real,
             local_energy=e_l,

@@ -85,17 +85,17 @@ def compute_tmoves(list_l: float,
 
         def calculate_forward(cos_theta: jnp.array, ratios: jnp.array):
             output_P_l = jnp.array(P_l_theta(cos_theta, list_l=list_l))
-            jax.debug.print("output_P_l_shape:{}", output_P_l.shape)
+            #jax.debug.print("output_P_l_shape:{}", output_P_l.shape)
             """output_P_l shape is l orbitals, 1, number of electrons, number of atoms, number of points"""
             v_r_non_local = get_non_local_coe(data)
-            jax.debug.print("v_r_non_local_shape:{}", v_r_non_local.shape)
+            #jax.debug.print("v_r_non_local_shape:{}", v_r_non_local.shape)
             """the shape of v_r_non_local is number of electrons, number of atoms, number of l orbitals. correct. 8.2.2025
             the shape of output_P_l_OA is the number of l orbitals, 1, the number of electrons, the number of atoms, the number of points."""
             weights = multiply_weights_parallel(v_r_non_local, output_P_l)
             """the shape of weights is number of l orbitals, number of electrons, number of atoms, number of points.
             The l orbitals dimension here is shrunk."""
             weights = jnp.sum(weights, axis=0)
-            jax.debug.print("ratios_shape:{}", ratios.shape)
+            #jax.debug.print("ratios_shape:{}", ratios.shape)
             """ratios shape is 1, number of electrons, number of atoms, number of points."""
             """do summation along the l orbitals dimension"""
             #jax.debug.print("weights:{}", weights.shape)
@@ -154,7 +154,7 @@ def compute_tmoves(list_l: float,
         #jax.debug.print("selected_moves:{}", selected_moves)
         #jax.debug.print("move_selected:{}", move_selected)
         move_selected_final = jnp.where(selected_moves < forward_probability_output_total_final.shape[2], selected_moves, move_selected)
-        jax.debug.print("move_selected_final:{}", move_selected_final)
+        #jax.debug.print("move_selected_final:{}", move_selected_final)
 
         order = jnp.arange(0, nelectrons, step=1)
         pos_temp = data.positions
@@ -221,7 +221,7 @@ def compute_tmoves(list_l: float,
         x1 = data.positions
         x1 = jnp.reshape(x1, (-1, 3))
         final_configuration = jnp.where(cond, new_configuration, x1)
-        jax.debug.print("final_configuration:{}", final_configuration)
+        #jax.debug.print("final_configuration:{}", final_configuration)
         final_configuration = jnp.reshape(final_configuration, (-1))
         return final_configuration, acceptance
     return calculate_ratio_weight_tmoves

@@ -46,7 +46,7 @@ def propose_drift_diffusion(logabs_f: nn.LogAINetLike,
         gauss = jnp.sqrt(tstep) * jax.random.normal(key=key, shape=(jnp.shape(grad)))
 
         grad_eff = limdrift(grad, tstep, 0.25)
-
+        grad_eff_old = grad_eff
         g = grad_eff * tstep + gauss
         g = jnp.reshape(g, (batch_size, nelectrons, ndim))
         order = jnp.arange(0, nelectrons, step=1)
@@ -97,7 +97,9 @@ def propose_drift_diffusion(logabs_f: nn.LogAINetLike,
 
         grad_new_s = grad_f(new_data.positions)
         grad_new_eff_s = limdrift(grad_new_s, tstep, 0.25)
+        #jax.debug.print("grad_eff:{}", grad_eff)
+        #jax.debug.print("grad_new_eff_s:{}", grad_new_eff_s)
 
-        return new_data, newkey, tdamp, grad_eff, grad_new_eff_s
+        return new_data, newkey, tdamp, grad_eff_old, grad_new_eff_s
 
     return drift_diffusion
