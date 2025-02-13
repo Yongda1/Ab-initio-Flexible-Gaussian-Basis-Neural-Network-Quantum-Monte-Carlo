@@ -84,7 +84,10 @@ def propose_drift_diffusion(logabs_f: nn.LogAINetLike,
         wave_x2 = logabs_f_vmap(params, x2, spins, atoms, charges)
         x1 = jnp.reshape(x1, (batch_size, nelectrons, -1))
         wave_x1 = logabs_f_vmap(params, x1, spins, atoms, charges)
-        acceptance = jnp.abs(jnp.exp(wave_x2 - wave_x1)) ** 2 * t_pro
+        wfratio = jnp.exp(wave_x2 - wave_x1)
+        ratio = jnp.abs(wfratio) ** 2 * t_pro
+        ratio *= jnp.sign(wfratio)
+        acceptance = ratio
         final_configuration, newkey, tdamp = walkers_accept(initial_configuration,
                                                      changed_configuration,
                                                      acceptance,

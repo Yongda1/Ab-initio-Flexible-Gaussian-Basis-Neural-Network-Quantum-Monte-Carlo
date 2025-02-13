@@ -1,5 +1,6 @@
 """This module is the main function for DMC.
 we also need make the dmc engine be suitable for the large scale run."""
+import numpy as np
 import jax.numpy as jnp
 import time
 import jax
@@ -30,6 +31,8 @@ def main(atoms: jnp.array,
          ndim: int,
          batch_size: int,
          iterations: int,
+         nblocks: int,
+         feedback: float,
          nspins: Tuple,
          save_path: Optional[str],
          restore_path: Optional[str],
@@ -68,8 +71,6 @@ def main(atoms: jnp.array,
     else:
         raise ValueError('DMC must use the wave function from VMC!')
 
-
-
     feature_layer = nn.make_ferminet_features(natoms=natoms, nspins=nspins, ndim=ndim, )
     network = nn.make_fermi_net(ndim=ndim,
                                 nspins=nspins,
@@ -103,16 +104,16 @@ def main(atoms: jnp.array,
 
     total_e = calculate_total_energy(local_energy=localenergy)
     total_e_parallel = jax.pmap(total_e)
-    jax.debug.print("data:{}", data)
+    #jax.debug.print("data:{}", data)
 
     e_trial, variance_trial = total_e_parallel(params, subkeys, data)
     e_est, variance_est = total_e_parallel(params, subkeys, data)
     """we need think more about the parallel strategy. So later, we have to modify the shape of weights and branchcut."""
-    weights = jnp.ones(shape=(1, batch_size))
-    jax.debug.print("e_trial:{}", e_trial)
-    jax.debug.print("weights:{}", weights)
+    weights = jnp.ones(shape=(num_devices * num_hosts, batch_size))
+    #jax.debug.print("e_trial:{}", e_trial)
+    #jax.debug.print("weights:{}", weights)
     esigma = jnp.std(e_est)
-    jax.debug.print("esigma:{}", esigma)
+    #jax.debug.print("esigma:{}", esigma)
     dmc_run = dmc_propagate(signed_network=signed_network,
                             log_network=log_network,
                             logabs_f=logabs_f,
@@ -131,22 +132,49 @@ def main(atoms: jnp.array,
                             Rn_non_local=Rn_non_local,
                             Non_local_coes=Non_local_coes,
                             Non_local_exps=Non_local_exps)
-    branchcut_start = jnp.ones(shape=(1, batch_size)) * 10
+    branchcut_start = jnp.ones(shape=(num_devices * num_hosts, batch_size)) * 10
 
     branch_parallel = jax.pmap(branch, in_axes=(0, 0, 0))
     """here, we can start the loop."""
+    for block in range(0, nblocks):
+        for t in range(t_init, t_init+iterations):
+            Energy_avg, new_weights, new_data = dmc_run(params,
+                                                    subkeys,
+                                                    data,
+                                                    weights,
+                                                    branchcut_start * esigma,
+                                                    e_trial,
+                                                    e_est,)
+            data = new_data
+            weights = new_weights
 
-    Energy_avg, weights, new_data = dmc_run(params,
-                                            subkeys,
-                                            data,
-                                            weights,
-                                            branchcut_start * esigma,
-                                            e_trial,
-                                            e_est,)
+        weights, newindices = branch_parallel(data, weights, subkeys)
+        x1 = data.positions
+        x2 = []
+        for i in range(len(x1)):
+            unique, counts = jnp.unique(newindices[i], return_counts=True)
+            temp = x1[i][unique]
+            """here, we need think what if the walker is killed. 13.2.2025.
+            we need add one more walker into the configurations.
+            But now the problem is how to generate the new walker?"""
+            if len(unique) < batch_size:
+                n = batch_size - len(unique)
+                extra_walkers = temp[-1] + jax.random.uniform(key, (n, nelectrons * ndim))
+                jax.debug.print("extra_walkers:{}", extra_walkers)
+                temp = jnp.concatenate([temp, extra_walkers], axis=0)
+                logging.info("max branches $i and number of walkers killed $i:", jnp.max(counts), n)
+            else:
+                logging.info("max branches $i and number of walkers killed $i:", jnp.max(counts), 0)
 
-    jax.debug.print("weights:{}", weights)
-    jax.debug.print("subkeys:{}", subkeys)
-    output = branch_parallel(data, weights, subkeys)
+            x2.append(temp)
+
+        x2 = jnp.array(x2)
+        data = nn.AINetData(**(dict(data) | {'positions': x2}))
+        """leave this to tomorrow. 13.2.2025. we also need update the branchcut."""
+        e_est = estimate_energy()
+        e_trial = e_est - feedback*jnp.log(jnp.mean(weights)).real
+        """we turn to the energy summary part."""
+
 
     '''
     localenergy = pphamiltonian.local_energy(f=signed_network,
