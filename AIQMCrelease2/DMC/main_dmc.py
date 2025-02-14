@@ -20,6 +20,7 @@ from AIQMCrelease2.DMC.total_energy import calculate_total_energy
 from AIQMCrelease2.DMC.dmc import dmc_propagate
 from AIQMCrelease2.DMC.branch import branch
 from AIQMCrelease2.DMC.estimate_energy import estimate_energy
+from AIQMCrelease1.utils import writers
 
 
 def main(atoms: jnp.array,
@@ -139,57 +140,83 @@ def main(atoms: jnp.array,
     energy_data = jnp.zeros(shape=(nblocks, iterations, batch_size))
     weights_data = jnp.zeros(shape=(nblocks, iterations, batch_size))
     jax.debug.print("energy_data:{}", energy_data)
-    """here, we can start the loop."""
-    for block in range(0, nblocks):
-        for t in range(t_init, t_init+iterations):
-            energy, new_weights, new_data = dmc_run(params,
-                                                    subkeys,
-                                                    data,
-                                                    weights,
-                                                    branchcut_start * esigma,
-                                                    e_trial,
-                                                    e_est,)
-            data = new_data
-            weights = new_weights
-            energy = jnp.reshape(energy, batch_size)
-            weights_step = jnp.reshape(weights, batch_size)
-            #temp = energy_data[block]
-            jax.debug.print("block:{}", block)
-            jax.debug.print("t:{}", t-t_init)
-            jax.debug.print("weights:{}", weights)
-            temp_energy = energy_data[block].at[t-t_init].set(energy.real)
-            temp_weights = weights_data[block].at[t-t_init].set(weights_step)
-            #jax.debug.print("temp:{}", temp)
-            energy_data = energy_data.at[block].set(temp_energy)
-            weights_data = weights_data.at[block].set(temp_weights)
 
-        e_est = estimate_energy(energy_data, weights_data)
-        """for the energy store part, we need rewrite it."""
-        jax.debug.print("e_est:{}", e_est)
-        weights, newindices = branch_parallel(data, weights, subkeys)
-        x1 = data.positions
-        x2 = []
-        for i in range(len(x1)):
-            unique, counts = jnp.unique(newindices[i], return_counts=True)
-            temp = x1[i][unique]
-            """here, we need think what if the walker is killed. 13.2.2025.
-            we need add one more walker into the configurations.
-            But now the problem is how to generate the new walker?
-            Actually, this part belong to branch function. Currently, it is not a good solution. Maybe improve it later."""
-            if len(unique) < batch_size:
-                n = batch_size - len(unique)
-                extra_walkers = temp[-1] + jax.random.uniform(key, (n, nelectrons * ndim))
-                temp = jnp.concatenate([temp, extra_walkers], axis=0)
-                logging.info("max branches $i and number of walkers killed $i:", jnp.max(counts), n)
-            else:
-                logging.info("max branches $i and number of walkers killed $i:", jnp.max(counts), 0)
+    """Start the main loop."""
+    time_of_last_ckpt = time.time()
+    opt_state = opt_state_ckpt
+    """the writer module need be modified. 14.2.2025."""
+    train_schema = ['block', 'energy']
+    writer_manager = writers.Writer(
+        name='DMC_states',
+        schema=train_schema,
+        directory=ckpt_restore_path,
+        iteration_key=None,
+        log=False
+    )
+    with writer_manager as writer:
+        for block in range(0, nblocks):
+            for t in range(t_init, t_init+iterations):
+                energy, new_weights, new_data = dmc_run(params,
+                                                        subkeys,
+                                                        data,
+                                                        weights,
+                                                        branchcut_start * esigma,
+                                                        e_trial,
+                                                        e_est,)
+                data = new_data
+                weights = new_weights
+                energy = jnp.reshape(energy, batch_size)
+                weights_step = jnp.reshape(weights, batch_size)
+                #temp = energy_data[block]
+                jax.debug.print("block:{}", block)
+                jax.debug.print("t:{}", t-t_init)
+                jax.debug.print("weights:{}", weights)
+                temp_energy = energy_data[block].at[t-t_init].set(energy.real)
+                temp_weights = weights_data[block].at[t-t_init].set(weights_step)
+                #jax.debug.print("temp:{}", temp)
+                energy_data = energy_data.at[block].set(temp_energy)
+                weights_data = weights_data.at[block].set(temp_weights)
 
-            x2.append(temp)
+            e_est = estimate_energy(energy_data, weights_data)
+            """for the energy store part, we need rewrite it."""
+            jax.debug.print("e_est:{}", e_est)
+            logging_str = ('Block %05d:', '%03.4f E_h,')
+            logging_args = block, t, e_est,
+            writer_kwargs = {
+                'block': block,
+                'energy': np.asarray(e_est),
+            }
+            logging.info(logging_str, *logging_args)
+            writer.write(block, **writer_kwargs)
 
-        x2 = jnp.array(x2)
-        data = nn.AINetData(**(dict(data) | {'positions': x2}))
-        """leave this to tomorrow. 13.2.2025. we also need update the branchcut."""
-        e_trial = e_est - feedback * jnp.log(jnp.mean(weights)).real
+            if time.time() - time_of_last_ckpt > save_frequency * 60:
+                checkpoint.save(ckpt_restore_path, block, data, params, opt_state)
+                time_of_last_ckpt = time.time()
+
+            weights, newindices = branch_parallel(data, weights, subkeys)
+            x1 = data.positions
+            x2 = []
+            for i in range(len(x1)):
+                unique, counts = jnp.unique(newindices[i], return_counts=True)
+                temp = x1[i][unique]
+                """here, we need think what if the walker is killed. 13.2.2025.
+                we need add one more walker into the configurations.
+                But now the problem is how to generate the new walker?
+                Actually, this part belong to branch function. Currently, it is not a good solution. Maybe improve it later."""
+                if len(unique) < batch_size:
+                    n = batch_size - len(unique)
+                    extra_walkers = temp[-1] + jax.random.uniform(key, (n, nelectrons * ndim))
+                    temp = jnp.concatenate([temp, extra_walkers], axis=0)
+                    logging.info("max branches $i and number of walkers killed $i:", jnp.max(counts), n)
+                else:
+                    logging.info("max branches $i and number of walkers killed $i:", jnp.max(counts), 0)
+
+                x2.append(temp)
+
+            x2 = jnp.array(x2)
+            data = nn.AINetData(**(dict(data) | {'positions': x2}))
+            """leave this to tomorrow. 13.2.2025. we also need update the branchcut."""
+            e_trial = e_est - feedback * jnp.log(jnp.mean(weights)).real
 
         """we turn to the energy summary part."""
     #jax.debug.print("energy_data:{}", energy_data)
