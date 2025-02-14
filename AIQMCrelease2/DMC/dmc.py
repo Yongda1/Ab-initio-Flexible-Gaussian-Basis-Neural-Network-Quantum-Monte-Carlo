@@ -90,7 +90,7 @@ def dmc_propagate(signed_network,
         #jax.debug.print("wmult:{}", wmult)
         #jax.debug.print("weights:{}", weights)
         weights = wmult * weights
-        Energy_avg = jnp.mean(weights * eloc_new)
+        #Energy_avg = jnp.mean(weights * eloc_new)
         #jax.debug.print("Energy_avg:{}", Energy_avg)
-        return Energy_avg, weights, new_data
+        return eloc_new, weights, new_data
     return dmc_propagate_run

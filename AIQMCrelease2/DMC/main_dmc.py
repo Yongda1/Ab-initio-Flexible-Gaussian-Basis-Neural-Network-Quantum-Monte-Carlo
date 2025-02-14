@@ -19,6 +19,7 @@ from AIQMCrelease2.Energy import pphamiltonian
 from AIQMCrelease2.DMC.total_energy import calculate_total_energy
 from AIQMCrelease2.DMC.dmc import dmc_propagate
 from AIQMCrelease2.DMC.branch import branch
+from AIQMCrelease2.DMC.estimate_energy import estimate_energy
 
 
 def main(atoms: jnp.array,
@@ -135,10 +136,13 @@ def main(atoms: jnp.array,
     branchcut_start = jnp.ones(shape=(num_devices * num_hosts, batch_size)) * 10
 
     branch_parallel = jax.pmap(branch, in_axes=(0, 0, 0))
+    energy_data = jnp.zeros(shape=(nblocks, iterations, batch_size))
+    weights_data = jnp.zeros(shape=(nblocks, iterations, batch_size))
+    jax.debug.print("energy_data:{}", energy_data)
     """here, we can start the loop."""
     for block in range(0, nblocks):
         for t in range(t_init, t_init+iterations):
-            Energy_avg, new_weights, new_data = dmc_run(params,
+            energy, new_weights, new_data = dmc_run(params,
                                                     subkeys,
                                                     data,
                                                     weights,
@@ -147,7 +151,21 @@ def main(atoms: jnp.array,
                                                     e_est,)
             data = new_data
             weights = new_weights
+            energy = jnp.reshape(energy, batch_size)
+            weights_step = jnp.reshape(weights, batch_size)
+            #temp = energy_data[block]
+            jax.debug.print("block:{}", block)
+            jax.debug.print("t:{}", t-t_init)
+            jax.debug.print("weights:{}", weights)
+            temp_energy = energy_data[block].at[t-t_init].set(energy.real)
+            temp_weights = weights_data[block].at[t-t_init].set(weights_step)
+            #jax.debug.print("temp:{}", temp)
+            energy_data = energy_data.at[block].set(temp_energy)
+            weights_data = weights_data.at[block].set(temp_weights)
 
+        e_est = estimate_energy(energy_data, weights_data)
+        """for the energy store part, we need rewrite it."""
+        jax.debug.print("e_est:{}", e_est)
         weights, newindices = branch_parallel(data, weights, subkeys)
         x1 = data.positions
         x2 = []
@@ -156,11 +174,11 @@ def main(atoms: jnp.array,
             temp = x1[i][unique]
             """here, we need think what if the walker is killed. 13.2.2025.
             we need add one more walker into the configurations.
-            But now the problem is how to generate the new walker?"""
+            But now the problem is how to generate the new walker?
+            Actually, this part belong to branch function. Currently, it is not a good solution. Maybe improve it later."""
             if len(unique) < batch_size:
                 n = batch_size - len(unique)
                 extra_walkers = temp[-1] + jax.random.uniform(key, (n, nelectrons * ndim))
-                jax.debug.print("extra_walkers:{}", extra_walkers)
                 temp = jnp.concatenate([temp, extra_walkers], axis=0)
                 logging.info("max branches $i and number of walkers killed $i:", jnp.max(counts), n)
             else:
@@ -171,11 +189,11 @@ def main(atoms: jnp.array,
         x2 = jnp.array(x2)
         data = nn.AINetData(**(dict(data) | {'positions': x2}))
         """leave this to tomorrow. 13.2.2025. we also need update the branchcut."""
-        e_est = estimate_energy()
-        e_trial = e_est - feedback*jnp.log(jnp.mean(weights)).real
+        e_trial = e_est - feedback * jnp.log(jnp.mean(weights)).real
+
         """we turn to the energy summary part."""
-
-
+    #jax.debug.print("energy_data:{}", energy_data)
+    #jax.debug.print("weights_data:{}", weights_data)
     '''
     localenergy = pphamiltonian.local_energy(f=signed_network,
                                              lognetwork=log_network,
