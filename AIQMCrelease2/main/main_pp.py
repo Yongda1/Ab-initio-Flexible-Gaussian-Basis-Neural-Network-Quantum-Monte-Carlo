@@ -33,6 +33,7 @@ def main(atoms: jnp.array,
          ndim: int,
          batch_size: int,
          iterations: int,
+         list_l: int, #for the angular momentum order in the pp file. It depends on the detial of the correpsonding pp file.
          nspins: Tuple,
          save_path: Optional[str],
          restore_path: Optional[str],
@@ -133,7 +134,7 @@ def main(atoms: jnp.array,
                                              natoms=natoms,
                                              nelectrons=nelectrons,
                                              ndim=ndim,
-                                             list_l=0,
+                                             list_l=list_l,
                                              use_scan=False)
 
     """so far, we have not constructed the pp module. Currently, we only execute all electrons calculation.  """

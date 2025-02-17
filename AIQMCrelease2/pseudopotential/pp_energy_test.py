@@ -89,12 +89,14 @@ def total_energy_pseudopotential(get_local_pp_energy: pseudopotential.LocalPPEne
         """output_OA shape should be l orbitals, 1, nelectrons, natoms."""
         """nonlocal_parameters shape should be nelectrons, natoms, l orbitals."""
         #jax.debug.print("output_OA_shape:{}", output_OA.shape)
+        #jax.debug.print("nonlocal_parameters:{}", nonlocal_parameters.shape)
         OA_energy = multiply_test_parallel(output_OA, nonlocal_parameters)
         #jax.debug.print("OA_energy:{}", OA_energy.shape)
         OB_energy = multiply_test_parallel(output_OB, nonlocal_parameters)
         OC_energy = multiply_test_parallel(output_OC, nonlocal_parameters)
         OD_energy = multiply_test_parallel(output_OD, nonlocal_parameters)
         nonlocal_energy = jnp.sum(jnp.sum(OA_energy + OB_energy + OC_energy + OD_energy, axis=0))
+
         #jax.debug.print("nonlocal_energy:{}", nonlocal_energy)
         total_energy = local_pp_energy + nonlocal_energy
         #jax.debug.print("total_energy:{}", total_energy)

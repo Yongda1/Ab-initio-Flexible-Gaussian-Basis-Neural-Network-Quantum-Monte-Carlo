@@ -26,6 +26,8 @@ from AIQMCrelease2.wavefunction import network_blocks
 import jax
 import jax.numpy as jnp
 from typing_extensions import Protocol
+from jax.scipy.special import sph_harm
+
 
 FermiLayers = Tuple[Tuple[int, int], ...]
 # Recursive types are not yet supported in pytype - b/109648354.
@@ -445,6 +447,18 @@ def _combine_spin_pairs(
 
 
 ## Network layers: features ##
+def Y_l_real(x: jnp.array):
+    """
+    :param x: y/r corresponds to Y_(1, -1)
+    :param y: z/r corresponds to Y_(1, 0)
+    :param z: x/r corresponds to Y_(1, 1)
+    :return:
+    """
+    #jax.debug.print("x:{}", x)
+    return jnp.array([1/2 * jnp.square(1/jnp.pi),
+                      jnp.square(3.0 / (4.0 * jnp.pi)) * x[0],
+                      jnp.square(3.0 / (4.0 * jnp.pi)) * x[1],
+                      jnp.square(3.0 / (4.0 * jnp.pi)) * x[2]])
 
 
 def construct_input_features(
@@ -1269,8 +1283,8 @@ def make_orbitals(
         diffuse_part = [jnp.reshape(diffuse, shape) for diffuse, shape in zip(diffuse_part, shapes)]
         diffuse_part = [jnp.transpose(diffuse, (1, 0, 2)) for diffuse in diffuse_part]
         if options.full_det:
-            orbitals = [jnp.concatenate(orbitals, axis=1)]
-            # orbitals = jnp.concatenate(orbitals, axis=1)
+            #orbitals = [jnp.concatenate(orbitals, axis=1)]
+            orbitals = jnp.concatenate(orbitals, axis=1)
             diffuse_part = jnp.concatenate(diffuse_part, axis=1)
 
         # Optionally apply Jastrow factor for electron cusp conditions.
@@ -1282,6 +1296,36 @@ def make_orbitals(
             orbitals = [orbital * jastrow for orbital in orbitals]
 
         # r_effective = orbitals
+        jax.debug.print("orbitals:{}", orbitals)
+        jax.debug.print("diffuse_part:{}", diffuse_part)
+        #jax.debug.print("r_ae:{}", r_ae)
+        temp = ae / r_ae
+        r_ae_determinant = jnp.reshape(temp, (8, 6))
+        r_ae_determinant = jnp.repeat(r_ae_determinant, axis=0, repeats=8)
+        r_ae_determinant = jnp.reshape(r_ae_determinant, (8, 8, 6))
+        r_ae_determinant = jnp.reshape(r_ae_determinant, (8, 8, 2, 3))
+        jax.debug.print("r_ae_determinant:{}", r_ae_determinant)
+        #jax.debug.print("ae:{}", ae)
+        #jax.debug.print("temp:{}", temp)
+        Y_output_s_p = jax.vmap(jax.vmap(jax.vmap(Y_l_real, in_axes=0), in_axes=0), in_axes=0)(r_ae_determinant)
+        #jax.debug.print("Y_s_p_shape:{}", Y_output_s_p.shape)
+        #jax.debug.print("Y_p:{}", Y_output_p)
+        diffuse_part = jnp.reshape(diffuse_part, (8, 8))
+        #jax.debug.print("diffuse_part:{}", diffuse_part.shape)
+        Y_output_s_p = jnp.reshape(Y_output_s_p, (8, 8, 8))
+        norm = jnp.linalg.norm(diffuse_part, axis=-1)
+        jax.debug.print("norm:{}", norm)
+        norm_diffuse = diffuse_part / norm
+        jax.debug.print("norm_diffuse_shape:{}", norm_diffuse.shape)
+        jax.debug.print("Y_s_p_shape:{}", Y_output_s_p.shape)
+
+        def multiply(a: jnp.array, b: jnp.array):
+            return a * b
+
+        multiply_parallel = jax.vmap(multiply, in_axes=(0, None))
+        output = multiply_parallel(Y_output_s_p, norm_diffuse)
+        output = jnp.sum(output, axis=-1)
+        jax.debug.print("output.shape:{}", output.shape)
         # diffuse_part = jnp.exp(-1 * diffuse_part) + 1
         # jax.debug.print("diffuse_part:{}", diffuse_part)
         # envelope_factor = envelope_t.apply(ae, xi=params['envelope_t']['xi'], natoms=2, nelectrons=2)
@@ -1540,3 +1584,32 @@ def make_fermi_net(
     return Network(
         options=options, init=init, apply=apply, orbitals=orbitals_apply
     )
+
+'''the following part is just for debug.'''
+from AIQMCrelease2.initial_electrons_positions.init import init_electrons
+atoms = jnp.array([[0.0, 0.0, -1.0], [0.0, 0.0, 1.0]])
+charges = jnp.array([4.0, 4.0])
+spins = jnp.array([1.0, -1.0, 1.0, -1.0, 1.0, -1.0, 1.0, -1.0])
+structure = jnp.array([[10, 0, 0],
+                       [0, 10, 0],
+                       [0, 0, 10]])
+natoms = 2
+ndim = 3
+nspins = (4, 4)
+key = jax.random.PRNGKey(1)
+key, subkey = jax.random.split(key)
+feature_layer = make_ferminet_features(natoms=natoms, nspins=nspins, ndim=ndim, )
+network = make_fermi_net(ndim=ndim,
+                         nspins=nspins,
+                         determinants=1,
+                         feature_layer=feature_layer,
+                         charges=charges,
+                         full_det=True)
+params = network.init(subkey)
+pos, spins = init_electrons(subkey, structure=structure, atoms=atoms, charges=charges,
+                                    electrons=spins,
+                                    batch_size=1, init_width=1.0)
+signed_network = network.apply
+pos = jnp.reshape(pos, (-1))
+#jax.debug.print("pos:{}", pos)
+output = signed_network(params, pos, spins, atoms, charges)
