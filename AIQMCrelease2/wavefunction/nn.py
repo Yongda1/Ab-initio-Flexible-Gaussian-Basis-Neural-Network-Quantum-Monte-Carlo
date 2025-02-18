@@ -552,6 +552,7 @@ def construct_symmetric_features(
   """
     # Split features into spin up and spin down electrons
     spin_partitions = network_blocks.array_partitions(nspins)
+    jax.debug.print("spin_partitions:{}", spin_partitions)
     h_ones = jnp.split(h_one, spin_partitions, axis=0)
     h_twos = jnp.split(h_two, spin_partitions, axis=0)
 
@@ -1226,7 +1227,7 @@ def make_orbitals(
             spins=spins,
             charges=charges,
         )
-        # jax.debug.print("h_two_orbitals:{}", h_to_orbitals)
+        jax.debug.print("h_to_orbitals:{}", h_to_orbitals)
 
         if options.envelope.apply_type == envelopes.EnvelopeType.PRE_ORBITAL:
             envelope_factor = options.envelope.apply(
@@ -1244,10 +1245,13 @@ def make_orbitals(
             active_spin_channels
         )
         # Create orbitals.
+        jax.debug.print("h_to_orbitals:{}", h_to_orbitals)
+        jax.debug.print("params[orbital]:{}", params['orbital'])
         orbitals = [
             network_blocks.linear_layer(h, **p)
             for h, p in zip(h_to_orbitals, params['orbital'])
         ]
+        jax.debug.print("orbitals:{}", orbitals)
         diffuse_part = [network_blocks.linear_layer(h, **p) for h, p in zip(h_to_orbitals, params['diffuse'])]
         # jax.debug.print("orbitals_complex_before:{}", orbitals)
         if options.complex_output:
@@ -1296,15 +1300,15 @@ def make_orbitals(
             orbitals = [orbital * jastrow for orbital in orbitals]
 
         # r_effective = orbitals
-        jax.debug.print("orbitals:{}", orbitals)
-        jax.debug.print("diffuse_part:{}", diffuse_part)
+        #jax.debug.print("orbitals:{}", orbitals)
+        #jax.debug.print("diffuse_part:{}", diffuse_part)
         #jax.debug.print("r_ae:{}", r_ae)
         temp = ae / r_ae
         r_ae_determinant = jnp.reshape(temp, (8, 6))
         r_ae_determinant = jnp.repeat(r_ae_determinant, axis=0, repeats=8)
         r_ae_determinant = jnp.reshape(r_ae_determinant, (8, 8, 6))
         r_ae_determinant = jnp.reshape(r_ae_determinant, (8, 8, 2, 3))
-        jax.debug.print("r_ae_determinant:{}", r_ae_determinant)
+        #jax.debug.print("r_ae_determinant:{}", r_ae_determinant)
         #jax.debug.print("ae:{}", ae)
         #jax.debug.print("temp:{}", temp)
         Y_output_s_p = jax.vmap(jax.vmap(jax.vmap(Y_l_real, in_axes=0), in_axes=0), in_axes=0)(r_ae_determinant)
@@ -1314,9 +1318,9 @@ def make_orbitals(
         #jax.debug.print("diffuse_part:{}", diffuse_part.shape)
         Y_output_s_p = jnp.reshape(Y_output_s_p, (8, 8, 8))
         norm = jnp.linalg.norm(diffuse_part, axis=-1)
-        jax.debug.print("norm:{}", norm)
+        #jax.debug.print("norm:{}", norm)
         norm_diffuse = diffuse_part / norm
-        jax.debug.print("norm_diffuse_shape:{}", norm_diffuse.shape)
+        #jax.debug.print("norm_diffuse_shape:{}", norm_diffuse.shape)
         jax.debug.print("Y_s_p_shape:{}", Y_output_s_p.shape)
 
         def multiply(a: jnp.array, b: jnp.array):
