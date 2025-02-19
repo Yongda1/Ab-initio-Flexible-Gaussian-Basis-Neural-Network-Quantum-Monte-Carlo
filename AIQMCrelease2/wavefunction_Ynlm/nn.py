@@ -87,6 +87,7 @@ class Network:
     apply: AINetLike
     orbitals: OrbitalAILike
 
+
 def construct_input_features(
         pos: jnp.ndarray,
         atoms: jnp.ndarray,
@@ -134,8 +135,44 @@ def construct_symmetric_features(h_one: jnp.array,
     g_one = [jnp.mean(h, axis=0, keepdims=True) for h in h_ones if h.size > 0]
     g_one = [jnp.tile(g, [h_one.shape[0], 1]) for g in g_one]
     g_two = [jnp.mean(h, axis=0) for h in h_twos if h.size > 0]
+    #jax.debug.print("g_one:{}", g_one)
+    #jax.debug.print("g_two:{}", g_two)
     features = [h_one] + g_one + g_two
     return jnp.concatenate(features, axis=1)
+
+
+def y_l_real(x: jnp.array):
+    """
+    :param x: y/r corresponds to Y_(1, -1)
+    :param y: z/r corresponds to Y_(1, 0)
+    :param z: x/r corresponds to Y_(1, 1)
+    :return:
+    """
+    #jax.debug.print("x:{}", x)
+    return jnp.array([1/2 * jnp.sqrt(1/jnp.pi),
+                      jnp.sqrt(3.0 / (4.0 * jnp.pi)) * x[0],
+                      jnp.sqrt(3.0 / (4.0 * jnp.pi)) * x[1],
+                      jnp.sqrt(3.0 / (4.0 * jnp.pi)) * x[2]])
+
+def y_l_real_high(x: jnp.array, y: jnp.array):
+    """
+    to be continued... 19.2.2025
+    :param x: ae the cartesian  coordinate
+            y: r_ae
+    :return: d and f orbitals
+    """
+    return jnp.array([1/2 * jnp.sqrt(15/jnp.pi) * (x[0] * x[1] / y**2),
+                      1/2 * jnp.sqrt(15/jnp.pi) * (x[1] * x[2] / y**2),
+                      1/4 * jnp.sqrt(5/jnp.pi) * ((3 * x[2]**2 - y**2) / y**2),
+                      1/2 * jnp.sqrt(15/jnp.pi) * (x[0] * x[2] / y**2),
+                      1/4 * jnp.sqrt(15/jnp.pi) * ((x[0]**2 - x[1]**2) / y**2),
+                      1/4 * jnp.sqrt(35/(2 * jnp.pi) * ((x[1] * (3 * x[0]**2 - x[1]**2))/y**3)),
+                      1/2 * jnp.sqrt(105/jnp.pi) * (x[0] * x[1] * x[2] / y**3),
+                      1/4 * jnp.sqrt(21/(2 * jnp.pi)) * ((x[1] * (5 * x[2]**2 - y**2))/y**3),
+                      1/4 * jnp.sqrt(7/jnp.pi) * ((5 * x[2]**3 - 3*x[2]*y**2)/y**3),
+                      1/4 * jnp.sqrt(21/(2 * jnp.pi)) * ((x[0] * (5 * x[2]**2 - y**2))/y**3),
+                      1/4 * jnp.sqrt(105/jnp.pi) * (((x[0]**2 - x[1]**2) * x[3])/y**3),
+                      1/4 * jnp.sqrt(35/(2 * jnp.pi)) * ((x[0] * (x[0]**2 - 3*x[1]**2))/y**3)])
 
 
 def make_ai_net_layers(nspins: Tuple[int, int],
@@ -150,48 +187,56 @@ def make_ai_net_layers(nspins: Tuple[int, int],
         key, subkey = jax.random.split(key, num=2)
         (num_one_features, num_two_features), params['input'] = feature_layer.init()
         nchannels = len([nspin for nspin in nspins if nspin > 0])
-        jax.debug.print("nchannels:{}", nchannels)
+        #jax.debug.print("nchannels:{}", nchannels)
 
         def nfeatures(out1, out2):
             return (nchannels + 1) * out1 + nchannels * out2
 
         dims_one_in = num_one_features
-        jax.debug.print("dims_one_in:{}", dims_one_in)
         dims_two_in = num_two_features
-        jax.debug.print("dims_two_in:{}", dims_two_in)
         key1, subkey1 = jax.random.split(key)
         layers = []
         layers_y = []
+        dims_y_in = 4 * 2  # 4 is the number of l orbitals, 2 is the number of atoms.
         for i in range(len(hidden_dims)):
             layer_params = {}
             layer_params_y = {}
             key, single_key, single_y_key, *double_keys = jax.random.split(key1, num=5)
             dims_two_embedding = dims_two_in
             dims_one_in = nfeatures(dims_one_in, dims_two_embedding)
+            #jax.debug.print("dims_one_in:{}", dims_one_in)
             dims_one_out, dims_two_out = hidden_dims[i]
-            jax.debug.print("dims_one_in:{}", dims_one_in)
+            dims_y_out = hidden_dims_Ynlm[i]
+
             """someting is wrong about the dimension. solve it later. 18.2.2025."""
             layer_params['single'] = network_blocks.init_linear_layer(single_key,
                                                                       in_dim=dims_one_in,
                                                                       out_dim=dims_one_out,
                                                                       include_bias=True)
-            layer_params['single_Ynlm'] = network_blocks.init_linear_layer(single_y_key,
-                                                                           in_dim=dims_one_in,
-                                                                           out_dim=dims_one_out,
-                                                                           include_bias=True)
+            layer_params_y['single_Ynlm'] = network_blocks.init_linear_layer(single_y_key,
+                                                                             in_dim=dims_y_in,
+                                                                             out_dim=dims_y_out,
+                                                                             include_bias=True)
+
             if i < len(hidden_dims)-1:
                 ndouble_channels = 1
                 layer_params['double'] = []
                 for ichannel in range(ndouble_channels):
-                    layer_params['double'].append(network_blocks.init_linear_layer(double_keys[ichannel],
-                                                                                   in_dim=dims_two_in,
-                                                                                   out_dim=dims_two_out,
-                                                                                   include_bias=True))
-
+                    layer_params['double'].append(
+                        network_blocks.init_linear_layer(
+                            double_keys[ichannel],
+                            in_dim=dims_two_in,
+                            out_dim=dims_two_out,
+                            include_bias=True,
+                        )
+                    )
+                layer_params['double'] = layer_params['double'][0]
+            
             layers.append(layer_params)
             layers_y.append(layer_params_y)
             dims_one_in = dims_one_out
             dims_two_in = dims_two_out
+            dims_y_in = dims_y_out
 
         params['streams'] = layers
         params['streams_y'] = layers_y
@@ -203,26 +248,43 @@ def make_ai_net_layers(nspins: Tuple[int, int],
                     h_two: Tuple[jnp.array, ...],
                     ) -> Tuple[jnp.array, Tuple[jnp.array, ...]]:
         residual = lambda x, y: (x + y) / jnp.sqrt(2.0) if x.shape == y.shape else y
-        #jax.debug.print("h_one:{}", h_one)
-        #jax.debug.print("h_two:{}", h_two)
-        #jax.debug.print("nspins:{}", nspins)
         h_two_embedding = h_two[0]
         h_one_in = construct_symmetric_features(h_one, h_two_embedding, nspins)
-        #jax.debug.print("h_one_in:{}", h_one_in)
         h_one_next = jnp.tanh(network_blocks.linear_layer(h_one_in, **params['single']))
         h_one = residual(h_one, h_one_next)
+
+        if 'double' in params:
+            params_double = [params['double']]
+            h_two_next = [jnp.tanh(network_blocks.linear_layer(prev, w=param['w'], b=param['b']))
+                          for prev, param in zip(h_two, params_double)]
+            h_two = tuple(residual(prev, new) for prev, new in zip(h_two, h_two_next))
+        
         return h_one, h_two
-    
+
+    def apply_layer_y(params: Mapping[str, ParamTree],
+                      y_one: jnp.array):
+        jax.debug.print("params_ylm:{}", params['single_Ynlm'])
+        residual = lambda x, y: (x + y) / jnp.sqrt(2.0) if x.shape == y.shape else y
+        y_one_next = jnp.tanh(network_blocks.linear_layer(y_one, params['single_Ynlm']))
+        y_one = residual(y_one, y_one_next)
+        """to be contiuned... 19.2.2025."""
+        return y_one
+
     def apply(params,
               ae: jnp.array,
               r_ae: jnp.array,
               ee: jnp.array,
               r_ee: jnp.array,) -> jnp.array:
         ae_features, ee_features = feature_layer.apply(ae=ae, r_ae=r_ae, ee=ee, r_ee=r_ee)
-
         temp = ae / r_ae
-        #jax.debug.print("temp:{}", temp)
-        #jax.debug.print("params:{}", params)
+        y_lm_s_p = jax.vmap(jax.vmap(y_l_real, in_axes=0), in_axes=0)(temp)
+        y_lm_s_p = jnp.reshape(y_lm_s_p, (8, -1))
+        jax.debug.print("y_lm_s_p:{}", y_lm_s_p)
+        y_one = y_lm_s_p
+        #len(hidden_dims_Ynlm)
+        for i in range(1):
+            y_one = apply_layer_y(params['streams_y'][i], y_one)
+
         h_one = ae_features
         h_two = [ee_features]
 
@@ -248,8 +310,8 @@ def make_ai_net(nspins: Tuple[int, int],
                 determinants: int = 1,
                 bias_orbitals: bool = True,
                 rescale_inputs: bool = False,
-                hidden_dims: AILayers = ((4, 2), (4, 2), (4, 2)),
-                hidden_dims_Ynlm: AIYnlmLayers = ((4, 2), (4, 2), (4, 2)),):
+                hidden_dims: AILayers = ((4, 4), (4, 4), (4, 4)),
+                hidden_dims_Ynlm: AIYnlmLayers = ((6), (6), (6))):
 
     feature_layer = make_ainet_features(natoms, ndim=ndim, rescale_inputs=rescale_inputs)
 
