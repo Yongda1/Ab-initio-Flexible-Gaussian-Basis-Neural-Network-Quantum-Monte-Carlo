@@ -1167,6 +1167,7 @@ def make_orbitals(
         orbitals = []
         diffuse_coefficients = []
         exponent = []
+        jax.debug.print("nspins_orbitals:{}", nspin_orbitals)
         for nspin_orbital in nspin_orbitals:
             key, subkey = jax.random.split(key)
             # jax.debug.print("nspins_orbitals:{}", nspin_orbital)
@@ -1227,7 +1228,7 @@ def make_orbitals(
             spins=spins,
             charges=charges,
         )
-        jax.debug.print("h_to_orbitals:{}", h_to_orbitals)
+        #jax.debug.print("h_to_orbitals:{}", h_to_orbitals)
 
         if options.envelope.apply_type == envelopes.EnvelopeType.PRE_ORBITAL:
             envelope_factor = options.envelope.apply(
