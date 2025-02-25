@@ -306,6 +306,7 @@ def make_ai_net_layers(nspins: Tuple[int, int],
 
 
 def make_orbitals(nspins: Tuple[int, int],
+                  nelectrons: int,
                   charges: jnp.array,
                   equivariant_layers: Tuple[InitLayersAI, ApplyLayersAI]) -> ...:
     equivariant_layers_init, equivariant_layers_apply = equivariant_layers
@@ -337,7 +338,7 @@ def make_orbitals(nspins: Tuple[int, int],
         y_coefficients.append(network_blocks.init_linear_layer(
             subkey,
             in_dim=dims_y_in,
-            out_dim=8,
+            out_dim=nelectrons,
             include_bias=False))
 
         #jax.debug.print("orbitals:{}", orbitals)
@@ -360,10 +361,10 @@ def make_orbitals(nspins: Tuple[int, int],
         active_spin_channels = [spin for spin in nspins if spin > 0]
         h_to_orbitals = jnp.split(h_to_orbitals, network_blocks.array_partitions(nspins), axis=0)
         h_to_orbitals = [h for h, spin in zip(h_to_orbitals, nspins) if spin > 0]
-
-        jax.debug.print("y_to_orbitals:{}", y_to_orbitals)
+        jax.debug.print("h_to_orbitals:{}", h_to_orbitals)
+        #jax.debug.print("y_to_orbitals:{}", y_to_orbitals)
         orbitals = [network_blocks.linear_layer(h, **p) for h, p in zip(h_to_orbitals, params['orbitals'])]
-        jax.debug.print("params['y']:{}", params['y'])
+        #jax.debug.print("params['y']:{}", params['y'])
         linear_y_coes = params['y'][0]['w']
         norm = jnp.linalg.norm(linear_y_coes, axis=-1, keepdims=True)
         #jax.debug.print("norm:{}", norm)
@@ -372,17 +373,20 @@ def make_orbitals(nspins: Tuple[int, int],
         y_orbitals = network_blocks.linear_layer(y_to_orbitals, linear_y_coes)
         #jax.debug.print("h_to_orbitals:{}", orbitals)
         orbitals = [orbital[..., ::2] + 1.0j * orbital[..., 1::2] for orbital in orbitals]
-        #jax.debug.print("orbitals:{}", orbitals)
+        jax.debug.print("orbitals:{}", orbitals)
         """we need check the following reshape. 21.2.2025."""
+        jax.debug.print("active_spin_channels:{}", active_spin_channels)
         shapes = [(spin, -1, sum(nspins)) for spin in active_spin_channels]
+        jax.debug.print("shapes:{}", shapes)
+        jax.debug.print("orbitals:{}", orbitals)
         orbitals = [jnp.reshape(orbital, shape) for orbital, shape in zip(orbitals, shapes)]
         orbitals = [jnp.transpose(orbital, (1, 0, 2)) for orbital in orbitals]
         orbitals = jnp.concatenate(orbitals, axis=1)
 
-        orbitals = jnp.reshape(orbitals, (8, 8))
-        jax.debug.print("orbitals:{}", orbitals)
-        jax.debug.print("y_orbitals:{}", y_orbitals)
-        total_orbitals = orbitals * y_orbitals
+        orbitals = jnp.reshape(orbitals, (nelectrons, nelectrons))
+        #jax.debug.print("orbitals:{}", orbitals)
+        #jax.debug.print("y_orbitals:{}", y_orbitals)
+        total_orbitals = [orbitals * y_orbitals]
         jax.debug.print("total_oribtals:{}", total_orbitals)
         """to be continued... 21.2.2025."""
         return total_orbitals
@@ -405,7 +409,8 @@ def make_ai_net(nspins: Tuple[int, int],
 
     equivariant_layers = make_ai_net_layers(nspins, nelectrons, natoms, hidden_dims, hidden_dims_Ynlm, feature_layer)
     #equivariant_layers_init, equivariant_layers_apply = equivariant_layers
-    orbitals_init, orbitals_apply = make_orbitals(nspins=nspins, charges=charges, equivariant_layers=equivariant_layers)
+    orbitals_init, orbitals_apply = make_orbitals(nspins=nspins, nelectrons=nelectrons,
+                                                  charges=charges, equivariant_layers=equivariant_layers)
 
     def init(key: chex.PRNGKey) -> ParamTree:
         key, subkey = jax.random.split(key, num=2)
