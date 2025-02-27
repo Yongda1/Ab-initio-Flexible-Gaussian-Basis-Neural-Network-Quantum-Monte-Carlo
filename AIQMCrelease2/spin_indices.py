@@ -37,7 +37,7 @@ def jastrow_indices_ae(charges_jastrow: jnp.array, natoms: int):
     return atom_jastrow_indices, charged_jastrow_needed
 
 
-spins = jnp.array([1, -1, 1, -1, 1, -1, 1, -1.0])
-parallel_indices, antiparallel_indices, n_parallel, n_antiparallel = jastrow_indices_ee(spins=spins, nelectrons=8)
-jax.debug.print("parallel_indices:{}", parallel_indices)
-jax.debug.print("antiparallel_indices:{}", antiparallel_indices)
+#spins = jnp.array([1, -1, 1, -1, 1, -1, 1, -1.0])
+#parallel_indices, antiparallel_indices, n_parallel, n_antiparallel = jastrow_indices_ee(spins=spins, nelectrons=8)
+#jax.debug.print("parallel_indices:{}", parallel_indices)
+#jax.debug.print("antiparallel_indices:{}", antiparallel_indices)
