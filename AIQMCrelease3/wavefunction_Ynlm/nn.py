@@ -404,12 +404,14 @@ def make_orbitals(nspins: Tuple[int, int],
         orbitals = jnp.reshape(orbitals, (nelectrons, nelectrons))
         total_orbitals = orbitals * y_orbitals
         """something in Jastrow is wrong here 26.2.2025."""
-        jastrow = jnp.exp(jastrow_ee_apply(ee=ee,
-                                           parallel_indices=parallel_indices,
-                                           antiparallel_indices=antiparallel_indices,
-                                           params=params['jastrow_ee']) / nelectrons)
+        """The jastrow has some problems."""
+        #jastrow = jnp.exp(jastrow_ee_apply(ee=ee,
+        #                                   parallel_indices=parallel_indices,
+        #                                   antiparallel_indices=antiparallel_indices,
+        #                                   params=params['jastrow_ee']) / nelectrons)
         """to be continued... 21.2.2025."""
-        total_orbitals_jastrow = [total_orbitals * jastrow]
+        #total_orbitals_jastrow = [total_orbitals * jastrow]
+        total_orbitals_jastrow = [total_orbitals]
         return total_orbitals_jastrow
 
     return init, apply

@@ -1,4 +1,4 @@
-from AIQMCrelease2.wavefunction import nn
+from AIQMCrelease3.wavefunction_Ynlm import nn
 import chex
 import jax
 import jax.numpy as jnp
@@ -87,10 +87,6 @@ def dmc_propagate(signed_network,
                          eloc=eloc_new, nelec=nelectrons)
 
         wmult = jnp.exp(tstep * tdamp * (0.5 * S_new + 0.5 * S_old))
-        #jax.debug.print("wmult:{}", wmult)
-        #jax.debug.print("weights:{}", weights)
         weights = wmult * weights
-        #Energy_avg = jnp.mean(weights * eloc_new)
-        #jax.debug.print("Energy_avg:{}", Energy_avg)
         return eloc_new, weights, new_data
     return dmc_propagate_run

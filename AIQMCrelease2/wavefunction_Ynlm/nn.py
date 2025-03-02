@@ -470,7 +470,7 @@ def make_ai_net(nspins: Tuple[int, int],
     return Network(init=init, apply=apply, orbitals=orbitals_apply)
 
 
-
+'''
 from AIQMCrelease2.initial_electrons_positions.init import init_electrons
 from AIQMCrelease2.spin_indices import jastrow_indices_ee
 atoms = jnp.array([[0.0, 0.0, -1.0], [0.0, 0.0, 1.0]])
@@ -507,3 +507,4 @@ pos = jnp.reshape(pos, (-1))
 #ae, ee, r_ae, r_ee = construct_input_features(pos, atoms, ndim=3)
 output = network.apply(params, pos, spins, atoms, charges)
 jax.debug.print("output:{}", output)
+'''

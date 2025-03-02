@@ -1,5 +1,4 @@
 """this module returns the electron indices for jastrow calculation."""
-import jax
 import jax.numpy as jnp
 import numpy as np
 

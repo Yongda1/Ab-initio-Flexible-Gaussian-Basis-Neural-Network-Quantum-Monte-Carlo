@@ -1,14 +1,11 @@
 """This moudle tells us how to move the walkers i.e. the calculation of T and A . We dont use the algorithm in Ferminet."""
 
 import chex
-from AIQMCrelease3.wavefunction_Ynlm import nn
 import jax
 from jax import numpy as jnp
-#from AIQMCrelease1.main.main_kfac_all_electrons import main
-from AIQMCrelease3.utils import utils
 from jax import lax
-import kfac_jax
-
+from AIQMCrelease3.wavefunction_Ynlm import nn
+from AIQMCrelease3.utils import utils
 
 
 def limdrift(g, tau, acyrus):

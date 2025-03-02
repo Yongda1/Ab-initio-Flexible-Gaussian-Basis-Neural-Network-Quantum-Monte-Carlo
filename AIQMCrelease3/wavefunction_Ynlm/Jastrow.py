@@ -3,29 +3,6 @@ import enum
 from typing import Any, Callable, Iterable, Mapping, Union, Tuple
 import jax.numpy as jnp
 import jax
-#from nn import construct_input_features
-#import numpy as np
-
-'''
-pos = jnp.array([1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18])
-atoms = jnp.array([[1, 1, 1], [2, 2, 2], [3, 3, 3]])
-ae, ee, r_ae, r_ee = construct_input_features(pos=pos, atoms=atoms)
-
-spins = jnp.array([1.0, -1.0, 1.0, -1.0, 1.0, 1.0])
-temp = jnp.reshape(spins, (6, 1))
-spins = jnp.reshape(spins, (1, 6))
-spins_total = spins * temp
-spins_total_uptriangle = jnp.triu(spins_total, k=1)
-sample = jnp.zeros_like(a=spins_total_uptriangle)
-parallel = jnp.where(spins_total_uptriangle > sample, spins_total_uptriangle, sample)
-antiparallel = jnp.where(spins_total_uptriangle < sample, spins_total_uptriangle, sample)
-parallel_indices = jnp.nonzero(parallel)
-antiparallel_indices = jnp.nonzero(antiparallel)
-parallel_indices = jnp.array(parallel_indices)
-antiparallel_indices = jnp.array(antiparallel_indices)
-n_parallel = len(parallel_indices[0])
-n_antiparallel = len(antiparallel_indices[0])
-'''
 
 
 ParamTree = Union[jnp.ndarray, Iterable['ParamTree'], Mapping[Any, 'ParamTree']]
@@ -53,14 +30,10 @@ def _jastrow_ee(ee: jnp.ndarray, params: ParamTree, parallel_indices: jnp.array,
         now the problem is how to make the system identify the spin configurations automatically?
     """
     r_ees = jnp.linalg.norm(ee, axis=-1)
-    #jax.debug.print("r_ees:{}", r_ees)
     r_ees_parallel = r_ees_parallel_spins_parallel(parallel_indices, r_ees)
     r_ees_antiparallel = r_ees_parallel_spins_parallel(antiparallel_indices, r_ees)
-    #jax.debug.print("r_ees_parallel:{}", r_ees_parallel)
     jastrow_ee_par = jnp.sum(jastrow_fun(r_ees_parallel, 0.25, params['ee_par']))
     jastrow_ee_anti = jnp.sum(jastrow_fun(r_ees_antiparallel, 0.5, params['ee_anti']))
-    #jax.debug.print("jastrow_ee_par:{}", jastrow_ee_par)
-    #jax.debug.print("jastrow_ee_anti:{}", jastrow_ee_anti)
     return jastrow_ee_anti + jastrow_ee_par
 
 

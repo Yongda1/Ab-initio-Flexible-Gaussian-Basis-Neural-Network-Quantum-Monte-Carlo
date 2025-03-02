@@ -4,11 +4,8 @@ import datetime
 import os
 from typing import Optional
 import zipfile
-
 from absl import logging
-from AIQMCrelease2.wavefunction import nn
-import jax
-import jax.numpy as jnp
+from AIQMCrelease3.wavefunction_Ynlm import nn
 import numpy as np
 
 

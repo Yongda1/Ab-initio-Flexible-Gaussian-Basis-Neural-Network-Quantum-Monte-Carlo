@@ -4,7 +4,7 @@ import chex
 import jax.numpy as jnp
 from AIQMCrelease3.wavefunction_Ynlm import nn
 from AIQMCrelease3.pseudopotential import pseudopotential
-from AIQMCrelease2.pseudopotential.pseudopotential import get_non_v_l, get_P_l
+from AIQMCrelease3.pseudopotential.pseudopotential import get_non_v_l, get_P_l
 
 
 def P_l_theta(x: jnp.array, list_l: float):

@@ -17,6 +17,7 @@ from AIQMCrelease3.DMC.dmc import dmc_propagate
 from AIQMCrelease3.DMC.branch import branch
 from AIQMCrelease3.DMC.estimate_energy import estimate_energy
 from AIQMCrelease3.utils import writers
+from AIQMCrelease3.spin_indices import jastrow_indices_ee
 
 
 def main(atoms: jnp.array,
@@ -66,16 +67,21 @@ def main(atoms: jnp.array,
          data,
          params,
          opt_state_ckpt,) = checkpoint.restore(ckpt_restore_filename, host_batch_size)
+        jax.debug.print("data:{}", data)
     else:
         raise ValueError('DMC must use the wave function from VMC!')
 
-    feature_layer = nn.make_ferminet_features(natoms=natoms, nspins=nspins, ndim=ndim, )
-    network = nn.make_fermi_net(ndim=ndim,
-                                nspins=nspins,
-                                determinants=1,
-                                feature_layer=feature_layer,
-                                charges=charges,
-                                full_det=True)
+    parallel_indices, antiparallel_indices, n_parallel, n_antiparallel = jastrow_indices_ee(spins=spins, nelectrons=8)
+    network = nn.make_ai_net(ndim=ndim,
+                             nelectrons=nelectrons,
+                             natoms=natoms,
+                             nspins=nspins,
+                             determinants=1,
+                             charges=charges,
+                             parallel_indices=parallel_indices,
+                             antiparallel_indices=antiparallel_indices,
+                             n_parallel=n_parallel,
+                             n_antiparallel=n_antiparallel)
     signed_network = network.apply
 
     def log_network(*args, **kwargs):
@@ -102,16 +108,11 @@ def main(atoms: jnp.array,
 
     total_e = calculate_total_energy(local_energy=localenergy)
     total_e_parallel = jax.pmap(total_e)
-    #jax.debug.print("data:{}", data)
-
     e_trial, variance_trial = total_e_parallel(params, subkeys, data)
     e_est, variance_est = total_e_parallel(params, subkeys, data)
     """we need think more about the parallel strategy. So later, we have to modify the shape of weights and branchcut."""
     weights = jnp.ones(shape=(num_devices * num_hosts, batch_size))
-    #jax.debug.print("e_trial:{}", e_trial)
-    #jax.debug.print("weights:{}", weights)
     esigma = jnp.std(e_est)
-    #jax.debug.print("esigma:{}", esigma)
     dmc_run = dmc_propagate(signed_network=signed_network,
                             log_network=log_network,
                             logabs_f=logabs_f,
@@ -135,7 +136,7 @@ def main(atoms: jnp.array,
     branch_parallel = jax.pmap(branch, in_axes=(0, 0, 0))
     energy_data = jnp.zeros(shape=(nblocks, iterations, batch_size))
     weights_data = jnp.zeros(shape=(nblocks, iterations, batch_size))
-    jax.debug.print("energy_data:{}", energy_data)
+    #jax.debug.print("energy_data:{}", energy_data)
 
     """Start the main loop."""
     time_of_last_ckpt = time.time()
@@ -217,64 +218,3 @@ def main(atoms: jnp.array,
         """we turn to the energy summary part."""
     #jax.debug.print("energy_data:{}", energy_data)
     #jax.debug.print("weights_data:{}", weights_data)
-    '''
-    localenergy = pphamiltonian.local_energy(f=signed_network,
-                                             lognetwork=log_network,
-                                             charges=charges,
-                                             nspins=spins,
-                                             rn_local=Rn_local,
-                                             local_coes=Local_coes,
-                                             local_exps=Local_exps,
-                                             rn_non_local=Rn_non_local,
-                                             non_local_coes=Non_local_coes,
-                                             non_local_exps=Non_local_exps,
-                                             natoms=natoms,
-                                             nelectrons=nelectrons,
-                                             ndim=ndim,
-                                             list_l=2,
-                                             use_scan=False)
-
-    total_e = calculate_total_energy(local_energy=localenergy)
-    total_e_parallel = jax.pmap(total_e)
-
-    drift_diffusion = propose_drift_diffusion(
-        logabs_f=logabs_f,
-        tstep=tstep,
-        ndim=ndim,
-        nelectrons=nelectrons,
-        batch_size=batch_size)
-    drift_diffusion_pmap = jax.pmap(drift_diffusion)
-    tmoves = compute_tmoves(list_l=2,
-                            tstep=0.05,
-                            nelectrons=nelectrons,
-                            natoms=natoms,
-                            ndim=ndim,
-                            lognetwork=log_network,
-                            Rn_non_local=Rn_non_local,
-                            Non_local_coes=Non_local_coes,
-                            Non_local_exps=Non_local_exps)
-
-    #jax.debug.print("subkeys:{}", subkeys)
-    tmoves_pmap = jax.pmap(jax.vmap(tmoves, in_axes=(nn.AINetData(positions=0, spins=0, atoms=0, charges=0), None, None)))
-    """we need check the drift_diffusion process is correct or not.5.2.2025."""
-    #jax.debug.print("new_data:{}", new_data)
-    pos, acceptance = tmoves_pmap(data, params, subkeys)
-    #pos = jnp.reshape(pos, (batch_size, -1))
-    t_move_data = nn.AINetData(**(dict(data) | {'positions': pos}))
-    jax.debug.print("pos:{}", pos)
-    new_data, newkey, tdamp, grad_eff, grad_new_eff_s = drift_diffusion_pmap(params, sharded_key, t_move_data)
-    """we need do a summary for t-moves and drift-diffusion process."""
-    branchcut_start = 10
-    """we need debug the local energy module.10.2.2025."""
-    jax.debug.print("data:{}", data)
-    eloc_old = total_e_parallel(params, subkeys, data)
-    eloc_new = total_e_parallel(params, subkeys, new_data)
-    jax.debug.print("eloc_old:{}", eloc_old)
-    jax.debug.print("eloc_new:{}", eloc_new)
-
-
-    #S_old = comput_S(e_trial=etrial, e_est=e_est, branchcut=branchcut_start, v2=jnp.square(grad_eff), tau=tstep,
-    #                 eloc=eloc_old, nelec=nelectrons)
-    #S_new = comput_S(e_trial=etrial, e_est=e_est, branchcut=branchcut_start, v2=jnp.square(grad_new_eff_s), tau=tstep,
-    #                 eloc=eloc_new, nelec=nelectrons)
-    '''
