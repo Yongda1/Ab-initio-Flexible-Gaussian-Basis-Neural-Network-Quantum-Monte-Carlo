@@ -178,7 +178,7 @@ def local_energy(
              key: chex.PRNGKey,
              data: nn.AINetData) -> Tuple[jnp.ndarray, Optional[jnp.ndarray]]:
 
-        ae, _, r_ae, r_ee = nn.construct_input_features(data.positions, data.atoms)
+        ae, ee, r_ae, r_ee = nn.construct_input_features(data.positions, data.atoms)
         potential = (potential_energy(r_ee, data.atoms, charges))
         kinetic = ke(params, data)
         pp_energy_value = total_energy_function_test(params, key, data)
