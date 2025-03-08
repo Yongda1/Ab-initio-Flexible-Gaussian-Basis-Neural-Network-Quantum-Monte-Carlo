@@ -11,6 +11,7 @@ def set_ewald_sum(natoms: int,
                   npsins,
                   lattice: jnp.array,
                   charges: jnp.array,
+                  atoms: jnp.array,
                   alpha_scaling: float = 5.0,
                   gmax: int = 5,
                   ):
@@ -85,14 +86,45 @@ def set_ewald_sum(natoms: int,
 
     # recip_weights = ewald_recip_weight(ae)
     # jax.debug.print("recip_weights:{}", recip_weights.shape)
-
     def ewald_recip_weight_charge(r: jnp.array, alpha: jnp.array):
         zij = r[:, :, 2]
         w1 = zij * jax.scipy.special.erf(alpha * zij)
         w2 = 1 / (alpha * jnp.sqrt(jnp.pi)) * jnp.exp(-1 * alpha ** 2 * zij ** 2)
         return (w1 + w2) * jnp.pi / cell_area
+    """functions for e-e interaction."""
+    def real_rij_ee(ee: jnp.array, l_d: jnp.array, alpha: jnp.array):
 
-    def ewald_sum(ae: jnp.array, ee: jnp.array,):
+        def rij_plus_m_ee(ee_inner: jnp.array, l_d_inner: jnp.array):
+            return ee_inner + l_d_inner
+
+        rij_plus_m_ee_parallel = jax.vmap(rij_plus_m_ee, in_axes=(0, None))
+        rij_ee_m = rij_plus_m_ee_parallel(ee, l_d)
+        rij_ee_m = jnp.linalg.norm(jnp.linalg.norm(rij_ee_m, axis=-1), axis=-1)
+        rij_ee_m = jax.scipy.special.erfc(alpha * rij_ee_m) / rij_ee_m
+        return rij_ee_m
+
+    def ewald_recip_ee_weight(r: jnp.array, alpha: jnp.array, gnorm: jnp.array):
+        zij = r[:, 2]
+
+        def w1_w2_ee(zij_inner: jnp.array, gnorm_inner: jnp.array):
+            """here,we got a problem about overflows."""
+            w1 = jnp.exp(zij_inner * gnorm_inner) * jax.scipy.special.erfc(
+                alpha * zij_inner + gnorm_inner / (2 * alpha))
+            w2 = jnp.exp(-1 * zij_inner * gnorm_inner) * jax.scipy.special.erfc(
+                -1 * alpha * zij_inner + gnorm_inner / (2 * alpha))
+            return w1 + w2
+
+        w1_w2_parallel = jax.vmap(w1_w2_ee, in_axes=(None, 0))
+        recip_weight = w1_w2_parallel(zij, gnorm)
+        return recip_weight
+
+    def ewald_recip_ee_weight_charge(r: jnp.array, alpha: jnp.array):
+        zij = r[:, 2]
+        w1 = zij * jax.scipy.special.erfc(alpha * zij)
+        w2 = 1 / (alpha * jnp.sqrt(jnp.pi)) * jnp.exp(-1 * alpha ** 2 * zij ** 2)
+        return (w1 + w2) * jnp.pi / cell_area
+
+    def ewald_sum(ae: jnp.array, ee: jnp.array, r_ee: jnp.array):
         l_d = lattice_displacements(lattice)
         alpha = set_alpha(alpha_scaling=alpha_scaling)
         gpoints = generate_positive_gpoints(gmax=gmax)
@@ -133,11 +165,74 @@ def set_ewald_sum(natoms: int,
         multiply_charges_c_parallel = jax.vmap(multiply_charges_c, in_axes=(0, None))
         e_ion_charge = multiply_charges_c_parallel(weight, charges)
         energy_e_ion = jnp.sum(e_ion_real_cross) + jnp.sum(e_ion_recip) - jnp.sum(e_ion_charge)
-        """to be continued..."""
 
+        """the following part is electron-electron interaction."""
+        up_triangle_indices = jnp.triu_indices_from(r_ee[..., 0], k=1)
+        ee_temp = ee[up_triangle_indices]
+        ee_temp = jnp.reshape(ee_temp, (-1, 3, 1))
+        # jax.debug.print("ee_temp:{}", ee_temp)
+        rij_m_ee = real_rij_ee(ee_temp, l_d, alpha)
+        e_e_real_cross = 1 * rij_m_ee
 
+        def h_rij_ee(gpoints_inner: jnp.array, r_inner: jnp.array):
+            return jnp.dot(gpoints_inner, r_inner)
 
+        h_rij_parallel = jax.vmap(jax.vmap(h_rij_ee, in_axes=(None, 0)), in_axes=(0, None))
+        ee_temp_2 = jnp.reshape(ee_temp, (-1, 3))
+        g_dot_r = h_rij_parallel(gpoints, ee_temp_2)
+        g_dot_r = jnp.cos(g_dot_r)
+        g_ee_weight = ewald_recip_ee_weight(ee_temp_2, alpha, gnorm)
 
-        return energy_e_ion
+        def devided_ee(g_dot_r_inner: jnp.array, gnorm_inner: jnp.array):
+            return g_dot_r_inner / gnorm_inner
 
+        devided_ee_parallel = jax.vmap(devided_ee, in_axes=(0, 0))
+        e_e_recip = 2 * devided_ee_parallel(g_dot_r, gnorm) * g_ee_weight * (jnp.pi / cell_area)
+        weight_ee = ewald_recip_ee_weight_charge(ee_temp_2, alpha)
+        e_e_charge = 2 * weight_ee
+        energy_e_e = jnp.sum(e_e_real_cross) + jnp.sum(e_e_recip) + jnp.sum(e_e_charge)
+
+        """the following part is ion-ion interaction. We can use some functions from e-e interaction."""
+        r_aa = jnp.linalg.norm(atoms[None, ...] - atoms[:, None], axis=-1)
+        r_aa_indices = jnp.triu_indices_from(r_aa, k=1)
+        aa = atoms[None, ...] - atoms[:, None]
+        aa = aa[r_aa_indices]
+        ion_charges = charges[None, ...] * charges[..., None]
+        ion_charges_indices = jnp.triu_indices_from(charges[None, ...] * charges[..., None], k=1)
+        ion_charges = ion_charges[ion_charges_indices]
+        ion_ion_temp = jnp.reshape(aa, (-1, 3, 1))
+        rij_m_ion_ion = real_rij_ee(ion_ion_temp, l_d, alpha)
+
+        def charges_rij_m_ion_ion(rij_m_inner: jnp.array, charges: jnp.array):
+            return rij_m_inner * charges
+
+        charges_rij_m_parallel_ion_ion = jax.vmap(charges_rij_m_ion_ion, in_axes=(0, None))
+        ion_ion_real_cross = charges_rij_m_parallel_ion_ion(rij_m_ion_ion, ion_charges)
+
+        def h_rij_ion_ion(gpoints_inner: jnp.array, r_inner: jnp.array):
+            return jnp.dot(gpoints_inner, r_inner)
+
+        h_rij_parallel = jax.vmap(jax.vmap(h_rij_ion_ion, in_axes=(None, 0)), in_axes=(0, None))
+        ion_ion_temp_2 = jnp.reshape(ion_ion_temp, (-1, 3))
+        g_dot_r = h_rij_parallel(gpoints, ion_ion_temp_2)
+        g_dot_r = jnp.cos(g_dot_r)
+        g_ion_ion_weight = ewald_recip_ee_weight(ion_ion_temp_2, alpha, gnorm)
+
+        def devided_ion_ion(g_dot_r_inner: jnp.array, gnorm_inner: jnp.array):
+            return g_dot_r_inner / gnorm_inner
+
+        devided_ion_ion_parallel = jax.vmap(devided_ion_ion, in_axes=(0, 0))
+        ion_ion_recip = devided_ion_ion_parallel(g_dot_r, gnorm) * g_ion_ion_weight * (jnp.pi / cell_area)
+
+        def multiply_ion_ion_charges(ion_ion_recip_inner: jnp.array, charges_inner: jnp.array):
+            return ion_ion_recip_inner * charges_inner
+
+        multiply_ion_ion_charges_parallel = jax.vmap(multiply_ion_ion_charges, in_axes=(0, None))
+        ion_ion_recip = 2 * multiply_ion_ion_charges_parallel(ion_ion_recip, ion_charges)
+
+        weight_ion_ion = ewald_recip_ee_weight_charge(ion_ion_temp_2, alpha)
+        ion_ion_charges = 2 * weight_ion_ion * ion_charges
+        energy_ion_ion = jnp.sum(ion_ion_real_cross) + jnp.sum(ion_ion_recip) - jnp.sum(ion_ion_charges)
+
+        return energy_e_ion + energy_e_e + energy_ion_ion
     return ewald_sum
