@@ -236,3 +236,32 @@ def set_ewald_sum(natoms: int,
 
         return energy_e_ion + energy_e_e + energy_ion_ion
     return ewald_sum
+
+from AIQMCrelease3.initial_electrons_positions.init import init_electrons
+from AIQMCrelease3.wavefunction_Ynlm.nn import construct_input_features
+atoms = jnp.array([[0.0, 0.0, 0.0], [2/3, 1/3, 0.0]])
+charges = jnp.array([4.0, 4.0])
+spins = jnp.array([1.0, 1.0, 1.0, 1.0, -1.0, -1.0, -1.0, -1.0])
+lattice = jnp.array([[0.5 * jnp.sqrt(3), 0.5, 0],
+                     [0.5 * jnp.sqrt(3), -0.5, 0],
+                     [0, 0, 10]])
+key = jax.random.PRNGKey(1)
+key, subkey = jax.random.split(key)
+pos, spins = init_electrons(subkey, structure=lattice, atoms=atoms, charges=charges,
+                            electrons=spins,
+                            batch_size=1, init_width=0.5)
+pos = jnp.reshape(pos, (-1))
+
+ae, ee, r_ae, r_ee = construct_input_features(pos, atoms, ndim=3)
+
+ewald_summation_run = set_ewald_sum(natoms=2,
+                                    ndim=3,
+                                    nelectrons=8,
+                                    npsins=(4, 4),
+                                    lattice=lattice,
+                                    charges=charges,
+                                    atoms=atoms,
+                                    alpha_scaling=5.0,
+                                    gmax=5,)
+total_energy = ewald_summation_run(ae=ae, ee=ee, r_ee=r_ee)
+jax.debug.print("two_D_ewlad_sumamtion_total_energy no convergence:{}", total_energy)
