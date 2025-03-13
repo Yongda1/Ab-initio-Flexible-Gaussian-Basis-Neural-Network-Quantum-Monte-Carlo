@@ -55,6 +55,19 @@ def set_ewald_sum(natoms: int,
         # jax.debug.print("gweight:{}", gweight)
         return gnorm
 
+    def set_gweight(gmax: int, alpha: jnp.array, tol: float = 1e-10):
+        candidate_gpoints = generate_positive_gpoints(gmax)
+        gnorm = jnp.linalg.norm(candidate_gpoints, axis=-1)
+        jax.debug.print("gnorm:{}", gnorm)
+        gweight = jnp.pi * jax.scipy.special.erfc(gnorm/(2 * alpha)) * 2
+        gweight /= cell_area * gnorm
+        jax.debug.print("gweight:{}", gweight)
+        tol = jnp.repeat(tol, gweight.shape[0])
+        jax.debug.print("tol:{}", tol)
+        gweight_final = jnp.where( gweight > tol, gweight, tol, )
+        jax.debug.print("gweight_final:{}", gweight_final)
+        return jnp.sum(gweight_final)
+
     def real_rij(ae: jnp.array, l_d: jnp.array, alpha: jnp.array):
 
         ae = jnp.reshape(ae, (nelectrons, natoms, 3, 1))
@@ -234,7 +247,22 @@ def set_ewald_sum(natoms: int,
         ion_ion_charges = 2 * weight_ion_ion * ion_charges
         energy_ion_ion = jnp.sum(ion_ion_real_cross) + jnp.sum(ion_ion_recip) - jnp.sum(ion_ion_charges)
 
-        return energy_e_ion + energy_e_e + energy_ion_ion
+        """13.3.2025 ewald self. we still need think more about this part."""
+        def ewald_self(sum_charge_squared: jnp.array):
+            sqrt_pi = jnp.sqrt(jnp.pi)
+            real_self = -1 * alpha / sqrt_pi
+            charge_self = -1 * sqrt_pi / (cell_area * alpha)
+            recip_self = set_gweight(gmax, alpha)
+            return (real_self + charge_self + recip_self) * sum_charge_squared
+
+
+        ion_ion_sum_charges = jnp.sum(charges**2)
+        ewald_self_sum_ion_ion = ewald_self(ion_ion_sum_charges)
+        ewald_self_sum_ee = ewald_self(nelectrons)
+        #jax.debug.print("ewald_self_sum_ion_ion:{}", ewald_self_sum_ion_ion)
+        #jax.debug.print("ewald_self_sum_ee:{}", ewald_self_sum_ee)
+
+        return energy_e_ion + energy_e_e + energy_ion_ion + ewald_self_sum_ion_ion + ewald_self_sum_ee
     return ewald_sum
 
 from AIQMCrelease3.initial_electrons_positions.init import init_electrons
