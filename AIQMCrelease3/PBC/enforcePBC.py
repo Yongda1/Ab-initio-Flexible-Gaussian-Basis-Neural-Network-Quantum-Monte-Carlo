@@ -19,7 +19,7 @@ pos = jnp.reshape(pos, (-1))
 
 ae, ee, r_ae, r_ee = construct_input_features(pos, atoms, ndim=3)
 '''
-
+"""we need put this method into the VMC and DMC."""
 def enforcepbc(lattice: jnp.array, pos: jnp.array):
     """it is working for single configuration. However, we used two different strategies for VMC and DMC. For convenience,
     please use vmap or pmap to make this function be proper for VMC and DMC respectively. 17.3.2025."""
