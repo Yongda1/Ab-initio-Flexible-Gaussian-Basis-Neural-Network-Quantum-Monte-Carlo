@@ -112,8 +112,7 @@ def construct_input_features(
     ee = jnp.reshape(pos, [1, -1, ndim]) - jnp.reshape(pos, [-1, 1, ndim])
     r_ae = jnp.linalg.norm(ae, axis=2, keepdims=True)
     n = ee.shape[0]
-    r_ee = (
-            jnp.linalg.norm(ee + jnp.eye(n)[..., None], axis=-1) * (1.0 - jnp.eye(n)))
+    r_ee = (jnp.linalg.norm(ee + jnp.eye(n)[..., None], axis=-1) * (1.0 - jnp.eye(n)))
     return ae, ee, r_ae, r_ee[..., None]
 
 
@@ -388,6 +387,7 @@ def make_orbitals(nspins: Tuple[int, int],
         ae_channels = jnp.split(ae, active_spin_partitions, axis=0)
         r_ae_channels = jnp.split(r_ae, active_spin_partitions, axis=0)
         r_ee_channels = jnp.split(r_ee, active_spin_partitions, axis=0)
+
         for i in range(len(active_spin_channels)):
             orbitals[i] = orbitals[i] * envelope_apply(
                 ae=ae_channels[i],
@@ -456,3 +456,43 @@ def make_ai_net(nspins: Tuple[int, int],
         return network_blocks.logdet_matmul(orbitals)
 
     return Network(init=init, apply=apply, orbitals=orbitals_apply)
+
+
+'''
+from AIQMCrelease3.initial_electrons_positions.init import init_electrons
+from AIQMCrelease3.spin_indices import jastrow_indices_ee
+atoms = jnp.array([[0.0, 0.0, -1.0], [0.0, 0.0, 1.0]])
+charges = jnp.array([4.0, 4.0])
+spins = jnp.array([1.0, 1.0, 1.0, 1.0, -1.0, -1.0, -1.0, -1.0])
+structure = jnp.array([[10, 0, 0],
+                       [0, 10, 0],
+                       [0, 0, 10]])
+natoms = 2
+ndim = 3
+nelectrons = 8
+nspins = (4, 4)
+parallel_indices, antiparallel_indices, n_parallel, n_antiparallel = jastrow_indices_ee(spins=spins, nelectrons=8)
+key = jax.random.PRNGKey(1)
+key, subkey = jax.random.split(key)
+network = make_ai_net(ndim=ndim,
+                      nelectrons=nelectrons,
+                      natoms=natoms,
+                      nspins=nspins,
+                      determinants=1,
+                      charges=charges,
+                      parallel_indices=parallel_indices,
+                      antiparallel_indices=antiparallel_indices,
+                      n_parallel=n_parallel,
+                      n_antiparallel=n_antiparallel)
+
+params = network.init(subkey)
+pos, spins = init_electrons(subkey, structure=structure, atoms=atoms, charges=charges,
+                            electrons=spins,
+                            batch_size=1, init_width=0.5)
+
+pos = jnp.reshape(pos, (-1))
+
+#ae, ee, r_ae, r_ee = construct_input_features(pos, atoms, ndim=3)
+output = network.apply(params, pos, spins, atoms, charges)
+jax.debug.print("output:{}", output)
+'''

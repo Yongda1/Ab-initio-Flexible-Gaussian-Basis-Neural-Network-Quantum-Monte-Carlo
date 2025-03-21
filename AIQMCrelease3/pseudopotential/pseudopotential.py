@@ -11,8 +11,7 @@ from jax import Array
 from typing import Tuple
 from AIQMCrelease3.wavefunction_Ynlm import nn
 from typing_extensions import Protocol
-
-from AIQMCrelease1.wavefunction.nn import AINetData
+#from AIQMCrelease3.wavefunction_Ynlm.nn import AINetData
 
 """for the implementation in the codes, we need consider the full situations with more atoms. 
 However, light atoms basically dont have l=2 in the pseudopotential. 

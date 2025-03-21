@@ -22,7 +22,7 @@ from AIQMCrelease3.utils import writers
 from AIQMCrelease3.initial_electrons_positions.init import init_electrons
 from AIQMCrelease3.spin_indices import jastrow_indices_ee
 import functools
-
+"""notes: the optimizer is not compatible with Jax 0.5.3. We need debug where are the problems. 21.3.2025."""
 
 def main(atoms: jnp.array,
          charges: jnp.array,
@@ -177,6 +177,10 @@ def main(atoms: jnp.array,
 
     sharded_key = kfac_jax.utils.make_different_rng_key_on_all_devices(key)
     sharded_key, subkeys = kfac_jax.utils.p_split(sharded_key)
+    #jax.debug.print("params:{}", params)
+    #jax.debug.print("subkeys:{}", subkeys)
+    #jax.debug.print("data:{}", data)
+
     opt_state = optimizer.init(params=params, rng=subkeys, batch=data)
 
     step_kfac = make_kfac_training_step(
