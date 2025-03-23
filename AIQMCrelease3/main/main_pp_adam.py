@@ -12,6 +12,7 @@ import numpy as np
 import kfac_jax
 from typing_extensions import Protocol
 from typing import Optional, Tuple, Union
+
 from AIQMCrelease3 import checkpoint
 from jax.experimental import multihost_utils
 from AIQMCrelease3.VMC import VMCmcstep
@@ -20,7 +21,7 @@ from AIQMCrelease3.Energy import pphamiltonian
 from AIQMCrelease3.Loss import pploss as qmc_loss_functions
 from AIQMCrelease3 import constants
 from AIQMCrelease3 import curvature_tags_and_blocks
-from AIQMCrelease3.Optimizer.kfac import make_kfac_training_step
+from AIQMCrelease3.Optimizer import adam
 from AIQMCrelease3.utils import writers
 from AIQMCrelease3.initial_electrons_positions.init import init_electrons
 from AIQMCrelease3.spin_indices import jastrow_indices_ee
@@ -79,8 +80,126 @@ def main(atoms: jnp.array,
         t_init = 0
         opt_state_ckpt = None
         """to be continued...21.3.2025."""
+        key, subkey = jax.random.split(key)
+        data_shape = (num_devices, device_batch_size)
+        batch_atoms = jnp.tile(atoms[None, ...], [device_batch_size, 1, 1])
+        batch_atoms = kfac_jax.utils.replicate_all_local_devices(batch_atoms)
+        batch_charges = jnp.tile(charges[None, ...], [device_batch_size, 1])
+        batch_charges = kfac_jax.utils.replicate_all_local_devices(batch_charges)
+        pos, spins = init_electrons(subkey, structure=structure, atoms=atoms, charges=charges,
+                                    electrons=spins,
+                                    batch_size=host_batch_size, init_width=1.0)
 
+        batch_pos = jnp.reshape(pos, data_shape + (-1,))
+        batch_pos = kfac_jax.utils.broadcast_all_local_devices(batch_pos)
+        batch_spins = jnp.repeat(spins[None, ...], batch_size, axis=0)
+        batch_spins = jnp.reshape(batch_spins, data_shape + (-1,))
+        batch_spins = kfac_jax.utils.broadcast_all_local_devices(batch_spins)
+        data = nn.AINetData(positions=batch_pos, spins=batch_spins, atoms=batch_atoms, charges=batch_charges)
 
+        #jax.debug.print("data:{}", data)
+
+    parallel_indices, antiparallel_indices, n_parallel, n_antiparallel = jastrow_indices_ee(spins=spins, nelectrons=8)
+    network = nn.make_ai_net(ndim=ndim,
+                             nelectrons=nelectrons,
+                             natoms=natoms,
+                             nspins=nspins,
+                             determinants=1,
+                             charges=charges,
+                             parallel_indices=parallel_indices,
+                             antiparallel_indices=antiparallel_indices,
+                             n_parallel=n_parallel,
+                             n_antiparallel=n_antiparallel)
+
+    key, subkey = jax.random.split(key)
+    params = network.init(subkey)
+    params = kfac_jax.utils.replicate_all_local_devices(params)
+    #jax.debug.print("params:{}", params)
+    signed_network = network.apply
+
+    def log_network(*args, **kwargs):
+        phase, mag = signed_network(*args, **kwargs)
+        return mag + 1.j * phase
+
+    mc_step = VMCmcstep.main_monte_carlo(
+        f=signed_network,
+        tstep=tstep,
+        ndim=ndim,
+        nelectrons=nelectrons,
+        nsteps=nsteps,
+        batch_size=batch_size)
+
+    mc_step_parallel = jax.pmap(mc_step, donate_argnums=1)
+    logging.info('--------------Create Hamiltonian--------------')
+
+    localenergy = pphamiltonian.local_energy(f=signed_network,
+                                             lognetwork=log_network,
+                                             charges=charges,
+                                             nspins=spins,
+                                             rn_local=Rn_local,
+                                             local_coes=Local_coes,
+                                             local_exps=Local_exps,
+                                             rn_non_local=Rn_non_local,
+                                             non_local_coes=Non_local_coes,
+                                             non_local_exps=Non_local_exps,
+                                             natoms=natoms,
+                                             nelectrons=nelectrons,
+                                             ndim=ndim,
+                                             list_l=list_l,
+                                             use_scan=False)
+
+    evaluate_loss = qmc_loss_functions.make_loss(network=log_network,
+                                                 local_energy=localenergy,
+                                                 clip_local_energy=5.0,
+                                                 clip_from_median=False,
+                                                 center_at_clipped_energy=True,
+                                                 complex_output=True,
+                                                 )
+
+    def learning_rate_schedule(t_: jnp.array, rate=0.05, delay=1.0, decay=10000) -> jnp.array:
+        return rate * jnp.power(1.0 / (1.0 + (t_ / delay)), decay)
+
+    """we try adam optimzier here."""
+    optimizer = optax.chain(optax.scale_by_adam(b1=0.9, b2=0.999, eps=1e-8, eps_root=0.0),
+                            optax.scale_by_schedule(learning_rate_schedule),
+                            optax.scale(-1.))
+
+    sharded_key = kfac_jax.utils.make_different_rng_key_on_all_devices(key)
+    sharded_key, subkeys = kfac_jax.utils.p_split(sharded_key)
+    opt_state = jax.pmap(optimizer.init)(params)
+    opt_state = opt_state_ckpt or opt_state
+    step = adam.make_training_step(optimizer_step=adam.make_opt_update_step(evaluate_loss, optimizer))
+
+    train_schema = ['step', 'energy']
+    writer_manager = writers.Writer(
+        name='train_states',
+        schema=train_schema,
+        directory=ckpt_save_path,
+        iteration_key=None,
+        log=False
+    )
+    time_of_last_ckpt = time.time()
+    """main training loop"""
+    with writer_manager as writer:
+        for t in range(t_init, t_init + iterations):
+            """we need do more to deal with amda optimzier. especially for saving module. 23.3.2025."""
+            sharded_key, subkeys = kfac_jax.utils.p_split(sharded_key)
+            jax.debug.print("subkeys:{}", subkeys)
+            data = mc_step_parallel(params, data, subkeys)
+            jax.debug.print("data:{}", data)
+            data, params, opt_state, loss, aux_data = step(data, params, opt_state, subkeys)
+            loss = loss[0]
+            logging_str = ('Step %05d: ', '%03.4f E_h,')
+            logging_args = t, loss,
+            writer_kwargs = {
+                'step': t,
+                'energy': np.asarray(loss),
+            }
+            logging.info(logging_str, *logging_args)
+            writer.write(t, **writer_kwargs)
+            if time.time() - time_of_last_ckpt > save_frequency * 60:
+                checkpoint.save(ckpt_save_path, t, data, params, opt_state)
+                time_of_last_ckpt = time.time()
 
     return None
 
