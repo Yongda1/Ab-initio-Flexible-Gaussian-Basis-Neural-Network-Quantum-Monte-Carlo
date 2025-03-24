@@ -184,9 +184,9 @@ def main(atoms: jnp.array,
         for t in range(t_init, t_init + iterations):
             """we need do more to deal with amda optimzier. especially for saving module. 23.3.2025."""
             sharded_key, subkeys = kfac_jax.utils.p_split(sharded_key)
-            jax.debug.print("subkeys:{}", subkeys)
+            #jax.debug.print("subkeys:{}", subkeys)
             data = mc_step_parallel(params, data, subkeys)
-            jax.debug.print("data:{}", data)
+            #jax.debug.print("data:{}", data)
             data, params, opt_state, loss, aux_data = step(data, params, opt_state, subkeys)
             loss = loss[0]
             logging_str = ('Step %05d: ', '%03.4f E_h,')
@@ -195,17 +195,21 @@ def main(atoms: jnp.array,
                 'step': t,
                 'energy': np.asarray(loss),
             }
+            jax.debug.print("loss:{}", loss)
             logging.info(logging_str, *logging_args)
             writer.write(t, **writer_kwargs)
             if time.time() - time_of_last_ckpt > save_frequency * 60:
-                checkpoint.save(ckpt_save_path, t, data, params, opt_state)
+                jax.debug.print("opt_state:{}", opt_state)
+                save_params = np.asarray(params)
+                save_opt_state = np.asarray(opt_state, dtype=object)
+                checkpoint.save(ckpt_save_path, t, data, save_params, save_opt_state)
                 time_of_last_ckpt = time.time()
 
     return None
 
 
 
-
+'''
 structure = jnp.array([[10, 0, 0],
                        [0, 10, 0],
                        [0, 0, 10]])
@@ -254,3 +258,4 @@ output = main(atoms=atoms,
               Rn_non_local=Rn_non_local,
               Non_local_coes=Non_local_coes,
               Non_local_exps=Non_local_exps,)
+'''

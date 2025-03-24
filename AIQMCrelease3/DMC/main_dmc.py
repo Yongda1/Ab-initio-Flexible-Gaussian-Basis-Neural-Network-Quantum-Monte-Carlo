@@ -187,7 +187,10 @@ def main(atoms: jnp.array,
             writer.write(block, **writer_kwargs)
 
             if time.time() - time_of_last_ckpt > save_frequency * 60:
-                checkpoint.save(ckpt_restore_path, block, data, params, opt_state)
+                """np.savez cannot save inhomogeneous array. So, we have to use the following line to convert the format of the arrays."""
+                save_params = np.asarray(params)
+                save_opt_state = np.asarray(opt_state, dtype=object)
+                checkpoint.save(ckpt_restore_path, block, data, save_params, save_opt_state)
                 time_of_last_ckpt = time.time()
 
             weights, newindices = branch_parallel(data, weights, subkeys)
