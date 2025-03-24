@@ -12,7 +12,6 @@ import numpy as np
 import kfac_jax
 from typing_extensions import Protocol
 from typing import Optional, Tuple, Union
-
 from AIQMCrelease3 import checkpoint
 from jax.experimental import multihost_utils
 from AIQMCrelease3.VMC import VMCmcstep
@@ -26,6 +25,7 @@ from AIQMCrelease3.utils import writers
 from AIQMCrelease3.initial_electrons_positions.init import init_electrons
 from AIQMCrelease3.spin_indices import jastrow_indices_ee
 import functools
+logging.basicConfig(level = logging.INFO)
 
 def main(atoms: jnp.array,
          charges: jnp.array,
@@ -54,8 +54,8 @@ def main(atoms: jnp.array,
     logging.info('Quantum Monte Carlo Start running')
     num_devices = jax.local_device_count()  # the amount of GPU per host
     num_hosts = jax.device_count() // num_devices  # the amount of host
-    jax.debug.print("num_devices:{}", num_devices)
-    jax.debug.print("num_hosts:{}", num_hosts)
+    #jax.debug.print("num_devices:{}", num_devices)
+    #jax.debug.print("num_hosts:{}", num_hosts)
     logging.info('Start QMC with $i devices per host, across %i hosts.', num_devices, num_hosts)
     if batch_size % (num_devices * num_hosts) != 0:
         raise ValueError('Batch size must be divisible by number of devices!')
@@ -195,11 +195,11 @@ def main(atoms: jnp.array,
                 'step': t,
                 'energy': np.asarray(loss),
             }
-            jax.debug.print("loss:{}", loss)
+            #jax.debug.print("loss:{}", loss)
             logging.info(logging_str, *logging_args)
             writer.write(t, **writer_kwargs)
             if time.time() - time_of_last_ckpt > save_frequency * 60:
-                jax.debug.print("opt_state:{}", opt_state)
+                #jax.debug.print("opt_state:{}", opt_state)
                 save_params = np.asarray(params)
                 save_opt_state = np.asarray(opt_state, dtype=object)
                 checkpoint.save(ckpt_save_path, t, data, save_params, save_opt_state)
