@@ -28,7 +28,11 @@ Non_local_coes = jnp.array([[[52.13345, 0], [0, 0], [0, 0]],
 Non_local_exps = jnp.array([[[7.76079, 0], [0, 0], [0, 0]],
                             [[7.76079, 0], [0, 0], [0, 0]],])
 
+new_atoms = jnp.array([[[0, 0, -1.0 + 0.1], [0 - 0.1, 0 + 0.1, 1.0]],
+                           [[0, 0, -1.0 - 0.1], [0 + 0.1, 0 - 0.1, 1.0]]])
+
 output = main(atoms=atoms,
+              new_atoms=new_atoms,
               charges=charges,
               spins=spins,
               nelectrons=8,

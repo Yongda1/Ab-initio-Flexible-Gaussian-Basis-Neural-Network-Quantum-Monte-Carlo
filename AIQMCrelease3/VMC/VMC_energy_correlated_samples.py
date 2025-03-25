@@ -26,6 +26,7 @@ from AIQMCrelease3.correlatedsamples import corrsamples
 import functools
 
 def main(atoms: jnp.array,
+         new_atoms: jnp.array,
          charges: jnp.array,
          spins: jnp.array,
          tstep: float,
@@ -132,8 +133,7 @@ def main(atoms: jnp.array,
                  out_axes=(0, 0))), in_axes=(None, None, nn.AINetData(positions=0, spins=None, atoms=None, charges=None)))
 
     Energy = []
-    new_atoms = jnp.array([[[0, 0, -1.0 + 0.1], [0 - 0.1, 0 + 0.1, 1.0]],
-                           [[0, 0, -1.0 - 0.1], [0 + 0.1, 0 - 0.1, 1.0]]])
+
     correlatedsamples_parallel = jax.pmap(jax.vmap(jax.vmap(corrsamples.correlated_samples, in_axes=(None, None, 0)), in_axes=(None, 0, None)), in_axes=(None, None, 0))
 
     #for t in range(t_init, t_init + iterations):
@@ -148,11 +148,13 @@ def main(atoms: jnp.array,
     newpos = correlatedsamples_parallel(atoms, new_atoms, pos)
     jax.debug.print("newpos:{}", newpos)
     #jax.debug.print("e_l:{}", e_l)
-    newpos = jnp.reshape(newpos, (2, 1, 4, -1)) # 2 is the number of new atoms, 1 is fixed, 4 is the number of batch size
+    number_new_atoms = new_atoms.shape[0]
+    newpos = jnp.reshape(newpos, (number_new_atoms, 1, batch_size, -1)) # 2 is the number of new atoms, 1 is fixed, 4 is the number of batch size
     jax.debug.print("newpos:{}", newpos)
     data.positions = newpos
     jax.debug.print("data:{}", data)
     new_energy, new_energy_mat = batch_local_energy_correlated_samples(params, subkeys, data)
+    """ we also need multiply the weights. 25.3.2025."""
     jax.debug.print("new_energy:{}", new_energy)
     Energy.append(e_l)
     #loss = constants.pmean(jnp.mean(e_l))
