@@ -253,7 +253,7 @@ def make_ai_net_layers(nspins: Tuple[int, int],
         params['streams_y'] = layers_y
         output_dims = dims_one_in
         output_dims_y = dims_y_in
-        jax.debug.print("params:{}", params)
+        #jax.debug.print("params:{}", params)
         return output_dims, output_dims_y, params
 
     def apply_layer(params: Mapping[str, ParamTree],
@@ -372,7 +372,7 @@ def make_orbitals(nspins: Tuple[int, int],
                                                                 r_ae=r_ae,
                                                                 ee=ee,
                                                                 r_ee=r_ee,)
-        jax.debug.print("h_to_orbitals:{}", h_to_orbitals)
+        #jax.debug.print("h_to_orbitals:{}", h_to_orbitals)
         active_spin_channels = [spin for spin in nspins if spin > 0]
         active_spin_partitions = network_blocks.array_partitions(active_spin_channels)
 
@@ -404,10 +404,10 @@ def make_orbitals(nspins: Tuple[int, int],
         orbitals = [jnp.transpose(orbital, (1, 0, 2)) for orbital in orbitals]
         orbitals = jnp.concatenate(orbitals, axis=1)
         orbitals = jnp.reshape(orbitals, (nelectrons, nelectrons))
-        jax.debug.print("orbitals:{}", orbitals)
-        jax.debug.print("y_orbitals:{}", y_orbitals)
+        #jax.debug.print("orbitals:{}", orbitals)
+        #jax.debug.print("y_orbitals:{}", y_orbitals)
         total_orbitals = orbitals * y_orbitals #element-wise
-        jax.debug.print("total_orbitals:{}", total_orbitals)
+        #jax.debug.print("total_orbitals:{}", total_orbitals)
         """something in Jastrow is wrong here 26.2.2025."""
         """The jastrow has some problems."""
         #jastrow = jnp.exp(jastrow_ee_apply(ee=ee,
@@ -463,7 +463,7 @@ def make_ai_net(nspins: Tuple[int, int],
     return Network(init=init, apply=apply, orbitals=orbitals_apply)
 
 
-
+'''
 from AIQMCrelease3.initial_electrons_positions.init import init_electrons
 from AIQMCrelease3.spin_indices import jastrow_indices_ee
 atoms = jnp.array([[0.0, 0.0, -1.0], [0.0, 0.0, 1.0]])
@@ -503,3 +503,4 @@ jax.debug.print("pos:{}", pos)
 #ae, ee, r_ae, r_ee = construct_input_features(pos, atoms, ndim=3)
 wavefunction_value = network.apply(params, pos, spins, atoms, charges)
 jax.debug.print("wavefunction_value:{}", wavefunction_value)
+'''
