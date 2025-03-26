@@ -25,7 +25,7 @@ def main(atoms: jnp.array,
          spins: jnp.array,
          tstep: float,
          nelectrons: int,
-         nsteps: int,
+         nsteps: int, #meaningless parameters.
          natoms: int,
          ndim: int,
          batch_size: int,
@@ -142,7 +142,7 @@ def main(atoms: jnp.array,
     time_of_last_ckpt = time.time()
     opt_state = opt_state_ckpt
     """the writer module need be modified. 14.2.2025."""
-    train_schema = ['block', 'energy']
+    train_schema = ['block', 'energy', 'weights_data', 'positions']
     writer_manager = writers.Writer(
         name='DMC_states',
         schema=train_schema,
@@ -179,13 +179,15 @@ def main(atoms: jnp.array,
             jax.debug.print("e_est:{}", e_est)
             logging_str = ('Block %05d:', '%03.4f E_h,')
             logging_args = block, t, e_est,
+            '''
             writer_kwargs = {
                 'block': block,
                 'energy': np.asarray(e_est),
-            }
+            }'''
             logging.info(logging_str, *logging_args)
+            '''
             writer.write(block, **writer_kwargs)
-
+            '''
             if time.time() - time_of_last_ckpt > save_frequency * 60:
                 """np.savez cannot save inhomogeneous array. So, we have to use the following line to convert the format of the arrays."""
                 save_params = np.asarray(params)
@@ -215,8 +217,16 @@ def main(atoms: jnp.array,
 
             x2 = jnp.array(x2)
             data = nn.AINetData(**(dict(data) | {'positions': x2}))
+
             """leave this to tomorrow. 13.2.2025. we also need update the branchcut."""
             e_trial = e_est - feedback * jnp.log(jnp.mean(weights)).real
+            writer_kwargs = {
+                'block': block,
+                'energy': np.asarray(e_est),
+                'weights_data': np.asarray(weights_data),
+                'positions': np.asarray(x2),
+            }
+            writer.write(block, **writer_kwargs)
 
         """we turn to the energy summary part."""
     #jax.debug.print("energy_data:{}", energy_data)
