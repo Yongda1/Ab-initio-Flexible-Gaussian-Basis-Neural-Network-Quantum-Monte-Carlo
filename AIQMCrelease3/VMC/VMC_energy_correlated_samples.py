@@ -23,6 +23,7 @@ from AIQMCrelease3.utils import writers
 from AIQMCrelease3.initial_electrons_positions.init import init_electrons
 from AIQMCrelease3.spin_indices import jastrow_indices_ee
 from AIQMCrelease3.correlatedsamples import corrsamples
+from AIQMCrelease3.correlatedsamples import jacobianWeights
 import functools
 
 def main(atoms: jnp.array,
@@ -98,6 +99,8 @@ def main(atoms: jnp.array,
         phase, mag = signed_network(*args, **kwargs)
         return mag + 1.j * phase
 
+    log_network_parallel = jax.pmap(jax.vmap(log_network, in_axes=(None, 0, None, None, None,)), in_axes=(0, 0, None, None, None,))
+
     mc_step = VMCmcstep.main_monte_carlo(
         f=signed_network,
         tstep=tstep,
@@ -140,26 +143,26 @@ def main(atoms: jnp.array,
     sharded_key, subkeys = kfac_jax.utils.p_split(sharded_key)
     data = mc_step_parallel(params, data, subkeys)
     e_l, e_l_mat = batch_local_energy(params, subkeys, data)
-    #jax.debug.print("atoms:{}", atoms)
-    #jax.debug.print("newatoms:{}", new_atoms)
-    #jax.debug.print("data:{}", data)
     pos = data.positions
-    jax.debug.print("pos:{}", pos)
     newpos = correlatedsamples_parallel(atoms, new_atoms, pos)
-    jax.debug.print("newpos:{}", newpos)
-    #jax.debug.print("e_l:{}", e_l)
     number_new_atoms = new_atoms.shape[0]
     newpos = jnp.reshape(newpos, (number_new_atoms, 1, batch_size, -1)) # 2 is the number of new atoms, 1 is fixed, 4 is the number of batch size
-    jax.debug.print("newpos:{}", newpos)
     data.positions = newpos
-    jax.debug.print("data:{}", data)
     new_energy, new_energy_mat = batch_local_energy_correlated_samples(params, subkeys, data)
     """ we also need multiply the weights. 25.3.2025."""
-    jax.debug.print("new_energy:{}", new_energy)
+    jacobianWeights_parallel = jax.pmap(jax.vmap(jax.vmap(jacobianWeights.weights_jacobian, in_axes=(0, None, None)), in_axes=(None, None, 0)), in_axes=(0, None, None))
+    weights = jacobianWeights_parallel(pos, atoms, new_atoms)
+    wave_x1 = log_network_parallel(params, pos, spins, atoms, charges)
+    log_network_parallel_new_atoms = jax.vmap(log_network_parallel, in_axes=(None, None, None, 0, None))
+    wave_x2 = log_network_parallel_new_atoms(params, pos, spins, new_atoms, charges)
+    ratios = jnp.square(jnp.abs(wave_x1 - wave_x2))
+    weights = jnp.reshape(weights, ratios.shape) #we need be careful about this line. 2 means the number of new configurations.
+    weights_final = weights * ratios * batch_size / jnp.sum(weights * ratios, axis=-1, keepdims=True)
+    new_energy_final = jnp.mean(new_energy * weights_final, axis=-1)
     Energy.append(e_l)
     #loss = constants.pmean(jnp.mean(e_l))
-        #jax.debug.print("energy:{}", loss)
-
+    #jax.debug.print("energy:{}", loss)
     #jax.debug.print("Energy:{}", Energy)
     mean_value = jnp.mean(jnp.array(Energy))
-    #jax.debug.print("mean_value:{}", mean_value)
+    jax.debug.print("new_energy_final:{}", new_energy_final)
+    jax.debug.print("mean_value:{}", mean_value)
