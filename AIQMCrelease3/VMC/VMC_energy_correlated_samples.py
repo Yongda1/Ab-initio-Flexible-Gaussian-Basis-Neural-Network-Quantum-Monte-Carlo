@@ -138,18 +138,19 @@ def main(atoms: jnp.array,
     Energy = []
 
     correlatedsamples_parallel = jax.pmap(jax.vmap(jax.vmap(corrsamples.correlated_samples, in_axes=(None, None, 0)), in_axes=(None, 0, None)), in_axes=(None, None, 0))
-
-    #for t in range(t_init, t_init + iterations):
     sharded_key, subkeys = kfac_jax.utils.p_split(sharded_key)
     data = mc_step_parallel(params, data, subkeys)
     e_l, e_l_mat = batch_local_energy(params, subkeys, data)
     pos = data.positions
+    logging.info("calculate the new positions")
     newpos = correlatedsamples_parallel(atoms, new_atoms, pos)
     number_new_atoms = new_atoms.shape[0]
     newpos = jnp.reshape(newpos, (number_new_atoms, 1, batch_size, -1)) # 2 is the number of new atoms, 1 is fixed, 4 is the number of batch size
     data.positions = newpos
     new_energy, new_energy_mat = batch_local_energy_correlated_samples(params, subkeys, data)
-    """ we also need multiply the weights. 25.3.2025."""
+
+    """ we also need multiply the weights. 25.3.2025. The following part can be reformulated as a function."""
+    logging.info("calculate the new weights")
     jacobianWeights_parallel = jax.pmap(jax.vmap(jax.vmap(jacobianWeights.weights_jacobian, in_axes=(0, None, None)), in_axes=(None, None, 0)), in_axes=(0, None, None))
     weights = jacobianWeights_parallel(pos, atoms, new_atoms)
     wave_x1 = log_network_parallel(params, pos, spins, atoms, charges)
@@ -158,11 +159,11 @@ def main(atoms: jnp.array,
     ratios = jnp.square(jnp.abs(wave_x1 - wave_x2))
     weights = jnp.reshape(weights, ratios.shape) #we need be careful about this line. 2 means the number of new configurations.
     weights_final = weights * ratios * batch_size / jnp.sum(weights * ratios, axis=-1, keepdims=True)
+
+    logging.info("calculate the new energy for the new configurations.")
     new_energy_final = jnp.mean(new_energy * weights_final, axis=-1)
     Energy.append(e_l)
     #loss = constants.pmean(jnp.mean(e_l))
-    #jax.debug.print("energy:{}", loss)
-    #jax.debug.print("Energy:{}", Energy)
     mean_value = jnp.mean(jnp.array(Energy))
     jax.debug.print("new_energy_final:{}", new_energy_final)
     jax.debug.print("mean_value:{}", mean_value)
