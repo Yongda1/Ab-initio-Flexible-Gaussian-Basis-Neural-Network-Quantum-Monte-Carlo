@@ -22,7 +22,7 @@ pos = jnp.reshape(pos, (-1))
 def weights_jacobian(pos: jnp.array, atoms: jnp.array, new_atoms: jnp.array):
     """to be continued... 25.3.2025.
     calculate the jacobian of walker i"""
-    jax.debug.print("pos:{}", pos)
+    #jax.debug.print("pos:{}", pos)
     ae, ee, r_ae, r_ee = construct_input_features(pos, atoms, ndim=3)
     deltaR = new_atoms - atoms
 

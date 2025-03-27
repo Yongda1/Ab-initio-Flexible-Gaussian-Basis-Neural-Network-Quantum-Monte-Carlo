@@ -29,7 +29,7 @@ def main(atoms: jnp.array,
          natoms: int,
          ndim: int,
          batch_size: int,
-         iterations: int,
+         iterations: int, #means the steps in DMC run.
          nblocks: int,
          feedback: float,
          nspins: Tuple,
@@ -141,6 +141,7 @@ def main(atoms: jnp.array,
     """Start the main loop."""
     time_of_last_ckpt = time.time()
     opt_state = opt_state_ckpt
+
     """the writer module need be modified. 14.2.2025."""
     train_schema = ['block', 'energy', 'weights_data', 'positions']
     writer_manager = writers.Writer(
@@ -173,7 +174,15 @@ def main(atoms: jnp.array,
                 #jax.debug.print("temp:{}", temp)
                 energy_data = energy_data.at[block].set(temp_energy)
                 weights_data = weights_data.at[block].set(temp_weights)
-
+                #x3 = data.positions # just to store the walkers information.
+                '''
+                writer_kwargs = {
+                    'block': block,
+                    'weights_data': np.asarray(weights_data),
+                    'positions': np.asarray(data.positions),
+                }
+                writer.write(block, **writer_kwargs)
+                '''
             e_est = estimate_energy(energy_data, weights_data)
             """for the energy store part, we need rewrite it."""
             jax.debug.print("e_est:{}", e_est)
@@ -220,6 +229,7 @@ def main(atoms: jnp.array,
 
             """leave this to tomorrow. 13.2.2025. we also need update the branchcut."""
             e_trial = e_est - feedback * jnp.log(jnp.mean(weights)).real
+
             writer_kwargs = {
                 'block': block,
                 'energy': np.asarray(e_est),
@@ -227,6 +237,7 @@ def main(atoms: jnp.array,
                 'positions': np.asarray(x2),
             }
             writer.write(block, **writer_kwargs)
+
 
         """we turn to the energy summary part."""
     #jax.debug.print("energy_data:{}", energy_data)
