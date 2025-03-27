@@ -173,9 +173,16 @@ def main(atoms: jnp.array,
 
     newpos = jnp.reshape(newpos, (
     number_new_atoms, 1, batch_size, -1))  # 2 is the number of new atoms, 1 is fixed, 4 is the number of batch size
-    data.positions = newpos[0] #temporaly, we only take one new configuration. Ok, it is working currently.
-    jax.debug.print("data.positions:{}", data.positions)
 
+    data.positions = newpos #temporaly, we only take one new configuration. Ok, it is working currently.
+    #jax.debug.print("data.positions:{}", data.positions)
+    #jax.debug.print("new_atoms:{}", new_atoms)
+    temp = jnp.repeat(new_atoms, batch_size, axis=0)
+    #jax.debug.print("temp:{}", temp)
+    final_new_atoms = jnp.reshape(temp, (2, 1, 4, 2, 3)) # 2 is the number of new configurations. 1 is the number of devices. 4 is the batch size, 2 is the number of atoms, 3 is the dimension.
+    #jax.debug.print("final_new_atoms:{}", final_new_atoms)
+    data.atoms = final_new_atoms
+    #jax.debug.print("data.atoms:{}", data.atoms)
     jacobianWeights_parallel = jax.pmap(
         jax.vmap(jax.vmap(jacobianWeights.weights_jacobian, in_axes=(0, None, None)), in_axes=(None, None, 0)),
         in_axes=(0, None, None))
@@ -186,11 +193,21 @@ def main(atoms: jnp.array,
     ratios = jnp.square(jnp.abs(wave_x1 - wave_x2))
     weights_new_atoms = jnp.reshape(weights_new_atoms, ratios.shape)  # we need be careful about this line. 2 means the number of new configurations.
     weights_final = weights_new_atoms * ratios * batch_size / jnp.sum(weights_new_atoms * ratios, axis=-1, keepdims=True)
-    jax.debug.print("weights_final:{}", weights_final)
+    #jax.debug.print("weights_final:{}", weights_final)
     #jax.debug.print("weights:{}", weights)
-    jax.debug.print("primary_weights:{}", primary_weights)
+    #jax.debug.print("primary_weights:{}", primary_weights)
+    jax.debug.print("data:{}", data)
+    temp_spins = jnp.repeat(data.spins, 2, axis=0)
+    temp_spins = jnp.reshape(temp_spins, (2, 1, 4, -1))
+    temp_charges = jnp.repeat(data.charges, 2, axis=0)
+    temp_charges = jnp.reshape(temp_charges, (2, 1, 4, -1))
+    jax.debug.print("temp_spins:{}", temp_spins)
+    jax.debug.print("temp_charges:{}", temp_charges)
+    data.spins = temp_spins
+    data.charges = temp_charges
     """to be continued...27.3.2025.
     forgot to reshape the data. shit."""
+    jax.debug.print("data:{}", data)
 
     with writer_manager as writer:
         for block in range(0, nblocks):
@@ -198,7 +215,8 @@ def main(atoms: jnp.array,
                 #jax.debug.print("primary_weights:{}", primary_weights[block, t-t_init,])
                 weights = jnp.reshape(primary_weights[block, t-t_init], (-1, batch_size))
                 jax.debug.print("weights:{}", weights)
-                energy, new_weights, new_data = dmc_run(params,
+                dmc_run_parallel = jax.vmap(dmc_run, in_axes=(None, None, nn.AINetData(positions=0, spins=0, atoms=0, charges=0), None, None, None, None))
+                energy, new_weights, new_data = dmc_run_parallel(params,
                                                         subkeys,
                                                         data,
                                                         weights,
@@ -207,11 +225,17 @@ def main(atoms: jnp.array,
                                                         e_est,)
                 data = new_data
                 #weights = new_weights
+                jax.debug.print("new_data:{}", new_data)
                 jax.debug.print("new_weights:{}", new_weights)
-                energy = jnp.reshape(energy, batch_size)
-                secondary_weights = new_weights/weights
+                jax.debug.print("energy:{}", energy)
+                """we still need calculate the secondary weights. And understand well what is the N_proj."""
+                #energy = jnp.reshape(energy, batch_size)
+                #secondary_weights = new_weights/weights
+                ''' 
                 jax.debug.print("secondary_weights:{}", secondary_weights)
-                '''
+                
+                
+                """continue here"""
                 weights_step = jnp.reshape(weights, batch_size)
                 #temp = energy_data[block]
                 jax.debug.print("block:{}", block)
