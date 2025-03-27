@@ -123,7 +123,7 @@ def main(atoms: jnp.array,
     e_trial, variance_trial = total_e_parallel(params, subkeys, data)
     e_est, variance_est = total_e_parallel(params, subkeys, data)
     """we need think more about the parallel strategy. So later, we have to modify the shape of weights and branchcut."""
-    weights = jnp.ones(shape=(num_devices * num_hosts, batch_size))
+    #weights = jnp.ones(shape=(num_devices * num_hosts, batch_size))
     esigma = jnp.std(e_est)
     dmc_run = dmc_propagate(signed_network=signed_network,
                             log_network=log_network,
@@ -169,9 +169,11 @@ def main(atoms: jnp.array,
     pos = data.positions
     newpos = correlatedsamples_parallel(atoms, new_atoms, pos)
     number_new_atoms = new_atoms.shape[0]
+    """we also need change the data.new_atoms. 27.3.2025."""
+
     newpos = jnp.reshape(newpos, (
     number_new_atoms, 1, batch_size, -1))  # 2 is the number of new atoms, 1 is fixed, 4 is the number of batch size
-    data.positions = newpos
+    data.positions = newpos[0] #temporaly, we only take one new configuration. Ok, it is working currently.
     jax.debug.print("data.positions:{}", data.positions)
 
     jacobianWeights_parallel = jax.pmap(
@@ -185,13 +187,17 @@ def main(atoms: jnp.array,
     weights_new_atoms = jnp.reshape(weights_new_atoms, ratios.shape)  # we need be careful about this line. 2 means the number of new configurations.
     weights_final = weights_new_atoms * ratios * batch_size / jnp.sum(weights_new_atoms * ratios, axis=-1, keepdims=True)
     jax.debug.print("weights_final:{}", weights_final)
-    jax.debug.print("weights:{}", weights)
+    #jax.debug.print("weights:{}", weights)
     jax.debug.print("primary_weights:{}", primary_weights)
-    """to be continued...27.3.2025"""
-    '''
+    """to be continued...27.3.2025.
+    forgot to reshape the data. shit."""
+
     with writer_manager as writer:
         for block in range(0, nblocks):
             for t in range(t_init, t_init+iterations):
+                #jax.debug.print("primary_weights:{}", primary_weights[block, t-t_init,])
+                weights = jnp.reshape(primary_weights[block, t-t_init], (-1, batch_size))
+                jax.debug.print("weights:{}", weights)
                 energy, new_weights, new_data = dmc_run(params,
                                                         subkeys,
                                                         data,
@@ -200,8 +206,12 @@ def main(atoms: jnp.array,
                                                         e_trial,
                                                         e_est,)
                 data = new_data
-                weights = new_weights
+                #weights = new_weights
+                jax.debug.print("new_weights:{}", new_weights)
                 energy = jnp.reshape(energy, batch_size)
+                secondary_weights = new_weights/weights
+                jax.debug.print("secondary_weights:{}", secondary_weights)
+                '''
                 weights_step = jnp.reshape(weights, batch_size)
                 #temp = energy_data[block]
                 jax.debug.print("block:{}", block)
@@ -261,11 +271,4 @@ def main(atoms: jnp.array,
             }
             writer.write(block, **writer_kwargs)
         """we turn to the energy summary part."""
-'''
-
-
-def secondary_weights(primary_weights: jnp.array, tau_s: jnp.array, N_proj: int, R_prime: jnp.array, R: jnp.array,
-                      ) -> jnp.array:
-    """calculate the factors exp[S_s(R^s', R^s, tau_s) - S(R',R, tau)], however, before we do this calculation,
-    we still store the DMC data correctly. 26.3.2025.
-    we already rewrite the storing function of DMC modules. 26.3.2025"""
+        '''
