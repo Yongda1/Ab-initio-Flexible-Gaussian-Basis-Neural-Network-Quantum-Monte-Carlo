@@ -193,28 +193,35 @@ def main(atoms: jnp.array,
     ratios = jnp.square(jnp.abs(wave_x1 - wave_x2))
     weights_new_atoms = jnp.reshape(weights_new_atoms, ratios.shape)  # we need be careful about this line. 2 means the number of new configurations.
     weights_final = weights_new_atoms * ratios * batch_size / jnp.sum(weights_new_atoms * ratios, axis=-1, keepdims=True)
+
     #jax.debug.print("weights_final:{}", weights_final)
     #jax.debug.print("weights:{}", weights)
     #jax.debug.print("primary_weights:{}", primary_weights)
-    jax.debug.print("data:{}", data)
+    #jax.debug.print("data:{}", data)
     temp_spins = jnp.repeat(data.spins, 2, axis=0)
     temp_spins = jnp.reshape(temp_spins, (2, 1, 4, -1))
     temp_charges = jnp.repeat(data.charges, 2, axis=0)
     temp_charges = jnp.reshape(temp_charges, (2, 1, 4, -1))
-    jax.debug.print("temp_spins:{}", temp_spins)
-    jax.debug.print("temp_charges:{}", temp_charges)
+    #jax.debug.print("temp_spins:{}", temp_spins)
+    #jax.debug.print("temp_charges:{}", temp_charges)
     data.spins = temp_spins
     data.charges = temp_charges
     """to be continued...27.3.2025.
     forgot to reshape the data. shit."""
-    jax.debug.print("data:{}", data)
+    #jax.debug.print("data:{}", data)
+    """should we use the first one as the primary weights? 28.3.2025."""
+    initial_weights = primary_weights[0][0]
+    initial_weights = jnp.reshape(initial_weights, (1, -1))
+    initial_weights = jnp.repeat(initial_weights, 2, axis=0)
 
+    initial_weights = jnp.reshape(initial_weights, (2, 1, -1))
+    jax.debug.print("initial_weights:{}", initial_weights)
     with writer_manager as writer:
         for block in range(0, nblocks):
             for t in range(t_init, t_init+iterations):
                 #jax.debug.print("primary_weights:{}", primary_weights[block, t-t_init,])
                 weights = jnp.reshape(primary_weights[block, t-t_init], (-1, batch_size))
-                jax.debug.print("weights:{}", weights)
+                #jax.debug.print("weights:{}", weights)
                 dmc_run_parallel = jax.vmap(dmc_run, in_axes=(None, None, nn.AINetData(positions=0, spins=0, atoms=0, charges=0), None, None, None, None))
                 energy, new_weights, new_data = dmc_run_parallel(params,
                                                         subkeys,
@@ -225,30 +232,24 @@ def main(atoms: jnp.array,
                                                         e_est,)
                 data = new_data
                 #weights = new_weights
-                jax.debug.print("new_data:{}", new_data)
-                jax.debug.print("new_weights:{}", new_weights)
-                jax.debug.print("energy:{}", energy)
+                #jax.debug.print("new_data:{}", new_data)
+                #jax.debug.print("new_weights:{}", new_weights)
+                #jax.debug.print("energy:{}", energy)
                 """we still need calculate the secondary weights. And understand well what is the N_proj."""
                 #energy = jnp.reshape(energy, batch_size)
-                #secondary_weights = new_weights/weights
-                ''' 
+                secondary_weights = new_weights/weights
                 jax.debug.print("secondary_weights:{}", secondary_weights)
-                
-                
-                """continue here"""
-                weights_step = jnp.reshape(weights, batch_size)
-                #temp = energy_data[block]
-                jax.debug.print("block:{}", block)
-                jax.debug.print("t:{}", t-t_init)
-                jax.debug.print("weights:{}", weights)
-                temp_energy = energy_data[block].at[t-t_init].set(energy.real)
-                temp_weights = weights_data[block].at[t-t_init].set(weights_step)
-                #jax.debug.print("temp:{}", temp)
-                energy_data = energy_data.at[block].set(temp_energy)
-                weights_data = weights_data.at[block].set(temp_weights)
-                #x3 = data.positions # just to store the walkers information.
+                initial_weights = initial_weights * secondary_weights
+                jax.debug.print("initial_weights:{}", initial_weights)
+                jax.debug.print("secondary_weights:{}", secondary_weights)
+                jax.debug.print("energy:{}", energy)
+                output_energy = jnp.mean(energy * initial_weights, axis=-1, keepdims=True)
+                """now, we got another problem. How do we need change the e_trial or something else? 28.3.2025."""
+                jax.debug.print("output_energy:{}", output_energy)
 
-            e_est = estimate_energy(energy_data, weights_data)
+
+            '''e_est = estimate_energy(energy_data, weights_data)
+           
             """for the energy store part, we need rewrite it."""
             jax.debug.print("e_est:{}", e_est)
             logging_str = ('Block %05d:', '%03.4f E_h,')
