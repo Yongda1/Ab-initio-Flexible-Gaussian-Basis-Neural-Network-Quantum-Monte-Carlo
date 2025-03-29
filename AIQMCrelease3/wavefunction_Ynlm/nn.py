@@ -112,14 +112,14 @@ def construct_input_features(
     ee = jnp.reshape(pos, [1, -1, ndim]) - jnp.reshape(pos, [-1, 1, ndim])
     r_ae = jnp.linalg.norm(ae, axis=2, keepdims=True)
     n = ee.shape[0]
-    r_ee = (
-            jnp.linalg.norm(ee + jnp.eye(n)[..., None], axis=-1) * (1.0 - jnp.eye(n)))
+    r_ee = (jnp.linalg.norm(ee + jnp.eye(n)[..., None], axis=-1) * (1.0 - jnp.eye(n)))
     return ae, ee, r_ae, r_ee[..., None]
 
 
 def make_ainet_features(natoms: int, ndim: int = 3, rescale_inputs: bool = False) -> FeatureLayer:
 
     def init() -> Tuple[Tuple[int, int], Param]:
+        """ ndim + 1 means the dimension is 3 and the normalization of the cartesian coordinates, i.e.,r_ae."""
         return (natoms * (ndim + 1), ndim + 1), {}
 
     def apply(ae, r_ae, ee, r_ee) -> Tuple[jnp.array, jnp.array]:
@@ -194,12 +194,11 @@ def make_ai_net_layers(nspins: Tuple[int, int],
                        hidden_dims_Ynlm,
                        feature_layer) -> Tuple[InitLayersAI, ApplyLayersAI]:
 
-    def init(key: chex.PRNGKey) -> Tuple[int, ParamTree]:
+    def init(key: chex.PRNGKey) -> Tuple[int, int, ParamTree]:
         params = {}
         key, subkey = jax.random.split(key, num=2)
         (num_one_features, num_two_features), params['input'] = feature_layer.init()
         nchannels = len([nspin for nspin in nspins if nspin > 0])
-        #jax.debug.print("nchannels:{}", nchannels)
 
         def nfeatures(out1, out2):
             return (nchannels + 1) * out1 + nchannels * out2
@@ -209,7 +208,7 @@ def make_ai_net_layers(nspins: Tuple[int, int],
         key1, subkey1 = jax.random.split(key)
         layers = []
         layers_y = []
-        dims_y_in = 4 * natoms  # 4 is the number of l orbitals, 2 is the number of atoms.
+        dims_y_in = 4 * natoms  # 4 is the number of l orbitals, 2 is the number of atoms. s, p(3) = 4, r=(1, 2, 3)
         for i in range(len(hidden_dims)):
             layer_params = {}
             layer_params_y = {}
@@ -217,8 +216,8 @@ def make_ai_net_layers(nspins: Tuple[int, int],
             dims_two_embedding = dims_two_in
             dims_one_in = nfeatures(dims_one_in, dims_two_embedding)
             #jax.debug.print("dims_one_in:{}", dims_one_in)
-            dims_one_out, dims_two_out = hidden_dims[i]
-            dims_y_out = hidden_dims_Ynlm[i]
+            dims_one_out, dims_two_out = hidden_dims[i] #((4,4), (4,4), (4,4))
+            dims_y_out = hidden_dims_Ynlm[i] #((4,2), (4,2), (4,2))
 
             """someting is wrong about the dimension. solve it later. 18.2.2025."""
             layer_params['single'] = network_blocks.init_linear_layer(single_key,
@@ -254,6 +253,7 @@ def make_ai_net_layers(nspins: Tuple[int, int],
         params['streams_y'] = layers_y
         output_dims = dims_one_in
         output_dims_y = dims_y_in
+        #jax.debug.print("params:{}", params)
         return output_dims, output_dims_y, params
 
     def apply_layer(params: Mapping[str, ParamTree],
@@ -366,12 +366,13 @@ def make_orbitals(nspins: Tuple[int, int],
               atoms: jnp.array,
               charges: jnp.array) -> Sequence[jnp.array]:
         ae, ee, r_ae, r_ee = construct_input_features(pos, atoms, ndim=3)
-        #jax.debug.print("r_ae:{}", r_ae)
+        #jax.debug.print("r_ee:{}", r_ee)
         h_to_orbitals, y_to_orbitals = equivariant_layers_apply(params['layers'],
                                                                 ae=ae,
                                                                 r_ae=r_ae,
                                                                 ee=ee,
                                                                 r_ee=r_ee,)
+        #jax.debug.print("h_to_orbitals:{}", h_to_orbitals)
         active_spin_channels = [spin for spin in nspins if spin > 0]
         active_spin_partitions = network_blocks.array_partitions(active_spin_channels)
 
@@ -388,6 +389,7 @@ def make_orbitals(nspins: Tuple[int, int],
         ae_channels = jnp.split(ae, active_spin_partitions, axis=0)
         r_ae_channels = jnp.split(r_ae, active_spin_partitions, axis=0)
         r_ee_channels = jnp.split(r_ee, active_spin_partitions, axis=0)
+
         for i in range(len(active_spin_channels)):
             orbitals[i] = orbitals[i] * envelope_apply(
                 ae=ae_channels[i],
@@ -402,7 +404,10 @@ def make_orbitals(nspins: Tuple[int, int],
         orbitals = [jnp.transpose(orbital, (1, 0, 2)) for orbital in orbitals]
         orbitals = jnp.concatenate(orbitals, axis=1)
         orbitals = jnp.reshape(orbitals, (nelectrons, nelectrons))
-        total_orbitals = orbitals * y_orbitals
+        #jax.debug.print("orbitals:{}", orbitals)
+        #jax.debug.print("y_orbitals:{}", y_orbitals)
+        total_orbitals = orbitals * y_orbitals #element-wise
+        #jax.debug.print("total_orbitals:{}", total_orbitals)
         """something in Jastrow is wrong here 26.2.2025."""
         """The jastrow has some problems."""
         #jastrow = jnp.exp(jastrow_ee_apply(ee=ee,
@@ -411,7 +416,7 @@ def make_orbitals(nspins: Tuple[int, int],
         #                                   params=params['jastrow_ee']) / nelectrons)
         """to be continued... 21.2.2025."""
         #total_orbitals_jastrow = [total_orbitals * jastrow]
-        total_orbitals_jastrow = [total_orbitals]
+        total_orbitals_jastrow = [total_orbitals] # if 多行列式, 4 * 8 * 8
         return total_orbitals_jastrow
 
     return init, apply
@@ -456,3 +461,46 @@ def make_ai_net(nspins: Tuple[int, int],
         return network_blocks.logdet_matmul(orbitals)
 
     return Network(init=init, apply=apply, orbitals=orbitals_apply)
+
+
+'''
+from AIQMCrelease3.initial_electrons_positions.init import init_electrons
+from AIQMCrelease3.spin_indices import jastrow_indices_ee
+atoms = jnp.array([[0.0, 0.0, -1.0], [0.0, 0.0, 1.0]])
+charges = jnp.array([4.0, 4.0])
+spins = jnp.array([1.0, 1.0, 1.0, 1.0, -1.0, -1.0, -1.0, -1.0])
+
+structure = jnp.array([[10, 0, 0],
+                       [0, 10, 0],
+                       [0, 0, 10]])
+
+natoms = 2
+ndim = 3
+nelectrons = 8
+nspins = (4, 4)
+parallel_indices, antiparallel_indices, n_parallel, n_antiparallel = jastrow_indices_ee(spins=spins, nelectrons=8)
+key = jax.random.PRNGKey(1)
+key, subkey = jax.random.split(key)
+network = make_ai_net(ndim=ndim,
+                      nelectrons=nelectrons,
+                      natoms=natoms,
+                      nspins=nspins,
+                      determinants=1,
+                      charges=charges,
+                      parallel_indices=parallel_indices,
+                      antiparallel_indices=antiparallel_indices,
+                      n_parallel=n_parallel,
+                      n_antiparallel=n_antiparallel)
+
+params = network.init(subkey)
+pos, spins = init_electrons(subkey, structure=structure, atoms=atoms, charges=charges,
+                            electrons=spins,
+                            batch_size=1, init_width=0.5)
+
+pos = jnp.reshape(pos, (-1)) # 10 * 3 = 30
+jax.debug.print("spin:{}", spins)
+jax.debug.print("pos:{}", pos)
+#ae, ee, r_ae, r_ee = construct_input_features(pos, atoms, ndim=3)
+wavefunction_value = network.apply(params, pos, spins, atoms, charges)
+jax.debug.print("wavefunction_value:{}", wavefunction_value)
+'''

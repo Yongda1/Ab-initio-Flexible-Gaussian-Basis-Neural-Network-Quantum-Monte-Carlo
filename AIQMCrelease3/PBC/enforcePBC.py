@@ -1,6 +1,6 @@
 import jax.numpy as jnp
 import jax
-'''
+
 from AIQMCrelease3.initial_electrons_positions.init import init_electrons
 from AIQMCrelease3.wavefunction_Ynlm.nn import construct_input_features
 atoms = jnp.array([[0.0, 0.0, 0.0], [0.5, 0.5, 0.0]])
@@ -18,11 +18,12 @@ pos, spins = init_electrons(subkey, structure=lattice, atoms=atoms, charges=char
 pos = jnp.reshape(pos, (-1))
 
 ae, ee, r_ae, r_ee = construct_input_features(pos, atoms, ndim=3)
-'''
 
+"""we need put this method into the VMC and DMC."""
 def enforcepbc(lattice: jnp.array, pos: jnp.array):
     """it is working for single configuration. However, we used two different strategies for VMC and DMC. For convenience,
-    please use vmap or pmap to make this function be proper for VMC and DMC respectively. 17.3.2025."""
+    please use vmap or pmap to make this function be proper for VMC and DMC respectively. 17.3.2025.
+    we just need add this function into the walkers move module."""
     recpvecs = jnp.linalg.inv(lattice)
     pos = jnp.reshape(pos, (-1, 3))
 
@@ -43,7 +44,6 @@ def enforcepbc(lattice: jnp.array, pos: jnp.array):
     final_pos = jnp.reshape(final_pos, (-1))
     return final_pos
 
-'''
+
 final_pos_pbc = enforcepbc(lattice, pos)
 jax.debug.print("fianl_pos_pbc:{}", final_pos_pbc)
-'''

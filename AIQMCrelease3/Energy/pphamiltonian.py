@@ -178,6 +178,7 @@ def local_energy(
              key: chex.PRNGKey,
              data: nn.AINetData) -> Tuple[jnp.ndarray, Optional[jnp.ndarray]]:
 
+        #jax.debug.print("data:{}", data)
         ae, ee, r_ae, r_ee = nn.construct_input_features(data.positions, data.atoms)
         potential = (potential_energy(r_ee, data.atoms, charges))
         kinetic = ke(params, data)
