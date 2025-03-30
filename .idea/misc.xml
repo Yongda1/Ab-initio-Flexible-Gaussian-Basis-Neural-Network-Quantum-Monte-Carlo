@@ -3,7 +3,7 @@
   <component name="Black">
     <option name="sdkName" value="Python 3.12.3 WSL (Ubuntu): (/root/.venv/bin/python3.12)" />
   </component>
-  <component name="ProjectRootManager" version="2" project-jdk-name="jaxenvA" project-jdk-type="Python SDK" />
+  <component name="ProjectRootManager" version="2" project-jdk-name="Remote Python 3.12.9 (sftp://root@connect.bjb1.seetacloud.com:15169/root/miniconda3/envs/jaxenv/bin/python3.12)" project-jdk-type="Python SDK" />
   <component name="PyPackaging">
     <option name="earlyReleasesAsUpgrades" value="true" />
   </component>
