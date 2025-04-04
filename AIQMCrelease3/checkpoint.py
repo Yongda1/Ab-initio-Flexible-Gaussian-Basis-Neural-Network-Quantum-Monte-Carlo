@@ -7,6 +7,7 @@ import zipfile
 from absl import logging
 from AIQMCrelease3.wavefunction_Ynlm import nn
 import numpy as np
+import jax
 
 
 def find_last_checkpoint(ckpt_path: Optional[str] = None) -> Optional[str]:
@@ -47,6 +48,7 @@ def save(save_path: str,
          opt_state,) -> str:
     ckpt_filename = os.path.join(save_path, f'qmcjax_ckpt_{t:06d}.npz')
     logging.info('Saving checkpoint %s', ckpt_filename)
+    jax.debug.print("ckpt_filename:{}", ckpt_filename)
     with open(ckpt_filename, 'wb') as f:
         np.savez(
             f,

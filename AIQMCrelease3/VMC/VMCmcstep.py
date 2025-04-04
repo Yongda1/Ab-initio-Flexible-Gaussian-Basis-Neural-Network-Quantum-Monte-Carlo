@@ -32,12 +32,11 @@ def walkers_update(logabs_f: nn.AINetLike,
                    tstep: float,
                    ndim: int,
                    nelectrons: int,
-                   batch_size: int,
+                   batch_size: int, #this batch_size should be the number of walkers on each GPU
                    i=0):
     """params: batch_params"""
     key, subkey = jax.random.split(key)
     x1 = data.positions
-
     grad_value = jax.grad(logabs_f, argnums=1)
     atoms = data.atoms[0]
     charges = data.charges[0]
@@ -120,14 +119,15 @@ def main_monte_carlo(f: nn.AINetLike,
                      batch_size: int):
     """create mont carlo sample loop. One loop is used here. However, we should circumvent it. Later, we optimize it."""
     logabs_f = utils.select_output(f, 1)
-
+    #jax.debug.print("batch_size_each_GPU:{}", batch_size)
     @jax.jit
     def mc_step(params: nn.ParamTree, data: nn.AINetData, key: chex.PRNGKey, ):
+
 
         def step_fn(i, x):
             return walkers_update(logabs_f, params, *x, tstep=tstep, ndim=ndim, nelectrons=nelectrons, batch_size=batch_size, i=i)
 
-        new_data, key = lax.fori_loop(lower=0, upper=nsteps, body_fun=step_fn, init_val=(data, key))
+        new_data, new_key = lax.fori_loop(lower=0, upper=nsteps, body_fun=step_fn, init_val=(data, key))
         return new_data
 
     return mc_step

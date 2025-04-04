@@ -1,6 +1,5 @@
 import jax.numpy as jnp
-from AIQMCrelease3.main.main_pp_adam_muti_GPU import main
-
+from AIQMCrelease3.DMC.main_dmc import main
 
 structure = jnp.array([[10, 0, 0],
                        [0, 10, 0],
@@ -12,13 +11,10 @@ spins = jnp.array([1.0, 1.0, 1.0, 1.0, -1.0, -1.0, -1.0, -1.0])
 
 Rn_local = jnp.array([[1.0, 3.0, 2.0],
                       [1.0, 3.0, 2.0]])
-
 Rn_non_local = jnp.array([[[2.0, 2.0], [2.0, 2.0], [2.0, 2.0]],
                           [[2.0, 2.0], [2.0, 2.0], [2.0, 2.0]],])
-
 Local_coes = jnp.array([[4.00000, 57.74008, -25.81955],
                         [4.00000, 57.74008, -25.81955]])
-
 Local_exps = jnp.array([[14.43502, 8.39889, 7.38188],
                         [14.43502, 8.39889, 7.38188],])
 
@@ -35,14 +31,15 @@ output = main(atoms=atoms,
               natoms=2,
               ndim=3,
               batch_size=4,
-              iterations=10,
+              iterations=2,
               tstep=0.05,
               nspins=(4, 4),
-              nsteps=1000,
-              list_l=2,
-              save_path='/root/save',
-              restore_path=None,
-              save_frequency=0.0001, #if the calculation run too fast, the calculate
+              nsteps=5,
+              nblocks=2,
+              feedback=1.0,
+              save_path='save',
+              restore_path='restore_DMC',
+              save_frequency=0.01,
               structure=structure,
               Rn_local=Rn_local,
               Local_coes=Local_coes,

@@ -81,6 +81,8 @@ def dmc_propagate(signed_network,
         new_data, newkey, tdamp, grad_eff_old, grad_new_eff = drift_diffusion_pmap(params, key, t_move_data)
         eloc_old, variance_old = total_e_parallel(params,  key, data)
         eloc_new, variance_new = total_e_parallel(params,  key, new_data)
+        jax.debug.print("eloc_old:{}", eloc_old)
+        jax.debug.print("eloc_new:{}", eloc_new)
         S_old = comput_S(e_trial=e_trial, e_est=e_est, branchcut=branchcut_start, v2=jnp.square(grad_eff_old), tau=tstep,
                          eloc=eloc_old, nelec=nelectrons)
         S_new = comput_S(e_trial=e_trial, e_est=e_est, branchcut=branchcut_start, v2=jnp.square(grad_new_eff), tau=tstep,

@@ -59,7 +59,7 @@ def main(atoms: jnp.array,
     sharded_key, subkeys = kfac_jax.utils.p_split(sharded_key)
     ckpt_save_path = checkpoint.create_save_path(save_path=save_path)
     ckpt_restore_path = checkpoint.get_restore_path(restore_path=restore_path)
-
+    """here, the restore calculation can be read from save path or restore path."""
     ckpt_restore_filename = (checkpoint.find_last_checkpoint(ckpt_save_path) or
                              checkpoint.find_last_checkpoint(ckpt_restore_path))
     if ckpt_restore_filename:
@@ -67,7 +67,7 @@ def main(atoms: jnp.array,
          data,
          params,
          opt_state_ckpt,) = checkpoint.restore(ckpt_restore_filename, host_batch_size)
-        jax.debug.print("data:{}", data)
+        #jax.debug.print("data:{}", data)
     else:
         raise ValueError('DMC must use the wave function from VMC!')
 
@@ -105,13 +105,17 @@ def main(atoms: jnp.array,
                                              ndim=ndim,
                                              list_l=2,
                                              use_scan=False)
-
+    
     total_e = calculate_total_energy(local_energy=localenergy)
     total_e_parallel = jax.pmap(total_e)
     e_trial, variance_trial = total_e_parallel(params, subkeys, data)
     e_est, variance_est = total_e_parallel(params, subkeys, data)
+    jax.debug.print("e_trial:{}", e_trial)
+    jax.debug.print("variance_trial:{}", variance_trial)
+    jax.debug.print("e_est:{}", e_est)
+    jax.debug.print("variance_est:{}", variance_est)
     """we need think more about the parallel strategy. So later, we have to modify the shape of weights and branchcut."""
-    weights = jnp.ones(shape=(num_devices * num_hosts, batch_size))
+    weights = jnp.ones(shape=(num_devices * num_hosts, int(batch_size / (num_devices * num_hosts))))
     esigma = jnp.std(e_est)
     dmc_run = dmc_propagate(signed_network=signed_network,
                             log_network=log_network,
@@ -120,7 +124,7 @@ def main(atoms: jnp.array,
                             nelectrons=nelectrons,
                             natoms=natoms,
                             ndim=ndim,
-                            batch_size=batch_size,
+                            batch_size=2, #we also need to write the number of walker on each GPU.
                             tstep=tstep,
                             nsteps=nsteps,
                             charges=charges,
@@ -131,12 +135,11 @@ def main(atoms: jnp.array,
                             Rn_non_local=Rn_non_local,
                             Non_local_coes=Non_local_coes,
                             Non_local_exps=Non_local_exps)
-    branchcut_start = jnp.ones(shape=(num_devices * num_hosts, batch_size)) * 10
-
+    branchcut_start = jnp.ones(shape=(num_devices * num_hosts, int(batch_size / (num_devices * num_hosts)))) * 10
     branch_parallel = jax.pmap(branch, in_axes=(0, 0, 0))
     energy_data = jnp.zeros(shape=(nblocks, iterations, batch_size))
     weights_data = jnp.zeros(shape=(nblocks, iterations, batch_size))
-    #jax.debug.print("energy_data:{}", energy_data)
+    jax.debug.print("energy_data:{}", energy_data)
 
     """Start the main loop."""
     time_of_last_ckpt = time.time()
@@ -151,9 +154,14 @@ def main(atoms: jnp.array,
         iteration_key=None,
         log=False
     )
+
     with writer_manager as writer:
         for block in range(0, nblocks):
             for t in range(t_init, t_init+iterations):
+                jax.debug.print("weights:{}", weights)
+                jax.debug.print("branchcut_start * esigma:{}", branchcut_start* esigma)
+                jax.debug.print("e_trial:{}", e_trial)
+                jax.debug.print("e_est:{}", e_est)
                 energy, new_weights, new_data = dmc_run(params,
                                                         subkeys,
                                                         data,
@@ -161,6 +169,10 @@ def main(atoms: jnp.array,
                                                         branchcut_start * esigma,
                                                         e_trial,
                                                         e_est,)
+                jax.debug.print("energy:{}", energy)
+                jax.debug.print("new_weights:{}", new_weights)
+                jax.debug.print("new_data:{}", new_data)
+
                 data = new_data
                 weights = new_weights
                 energy = jnp.reshape(energy, batch_size)
@@ -171,32 +183,17 @@ def main(atoms: jnp.array,
                 jax.debug.print("weights:{}", weights)
                 temp_energy = energy_data[block].at[t-t_init].set(energy.real)
                 temp_weights = weights_data[block].at[t-t_init].set(weights_step)
-                #jax.debug.print("temp:{}", temp)
                 energy_data = energy_data.at[block].set(temp_energy)
                 weights_data = weights_data.at[block].set(temp_weights)
-                #x3 = data.positions # just to store the walkers information.
-                '''
-                writer_kwargs = {
-                    'block': block,
-                    'weights_data': np.asarray(weights_data),
-                    'positions': np.asarray(data.positions),
-                }
-                writer.write(block, **writer_kwargs)
-                '''
+
+
             e_est = estimate_energy(energy_data, weights_data)
             """for the energy store part, we need rewrite it."""
             jax.debug.print("e_est:{}", e_est)
             logging_str = ('Block %05d:', '%03.4f E_h,')
             logging_args = block, t, e_est,
-            '''
-            writer_kwargs = {
-                'block': block,
-                'energy': np.asarray(e_est),
-            }'''
             logging.info(logging_str, *logging_args)
-            '''
-            writer.write(block, **writer_kwargs)
-            '''
+
             if time.time() - time_of_last_ckpt > save_frequency * 60:
                 """np.savez cannot save inhomogeneous array. So, we have to use the following line to convert the format of the arrays."""
                 save_params = np.asarray(params)
@@ -206,7 +203,10 @@ def main(atoms: jnp.array,
 
             weights, newindices = branch_parallel(data, weights, subkeys)
             x1 = data.positions
+            jax.debug.print("x1:{}", x1)
             x2 = []
+            """we need change the parallel rules here, 4.4.2025. Fortunately, the above code is running smoothly."""
+            x1 = jnp.reshape(x1, (batch_size, -1))
             for i in range(len(x1)):
                 unique, counts = jnp.unique(newindices[i], return_counts=True)
                 temp = x1[i][unique]
@@ -225,6 +225,7 @@ def main(atoms: jnp.array,
                 x2.append(temp)
 
             x2 = jnp.array(x2)
+            jax.debug.print("x2:{}", x2)
             data = nn.AINetData(**(dict(data) | {'positions': x2}))
 
             """leave this to tomorrow. 13.2.2025. we also need update the branchcut."""
@@ -237,8 +238,3 @@ def main(atoms: jnp.array,
                 'positions': np.asarray(x2),
             }
             writer.write(block, **writer_kwargs)
-
-
-        """we turn to the energy summary part."""
-    #jax.debug.print("energy_data:{}", energy_data)
-    #jax.debug.print("weights_data:{}", weights_data)
