@@ -15,7 +15,6 @@
 """Helper functions to create the loss and custom gradient of the loss."""
 
 from typing import Tuple
-
 import chex
 from AIQMCrelease3 import constants
 from AIQMCrelease3.Energy import hamiltonian
@@ -207,9 +206,9 @@ def make_loss(network: nn.LogAINetLike,
         loss = constants.pmean(jnp.mean(e_l))
         loss_diff = e_l - loss
         variance = constants.pmean(jnp.mean(loss_diff * jnp.conj(loss_diff)))
-        jax.debug.print("loss:{}", loss)
+        #jax.debug.print("loss:{}", loss)
         # jax.debug.print("type_loss:{}", type(loss))
-        jax.debug.print("variance:{}", variance)
+        #jax.debug.print("variance:{}", variance)
         return loss, AuxiliaryLossData(
             variance=variance.real,
             local_energy=e_l,
@@ -223,8 +222,6 @@ def make_loss(network: nn.LogAINetLike,
         """Custom Jacobian-vector product for unbiased local energy gradients."""
         params, key, data = primals
         loss, aux_data = total_energy(params, key, data)
-        # jax.debug.print("loss:{}", loss)
-        # jax.debug.print("aux_data:{}",aux_data)
 
         if clip_local_energy > 0.0:
             aux_data.clipped_energy, diff = clip_local_values(

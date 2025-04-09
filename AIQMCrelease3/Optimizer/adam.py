@@ -70,6 +70,13 @@ def make_training_step(optimizer_step: OptUpdate) -> Step:
                                                                data,
                                                                state,
                                                                loss_key)
+
+        new_params = jax.lax.cond(jnp.isnan(loss),
+                                  lambda: params,
+                                  lambda: new_params)
+        new_state = jax.lax.cond(jnp.isnan(loss),
+                                 lambda: state,
+                                 lambda: new_state)
         return data, new_params, new_state, loss, aux_data
     return step
 

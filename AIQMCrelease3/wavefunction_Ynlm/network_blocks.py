@@ -85,6 +85,36 @@ def init_linear_layer(
   else:
     return {'w': weight}
 
+def init_convolu_layer(
+        nelectrons: int,
+        key: chex.PRNGKey,
+        in_dim_1: int,
+        in_dim_2: int,
+        include_bias: bool = True) -> MutableMapping[str, jnp.ndarray]:
+  key1, key2 = jax.random.split(key)
+  weight = (
+      jax.random.normal(key1, shape=(in_dim_1, in_dim_2)) /
+      jnp.sqrt(float(in_dim_1)))
+  if include_bias:
+    bias = jax.random.normal(key2, shape=(nelectrons, int(in_dim_2 / 4), ))
+    return {'w': weight, 'b': bias}
+  else:
+    return {'w': weight}
+
+
+
+def convolu_layer(nelectrons: int, x: jnp.array, w: jnp.array, b: Optional[jnp.array] = None, ) -> jnp.array:
+  """now, we need think how to control the calculation dimension.5.4.2025."""
+  #jax.debug.print("x:{}", x)
+  x = jnp.reshape(x, (nelectrons, -1, 4)) #8 is the number of electrons, 4 is the parmeter.
+  #jax.debug.print("x:{}", x)
+  w = jnp.reshape(w, (nelectrons, -1, 4))
+  y = jnp.mean(x * w, axis=-1)
+  #jax.debug.print("y:{}", y.shape)
+  #jax.debug.print("w:{}", w)
+  #jax.debug.print("b:{}", b)
+  return y + b
+
 
 def linear_layer(x: jnp.ndarray,
                  w: jnp.ndarray,
