@@ -19,22 +19,14 @@ def make_pp_like_envelope():
         'xi': jnp.ones(shape=1),
         'eplion': jnp.ones(shape=(natom, ndim)),
         'mu': jnp.ones(shape=natom),
-        'nu': jnp.ones(shape=natom)
-      })
+        'nu': jnp.ones(shape=natom)})
 
     return params
 
   def apply(orbitals: jnp.array, r_ae: jnp.ndarray, ae: jnp.array, charges: jnp.array, params_envelope) \
           -> jnp.ndarray:
     r_ae = jnp.reshape(r_ae, (-1))
-    #jax.debug.print("orbitals:{}", orbitals)
-    #jax.debug.print("r_ae:{}", r_ae)
-    #jax.debug.print("ae:{}", ae)
-    #jax.debug.print("charges:{}", charges)
-    #jax.debug.print("params_envelope:{}", params_envelope)
-    return (jnp.sum(jnp.exp(-params_envelope['beta'] * r_ae**2) * params_envelope['alpha'] ) + \
-          jnp.sum(jnp.exp(-ae * params_envelope['pi']) * params_envelope['sigma'] * params_envelope['xi'])) * orbitals
-    #return (jnp.sum(jnp.exp(-params_envelope['beta'] * r_ae**2) * params_envelope['alpha'] * jnp.power(r_ae, params_envelope['mu'] * charges)) + \
-          #jnp.sum(jnp.exp(-ae * params_envelope['pi']) * params_envelope['sigma'] * params_envelope['xi'] * jnp.power(ae, jnp.reshape( params_envelope['nu'] * charges, (-1, 1))))) * orbitals
+    return (jnp.sum(jnp.exp(-params_envelope['beta'] * r_ae**2) * params_envelope['alpha']) +
+            jnp.sum(jnp.exp(-ae * params_envelope['pi']) * params_envelope['sigma'] * params_envelope['xi'])) * orbitals
 
   return init, apply

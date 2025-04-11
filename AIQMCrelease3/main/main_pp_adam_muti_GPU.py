@@ -20,6 +20,7 @@ from AIQMCrelease3.Optimizer import adam
 from AIQMCrelease3.utils import writers
 from AIQMCrelease3.initial_electrons_positions.init import init_electrons
 from AIQMCrelease3.spin_indices import jastrow_indices_ee
+from AIQMCrelease3.spin_indices import spin_indices_h
 import functools
 #logging.basicConfig(level = logging.INFO)
 
@@ -84,7 +85,7 @@ def main(atoms: jnp.array,
         pos, spins = init_electrons(subkey, structure=structure, atoms=atoms, charges=charges,
                                     electrons=spins,
                                     batch_size=host_batch_size, init_width=1.0)
-
+        generate_spin_indices = spins
         batch_pos = jnp.reshape(pos, data_shape + (-1,))
         batch_pos = kfac_jax.utils.broadcast_all_local_devices(batch_pos)
         batch_spins = jnp.repeat(spins[None, ...], batch_size, axis=0)
@@ -94,6 +95,7 @@ def main(atoms: jnp.array,
 
     #jax.debug.print("data:{}", data)
     parallel_indices, antiparallel_indices, n_parallel, n_antiparallel = jastrow_indices_ee(spins=spins, nelectrons=8)
+    spin_up_indices, spin_down_indices = spin_indices_h(generate_spin_indices)
     network = nn.make_ai_net(ndim=ndim,
                              nelectrons=nelectrons,
                              natoms=natoms,
@@ -103,7 +105,10 @@ def main(atoms: jnp.array,
                              parallel_indices=parallel_indices,
                              antiparallel_indices=antiparallel_indices,
                              n_parallel=n_parallel,
-                             n_antiparallel=n_antiparallel)
+                             n_antiparallel=n_antiparallel,
+                             spin_up_indices=spin_up_indices,
+                             spin_down_indices=spin_down_indices
+                             )
 
     key, subkey = jax.random.split(key)
     params = network.init(subkey)
@@ -125,7 +130,7 @@ def main(atoms: jnp.array,
     jax.debug.print("batch_size_run:{}", int(batch_size / (num_devices * num_hosts)))
     mc_step_parallel = jax.pmap(mc_step, donate_argnums=1)
     logging.info('--------------Create Hamiltonian--------------')
-
+    """tomorrow, we start to check the pseudopotential part."""
     localenergy = pphamiltonian.local_energy(f=signed_network,
                                              lognetwork=log_network,
                                              charges=charges,

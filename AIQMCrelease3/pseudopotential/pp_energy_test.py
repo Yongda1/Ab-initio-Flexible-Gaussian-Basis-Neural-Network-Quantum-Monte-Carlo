@@ -46,7 +46,7 @@ def total_energy_pseudopotential(get_local_pp_energy: pseudopotential.LocalPPEne
                                  get_nonlocal_pp_coes: pseudopotential.NonlocalPPcoes,
                                  get_P_l,
                                  list_l: int):
-    """This function caluclates the energy of pseudopotential.
+    """This function calculates the energy of pseudopotential.
     For the pp of C and O, only l=0 contributes to the nonlocal part.
     we have more problems here. If all atoms have the same shape of the pp parameters, it is ok.
     But if one of the atoms has higher angular momentum functions, I don't know how to do it efficiently.

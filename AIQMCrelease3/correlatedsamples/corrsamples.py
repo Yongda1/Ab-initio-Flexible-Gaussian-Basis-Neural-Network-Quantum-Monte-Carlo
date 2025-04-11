@@ -25,6 +25,7 @@ def correlated_samples(atoms: jnp.array, new_atoms: jnp.array, pos: jnp.array):
     #jax.debug.print("new_atoms:{}", new_atoms)
     #jax.debug.print("pos:{}", pos)
     deltaR = new_atoms - atoms
+
     ae, ee, r_ae, r_ee = construct_input_features(pos, atoms, ndim=3)
     k_r_R = 1 / (r_ae**4)
     denominator = jnp.sum(jnp.sum(k_r_R, axis=-1), axis=-1, keepdims=True)

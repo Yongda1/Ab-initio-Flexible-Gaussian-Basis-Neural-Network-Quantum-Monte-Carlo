@@ -1,5 +1,5 @@
 import jax.numpy as jnp
-from AIQMCrelease3.main.main_pp_adam_muti_GPU import main
+from AIQMCrelease3.VMC.VMC_energy_correlated_samples import main
 
 
 structure = jnp.array([[10, 0, 0],
@@ -28,7 +28,11 @@ Non_local_coes = jnp.array([[[52.13345, 0], [0, 0], [0, 0]],
 Non_local_exps = jnp.array([[[7.76079, 0], [0, 0], [0, 0]],
                             [[7.76079, 0], [0, 0], [0, 0]],])
 
+new_atoms = jnp.array([[[0, 0, -1.0 + 0.1], [0 - 0.1, 0 + 0.1, 1.0]],
+                           [[0, 0, -1.0 - 0.1], [0 + 0.1, 0 - 0.1, 1.0]]])
+
 output = main(atoms=atoms,
+              new_atoms=new_atoms,
               charges=charges,
               spins=spins,
               nelectrons=8,
@@ -38,11 +42,11 @@ output = main(atoms=atoms,
               iterations=10,
               tstep=0.05,
               nspins=(4, 4),
-              nsteps=5,
+              nsteps=10,
               list_l=2,
-              save_path='save', #/root/save
+              save_path="save",
               restore_path=None,
-              save_frequency=0.0001, #if the calculation run too fast, the calculate
+              save_frequency=0.01,
               structure=structure,
               Rn_local=Rn_local,
               Local_coes=Local_coes,

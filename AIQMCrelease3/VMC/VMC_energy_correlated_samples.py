@@ -24,6 +24,7 @@ from AIQMCrelease3.initial_electrons_positions.init import init_electrons
 from AIQMCrelease3.spin_indices import jastrow_indices_ee
 from AIQMCrelease3.correlatedsamples import corrsamples
 from AIQMCrelease3.correlatedsamples import jacobianWeights
+from AIQMCrelease3.spin_indices import spin_indices_h
 import functools
 
 def main(atoms: jnp.array,
@@ -77,7 +78,16 @@ def main(atoms: jnp.array,
     else:
         raise ValueError('correlated samples VMC must use the wave function from VMC!')
 
+
+    number_new_strutures = new_atoms.shape[0]
+    jax.debug.print("number_structures:{}", number_new_strutures)
+    if number_new_strutures % num_hosts * num_devices != 0:
+        raise ValueError('number of new structures must be divided by the total number of devices.')
+    """we need reshape the structure of new_atoms to satisfy the number of dvices."""
+    new_atoms = jnp.reshape(new_atoms, (num_devices * num_hosts, natoms, -1, ndim))
+    jax.debug.print("new_atoms:{}", new_atoms)
     parallel_indices, antiparallel_indices, n_parallel, n_antiparallel = jastrow_indices_ee(spins=spins, nelectrons=8)
+    spin_up_indices, spin_down_indices = spin_indices_h(spins)
     network = nn.make_ai_net(ndim=ndim,
                              nelectrons=nelectrons,
                              natoms=natoms,
@@ -87,7 +97,10 @@ def main(atoms: jnp.array,
                              parallel_indices=parallel_indices,
                              antiparallel_indices=antiparallel_indices,
                              n_parallel=n_parallel,
-                             n_antiparallel=n_antiparallel)
+                             n_antiparallel=n_antiparallel,
+                             spin_up_indices=spin_up_indices,
+                             spin_down_indices=spin_down_indices
+                             )
 
     seed = jnp.asarray([1e6 * time.time()])
     seed = int(multihost_utils.broadcast_one_to_all(seed)[0])
@@ -137,24 +150,36 @@ def main(atoms: jnp.array,
 
     Energy = []
 
-    correlatedsamples_parallel = jax.pmap(jax.vmap(jax.vmap(corrsamples.correlated_samples, in_axes=(None, None, 0)), in_axes=(None, 0, None)), in_axes=(None, None, 0))
+    """we rewrite this function first for multiGPU version. 11.4.2025."""
+    correlatedsamples_parallel = jax.pmap(jax.pmap(jax.vmap(jax.vmap(corrsamples.correlated_samples, in_axes=(None, None, 0)), in_axes=(None, 0, None)), in_axes=(None, None, 0)), in_axes=(None, 0, None))
+
     sharded_key, subkeys = kfac_jax.utils.p_split(sharded_key)
     data = mc_step_parallel(params, data, subkeys)
     e_l, e_l_mat = batch_local_energy(params, subkeys, data)
     pos = data.positions
     logging.info("calculate the new positions")
     newpos = correlatedsamples_parallel(atoms, new_atoms, pos)
-    number_new_atoms = new_atoms.shape[0]
+    jax.debug.print("newpos_before:{}", newpos)
+    number_new_atoms = 2
     newpos = jnp.reshape(newpos, (number_new_atoms, 1, batch_size, -1)) # 2 is the number of new atoms, 1 is fixed, 4 is the number of batch size
+    jax.debug.print("newpos:{}", newpos)
+
     data.positions = newpos
     new_energy, new_energy_mat = batch_local_energy_correlated_samples(params, subkeys, data)
-
-    """ we also need multiply the weights. 25.3.2025. The following part can be reformulated as a function."""
+    
+    """ we also need multiply the weights. 25.3.2025. The following part can be reformulated as a function.
+    we need consider multi GPUs situation.11.4.2025. Now, it is working. When the cluster  is free, I can do more tests."""
     logging.info("calculate the new weights")
-    jacobianWeights_parallel = jax.pmap(jax.vmap(jax.vmap(jacobianWeights.weights_jacobian, in_axes=(0, None, None)), in_axes=(None, None, 0)), in_axes=(0, None, None))
+    jacobianWeights_parallel = jax.pmap(jax.pmap(jax.vmap(jax.vmap(jacobianWeights.weights_jacobian,
+                                                                   in_axes=(0, None, None)),
+                                                          in_axes=(None, None, 0)),
+                                                 in_axes=(0, None, None)),
+                                        in_axes=(None, None, 0))
     weights = jacobianWeights_parallel(pos, atoms, new_atoms)
     wave_x1 = log_network_parallel(params, pos, spins, atoms, charges)
-    log_network_parallel_new_atoms = jax.vmap(log_network_parallel, in_axes=(None, None, None, 0, None))
+    log_network_parallel_new_atoms = jax.pmap(jax.vmap(log_network_parallel,
+                                                       in_axes=(None, None, None, 0, None)),
+                                              in_axes=(None, None, None, 0, None))
     wave_x2 = log_network_parallel_new_atoms(params, pos, spins, new_atoms, charges)
     ratios = jnp.square(jnp.abs(wave_x1 - wave_x2))
     weights = jnp.reshape(weights, ratios.shape) #we need be careful about this line. 2 means the number of new configurations.

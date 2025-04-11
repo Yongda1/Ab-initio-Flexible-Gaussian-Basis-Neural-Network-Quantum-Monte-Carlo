@@ -18,7 +18,7 @@ from AIQMCrelease3.DMC.branch import branch
 from AIQMCrelease3.DMC.estimate_energy import estimate_energy
 from AIQMCrelease3.utils import writers
 from AIQMCrelease3.spin_indices import jastrow_indices_ee
-
+from AIQMCrelease3.spin_indices import spin_indices_h
 
 def main(atoms: jnp.array,
          charges: jnp.array,
@@ -72,6 +72,7 @@ def main(atoms: jnp.array,
         raise ValueError('DMC must use the wave function from VMC!')
 
     parallel_indices, antiparallel_indices, n_parallel, n_antiparallel = jastrow_indices_ee(spins=spins, nelectrons=8)
+    spin_up_indices, spin_down_indices = spin_indices_h(spins)
     network = nn.make_ai_net(ndim=ndim,
                              nelectrons=nelectrons,
                              natoms=natoms,
@@ -81,7 +82,10 @@ def main(atoms: jnp.array,
                              parallel_indices=parallel_indices,
                              antiparallel_indices=antiparallel_indices,
                              n_parallel=n_parallel,
-                             n_antiparallel=n_antiparallel)
+                             n_antiparallel=n_antiparallel,
+                             spin_up_indices=spin_up_indices,
+                             spin_down_indices=spin_down_indices
+                             )
     signed_network = network.apply
 
     def log_network(*args, **kwargs):
@@ -124,7 +128,7 @@ def main(atoms: jnp.array,
                             nelectrons=nelectrons,
                             natoms=natoms,
                             ndim=ndim,
-                            batch_size=2, #we also need to write the number of walker on each GPU.
+                            batch_size=int(batch_size/(num_devices * num_hosts)), #we also need to write the number of walker on each GPU.
                             tstep=tstep,
                             nsteps=nsteps,
                             charges=charges,
@@ -203,10 +207,14 @@ def main(atoms: jnp.array,
 
             weights, newindices = branch_parallel(data, weights, subkeys)
             x1 = data.positions
-            jax.debug.print("x1:{}", x1)
+            #jax.debug.print("x1:{}", x1)
+            jax.debug.print("newindices:{}", newindices)
             x2 = []
-            """we need change the parallel rules here, 4.4.2025. Fortunately, the above code is running smoothly."""
-            x1 = jnp.reshape(x1, (batch_size, -1))
+            """we need change the parallel rules here, 4.4.2025. Fortunately, the above code is running smoothly.
+            after we finish the pseudopotential part, we start to rewrite the following lines. 9.4.2025."""
+            #x1 = jnp.reshape(x1, (batch_size, -1))
+            jax.debug.print("x1:{}", x1)
+            #newindices = jnp.reshape(newindices, -1)
             for i in range(len(x1)):
                 unique, counts = jnp.unique(newindices[i], return_counts=True)
                 temp = x1[i][unique]
@@ -225,6 +233,8 @@ def main(atoms: jnp.array,
                 x2.append(temp)
 
             x2 = jnp.array(x2)
+            jax.debug.print("x2:{}", x2)
+            x2 = jnp.reshape(x2, (num_devices * num_hosts, int(batch_size/(num_devices * num_hosts)), -1))
             jax.debug.print("x2:{}", x2)
             data = nn.AINetData(**(dict(data) | {'positions': x2}))
 
