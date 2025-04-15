@@ -71,7 +71,7 @@ def main(atoms: jnp.array,
     else:
         raise ValueError('DMC must use the wave function from VMC!')
 
-    parallel_indices, antiparallel_indices, n_parallel, n_antiparallel = jastrow_indices_ee(spins=spins, nelectrons=8)
+    parallel_indices, antiparallel_indices, n_parallel, n_antiparallel = jastrow_indices_ee(spins=spins, nelectrons=nelectrons )
     spin_up_indices, spin_down_indices = spin_indices_h(spins)
     network = nn.make_ai_net(ndim=ndim,
                              nelectrons=nelectrons,
@@ -143,14 +143,14 @@ def main(atoms: jnp.array,
     branch_parallel = jax.pmap(branch, in_axes=(0, 0, 0))
     energy_data = jnp.zeros(shape=(nblocks, iterations, batch_size))
     weights_data = jnp.zeros(shape=(nblocks, iterations, batch_size))
-    jax.debug.print("energy_data:{}", energy_data)
+    #jax.debug.print("energy_data:{}", energy_data)
 
     """Start the main loop."""
     time_of_last_ckpt = time.time()
     opt_state = opt_state_ckpt
 
     """the writer module need be modified. 14.2.2025."""
-    train_schema = ['block', 'energy', 'weights_data', 'positions']
+    train_schema = ['block', 'energy', 'positions']
     writer_manager = writers.Writer(
         name='DMC_states',
         schema=train_schema,
@@ -162,10 +162,10 @@ def main(atoms: jnp.array,
     with writer_manager as writer:
         for block in range(0, nblocks):
             for t in range(t_init, t_init+iterations):
-                jax.debug.print("weights:{}", weights)
-                jax.debug.print("branchcut_start * esigma:{}", branchcut_start* esigma)
-                jax.debug.print("e_trial:{}", e_trial)
-                jax.debug.print("e_est:{}", e_est)
+                #jax.debug.print("weights:{}", weights)
+                #jax.debug.print("branchcut_start * esigma:{}", branchcut_start* esigma)
+                #jax.debug.print("e_trial:{}", e_trial)
+                #jax.debug.print("e_est:{}", e_est)
                 energy, new_weights, new_data = dmc_run(params,
                                                         subkeys,
                                                         data,
@@ -173,9 +173,9 @@ def main(atoms: jnp.array,
                                                         branchcut_start * esigma,
                                                         e_trial,
                                                         e_est,)
-                jax.debug.print("energy:{}", energy)
-                jax.debug.print("new_weights:{}", new_weights)
-                jax.debug.print("new_data:{}", new_data)
+                #jax.debug.print("energy:{}", energy)
+                #jax.debug.print("new_weights:{}", new_weights)
+                #jax.debug.print("new_data:{}", new_data)
 
                 data = new_data
                 weights = new_weights
@@ -184,7 +184,7 @@ def main(atoms: jnp.array,
                 #temp = energy_data[block]
                 jax.debug.print("block:{}", block)
                 jax.debug.print("t:{}", t-t_init)
-                jax.debug.print("weights:{}", weights)
+                #jax.debug.print("weights:{}", weights)
                 temp_energy = energy_data[block].at[t-t_init].set(energy.real)
                 temp_weights = weights_data[block].at[t-t_init].set(weights_step)
                 energy_data = energy_data.at[block].set(temp_energy)
@@ -208,12 +208,12 @@ def main(atoms: jnp.array,
             weights, newindices = branch_parallel(data, weights, subkeys)
             x1 = data.positions
             #jax.debug.print("x1:{}", x1)
-            jax.debug.print("newindices:{}", newindices)
+            #jax.debug.print("newindices:{}", newindices)
             x2 = []
             """we need change the parallel rules here, 4.4.2025. Fortunately, the above code is running smoothly.
             after we finish the pseudopotential part, we start to rewrite the following lines. 9.4.2025."""
             #x1 = jnp.reshape(x1, (batch_size, -1))
-            jax.debug.print("x1:{}", x1)
+            #jax.debug.print("x1:{}", x1)
             #newindices = jnp.reshape(newindices, -1)
             for i in range(len(x1)):
                 unique, counts = jnp.unique(newindices[i], return_counts=True)
@@ -233,9 +233,9 @@ def main(atoms: jnp.array,
                 x2.append(temp)
 
             x2 = jnp.array(x2)
-            jax.debug.print("x2:{}", x2)
+            #jax.debug.print("x2:{}", x2)
             x2 = jnp.reshape(x2, (num_devices * num_hosts, int(batch_size/(num_devices * num_hosts)), -1))
-            jax.debug.print("x2:{}", x2)
+            #jax.debug.print("x2:{}", x2)
             data = nn.AINetData(**(dict(data) | {'positions': x2}))
 
             """leave this to tomorrow. 13.2.2025. we also need update the branchcut."""
@@ -244,7 +244,7 @@ def main(atoms: jnp.array,
             writer_kwargs = {
                 'block': block,
                 'energy': np.asarray(e_est),
-                'weights_data': np.asarray(weights_data),
+                #'weights_data': np.asarray(weights_data),
                 'positions': np.asarray(x2),
             }
             writer.write(block, **writer_kwargs)

@@ -94,7 +94,7 @@ def main(atoms: jnp.array,
         data = nn.AINetData(positions=batch_pos, spins=batch_spins, atoms=batch_atoms, charges=batch_charges)
 
     #jax.debug.print("data:{}", data)
-    parallel_indices, antiparallel_indices, n_parallel, n_antiparallel = jastrow_indices_ee(spins=spins, nelectrons=8)
+    parallel_indices, antiparallel_indices, n_parallel, n_antiparallel = jastrow_indices_ee(spins=spins, nelectrons=nelectrons)
     spin_up_indices, spin_down_indices = spin_indices_h(generate_spin_indices)
     network = nn.make_ai_net(ndim=ndim,
                              nelectrons=nelectrons,
