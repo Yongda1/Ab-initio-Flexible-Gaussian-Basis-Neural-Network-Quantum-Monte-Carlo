@@ -20,7 +20,7 @@ class OptUpdate(Protocol):
 
   def __call__(
       self,
-      params:nn.ParamTree,
+      params: nn.ParamTree,
       data: nn.AINetData,
       opt_state: optax.OptState,
       key: chex.PRNGKey,
@@ -53,6 +53,7 @@ def make_opt_update_step(evaluate_loss,
     def opt_update(params: nn.ParamTree, data: nn.AINetData, opt_state: Optional[optax.OptState], key: chex.PRNGKey) -> OptUpdateResults:
         (loss, aux_data), grad = loss_and_grad(params, key, data)
         grad = constants.pmean(grad)
+        #jax.debug.print("grad:{}", grad)
         updates, opt_state = optimizer.update(grad, opt_state, params)
         params = optax.apply_updates(params, updates)
         return params, opt_state, loss, aux_data
@@ -70,13 +71,14 @@ def make_training_step(optimizer_step: OptUpdate) -> Step:
                                                                data,
                                                                state,
                                                                loss_key)
-
+        '''
         new_params = jax.lax.cond(jnp.isnan(loss),
                                   lambda: params,
                                   lambda: new_params)
         new_state = jax.lax.cond(jnp.isnan(loss),
                                  lambda: state,
                                  lambda: new_state)
+        '''
         return data, new_params, new_state, loss, aux_data
     return step
 

@@ -11,7 +11,7 @@ from typing_extensions import Protocol
 from jax.experimental import multihost_utils
 from AIQMCrelease3.wavefunction_Ynlm import nn
 #from AIQMCrelease1.MonteCarloSample import VMCmcstep
-from AIQMCrelease3.MonteCarloSample import mcstep
+from AIQMCrelease3.VMC import VMCmcstep
 from AIQMCrelease3.Loss import loss as qmc_loss_functions
 from AIQMCrelease3 import constants
 from AIQMCrelease3.Energy import hamiltonian
@@ -239,13 +239,24 @@ def main(atoms: jnp.array,
 
 
     """we already write the envelope function in the nn_wrong.py."""
-    feature_layer = nn.make_ferminet_features(natoms=natoms, nspins=(1, 1), ndim=ndim, )
-    network = nn.make_fermi_net(ndim=ndim,
-                                nspins=(1, 1),
-                                determinants=1,
-                                feature_layer=feature_layer,
-                                charges=charges,
-                                full_det=True)
+    parallel_indices, antiparallel_indices, n_parallel, n_antiparallel = jastrow_indices_ee(spins=spins,
+                                                                                            nelectrons=nelectrons)
+    # jax.debug.print("parallel_indices:{}", parallel_indices)
+    # jax.debug.print("antiparallel_indices:{}", antiparallel_indices)
+    spin_up_indices, spin_down_indices = spin_indices_h(generate_spin_indices)
+    network = nn.make_ai_net(ndim=ndim,
+                             nelectrons=nelectrons,
+                             natoms=natoms,
+                             nspins=nspins,
+                             determinants=1,
+                             charges=charges,
+                             parallel_indices=parallel_indices,
+                             antiparallel_indices=antiparallel_indices,
+                             n_parallel=n_parallel,
+                             n_antiparallel=n_antiparallel,
+                             spin_up_indices=spin_up_indices,
+                             spin_down_indices=spin_down_indices
+                             )
 
 
     key, subkey = jax.random.split(key)

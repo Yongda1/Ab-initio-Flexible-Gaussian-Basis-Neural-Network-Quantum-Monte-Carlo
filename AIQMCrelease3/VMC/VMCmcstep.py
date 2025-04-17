@@ -5,6 +5,7 @@ import jax
 from jax import numpy as jnp
 from jax import lax
 from AIQMCrelease3.wavefunction_Ynlm import nn
+#from AIQMCrelease3.FerimiNEetnn import networks
 from AIQMCrelease3.utils import utils
 
 
@@ -97,7 +98,8 @@ def walkers_update(logabs_f: nn.LogAINetLike,
     wave_x2 = logabs_f_vmap(params, x2, spins, atoms, charges)
     x1 = jnp.reshape(x1, (batch_size, nelectrons, -1))
     wave_x1 = logabs_f_vmap(params, x1, spins, atoms, charges)
-    acceptance = jnp.abs(jnp.exp(wave_x2 - wave_x1)) ** 2 * t_pro
+    #acceptance = jnp.abs(jnp.exp(wave_x2 - wave_x1)) ** 2 * t_pro
+    acceptance = jnp.abs((wave_x2 - wave_x1)) ** 2 * t_pro
     final_configuration, newkey = walkers_accept(initial_configuration,
                                                  changed_configuration,
                                                  acceptance,

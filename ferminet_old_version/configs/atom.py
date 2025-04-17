@@ -18,7 +18,7 @@ from ferminet import base_config
 from ferminet.utils import elements
 from ferminet.utils import system
 import ml_collections
-
+from ferminet import train
 
 def _adjust_nuclear_charge(cfg):
   """Sets the molecule, nuclear charge electrons for the atom.
@@ -64,8 +64,8 @@ def _adjust_nuclear_charge(cfg):
 def get_config():
   """Returns config for running generic atoms with qmc."""
   cfg = base_config.default()
-  cfg.system.atom = ''
-  cfg.system.charge = 0
+  cfg.system.atom = 'C'
+  cfg.system.charge = 6
   cfg.system.delta_charge = 0.0
   cfg.system.spin_polarisation = ml_collections.FieldReference(
       None, field_type=int)
@@ -73,3 +73,6 @@ def get_config():
     cfg.system.set_molecule = _adjust_nuclear_charge
     cfg.config_module = '.atom'
   return cfg
+
+cfg = get_config()
+train.train(cfg)

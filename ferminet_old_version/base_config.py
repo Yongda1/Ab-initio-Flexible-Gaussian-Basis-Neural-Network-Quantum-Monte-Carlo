@@ -54,7 +54,7 @@ def default() -> ml_collections.ConfigDict:
       'config_module': __name__,
       'optim': {
           'objective': 'vmc',  # objective type. Either 'vmc' or 'wqmc'
-          'iterations': 1000,  # number of iterations
+          'iterations': 100,  # number of iterations
           'optimizer': 'kfac',  # one of adam, kfac, lamb, none
           'laplacian': 'default',  # of of default or folx (for forward lapl)
           'lr': {

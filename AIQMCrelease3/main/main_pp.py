@@ -21,6 +21,7 @@ from AIQMCrelease3.Optimizer.kfac import make_kfac_training_step
 from AIQMCrelease3.utils import writers
 from AIQMCrelease3.initial_electrons_positions.init import init_electrons
 from AIQMCrelease3.spin_indices import jastrow_indices_ee
+from AIQMCrelease3.spin_indices import spin_indices_h
 import functools
 """notes: the optimizer is not compatible with Jax 0.5.3. We need debug where are the problems. 21.3.2025."""
 
@@ -85,7 +86,7 @@ def main(atoms: jnp.array,
         pos, spins = init_electrons(subkey, structure=structure, atoms=atoms, charges=charges,
                                     electrons=spins,
                                     batch_size=host_batch_size, init_width=1.0)
-
+        generate_spin_indices = spins
         batch_pos = jnp.reshape(pos, data_shape + (-1,))
         batch_pos = kfac_jax.utils.broadcast_all_local_devices(batch_pos)
         batch_spins = jnp.repeat(spins[None, ...], batch_size, axis=0)
@@ -93,7 +94,8 @@ def main(atoms: jnp.array,
         batch_spins = kfac_jax.utils.broadcast_all_local_devices(batch_spins)
         data = nn.AINetData(positions=batch_pos, spins=batch_spins, atoms=batch_atoms, charges=batch_charges)
 
-    parallel_indices, antiparallel_indices, n_parallel, n_antiparallel = jastrow_indices_ee(spins=spins, nelectrons=8)
+    parallel_indices, antiparallel_indices, n_parallel, n_antiparallel = jastrow_indices_ee(spins=spins, nelectrons=nelectrons)
+    spin_up_indices, spin_down_indices = spin_indices_h(generate_spin_indices)
     network = nn.make_ai_net(ndim=ndim,
                              nelectrons=nelectrons,
                              natoms=natoms,
@@ -103,7 +105,10 @@ def main(atoms: jnp.array,
                              parallel_indices=parallel_indices,
                              antiparallel_indices=antiparallel_indices,
                              n_parallel=n_parallel,
-                             n_antiparallel=n_antiparallel)
+                             n_antiparallel=n_antiparallel,
+                             spin_up_indices=spin_up_indices,
+                             spin_down_indices=spin_down_indices
+                             )
 
     key, subkey = jax.random.split(key)
     params = network.init(subkey)

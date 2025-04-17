@@ -466,10 +466,12 @@ def make_orbitals(nspins: Tuple[int, int],
             active_spin_channels = [spin for spin in nspins if spin > 0]
             h_up = h_to_orbitals[spin_up_indices]
             h_down = h_to_orbitals[spin_down_indices]
-            h_to_orbitals_with_spin = [h_up, h_down]
+            h_to_orbitals_with_spin = jnp.array([h_up, h_down])
+            jax.debug.print("h_to_orbitals_with_spin:{}", h_to_orbitals_with_spin)
             """we need some time to make the number of orbitals clear. 15.4.2025."""
             h_to_orbitals_with_spin = exp_ikg * h_to_orbitals_with_spin
 
+            '''
             orbitals = [network_blocks.linear_layer(h, **p) for h, p in
                         zip(h_to_orbitals_with_spin, params['orbitals'])]
             linear_y_coes = params['y'][0]['w']
@@ -489,11 +491,15 @@ def make_orbitals(nspins: Tuple[int, int],
 
             orbitals_with_envelope = jnp.array(orbitals_with_envelope)
             total_orbitals = orbitals_with_envelope * y_orbitals
-            return total_orbitals
+            '''
+            return h_to_orbitals_with_spin
 
         PBC_orbitals_parallel = jax.vmap(PBC_orbitals, in_axes=0)
-        total_orbitals_PBC = PBC_orbitals_parallel(h_to_orbitals, y_to_orbitals, exp_ikg)
-        jax.debug.print("total_orbitals_PBC:{}", total_orbitals_PBC.shape)
+        total_orbitals_PBC_one_kpoints = PBC_orbitals_parallel(h_to_orbitals, y_to_orbitals, exp_ikg)
+        total_orbitals_PBC_one_kpoints = jnp.sum(total_orbitals_PBC_one_kpoints, axis=0)
+        jax.debug.print("total_orbitals_PBC:{}", total_orbitals_PBC_one_kpoints.shape)
+        """than we need construct the PBC orbitals with different k points."""
+
 
         '''
         """something in Jastrow is wrong here 26.2.2025."""

@@ -19,6 +19,7 @@ import chex
 from AIQMCrelease3 import constants
 from AIQMCrelease3.Energy import hamiltonian
 from AIQMCrelease3.wavefunction_Ynlm import nn
+#from AIQMCrelease3.FerimiNEetnn import networks
 import jax
 import jax.numpy as jnp
 import kfac_jax
@@ -76,7 +77,7 @@ def clip_local_values(
         clip_scale: float,
         clip_from_median: bool,
         center_at_clipped_value: bool,
-        complex_output: bool = False,
+        complex_output: bool = True,
 ) -> Tuple[jnp.ndarray, jnp.ndarray]:
     """Clips local operator estimates to remove outliers.
 
@@ -137,7 +138,7 @@ def clip_local_values(
 
 def make_loss(network: nn.LogAINetLike,
               local_energy: hamiltonian.LocalEnergy,
-              clip_local_energy: float = 0.0,
+              clip_local_energy: float = 5.0,
               clip_from_median: bool = True,
               center_at_clipped_energy: bool = True,
               complex_output: bool = False) -> LossAINet:
@@ -206,9 +207,6 @@ def make_loss(network: nn.LogAINetLike,
         loss = constants.pmean(jnp.mean(e_l))
         loss_diff = e_l - loss
         variance = constants.pmean(jnp.mean(loss_diff * jnp.conj(loss_diff)))
-        #jax.debug.print("loss:{}", loss)
-        # jax.debug.print("type_loss:{}", type(loss))
-        #jax.debug.print("variance:{}", variance)
         return loss, AuxiliaryLossData(
             variance=variance.real,
             local_energy=e_l,
@@ -248,8 +246,6 @@ def make_loss(network: nn.LogAINetLike,
             data_tangents.atoms,
             data_tangents.charges,
         )
-        # jax.debug.print("primals:{}", primals)
-        # jax.debug.print("tangents:{}", tangents)
         psi_primal, psi_tangent = jax.jvp(batch_network, primals, tangents)
 
         if complex_output:
@@ -267,150 +263,6 @@ def make_loss(network: nn.LogAINetLike,
             primals_out = loss, aux_data
             device_batch_size = jnp.shape(aux_data.local_energy)[0]
             tangents_out = (jnp.dot(psi_tangent, diff) / device_batch_size, aux_data)
-        return primals_out, tangents_out
-
-    return total_energy
-
-
-def make_wqmc_loss(
-        network: nn.LogAINetLike,
-        local_energy: hamiltonian.LocalEnergy,
-        clip_local_energy: float = 0.0,
-        clip_from_median: bool = True,
-        center_at_clipped_energy: bool = True,
-        complex_output: bool = False,
-) -> LossAINet:
-    """Creates the WQMC loss function, including custom gradients.
-
-  Args:
-    network: callable which evaluates the log of the magnitude of the
-      wavefunction (square root of the log probability distribution) at a single
-      MCMC configuration given the network parameters.
-    local_energy: callable which evaluates the local energy.
-    clip_local_energy: If greater than zero, clip local energies that are
-      outside [E_L - n D, E_L + n D], where E_L is the mean local energy, n is
-      this value and D the mean absolute deviation of the local energies from
-      the mean, to the boundaries. The clipped local energies are only used to
-      evaluate gradients.
-    clip_from_median: If true, center the clipping window at the median rather
-      than the mean. Potentially expensive in multi-host training, but more
-      accurate.
-    center_at_clipped_energy: If true, center the local energy differences
-      passed back to the gradient around the clipped local energy, so the mean
-      difference across the batch is guaranteed to be zero.
-    complex_output: If true, the local energies will be complex valued.
-
-  Returns:
-    Callable with signature (params, data) and returns (loss, aux_data), where
-    loss is the mean energy, and aux_data is an AuxiliaryLossDataobject. The
-    loss is averaged over the batch and over all devices inside a pmap.
-  """
-    batch_local_energy = jax.vmap(
-        local_energy,
-        in_axes=(
-            None,
-            0,
-            nn.AINetData(positions=0, spins=0, atoms=0, charges=0),
-        ),
-        out_axes=(0, 0)
-    )
-    batch_network = jax.vmap(network, in_axes=(None, 0, 0, 0, 0), out_axes=0)
-
-    @jax.custom_jvp
-    def total_energy(
-            params: nn.ParamTree,
-            key: chex.PRNGKey,
-            data: nn.AINetData,
-    ) -> Tuple[jnp.ndarray, AuxiliaryLossData]:
-        """Evaluates the total energy of the network for a batch of configurations.
-
-    Note: the signature of this function is fixed to match that expected by
-    kfac_jax.optimizer.Optimizer with value_func_has_rng=True and
-    value_func_has_aux=True.
-
-    Args:
-      params: parameters to pass to the network.
-      key: PRNG state.
-      data: Batched MCMC configurations to pass to the local energy function.
-
-    Returns:
-      (loss, aux_data), where loss is the mean energy, and aux_data is an
-      AuxiliaryLossData object containing the variance of the energy and the
-      local energy per MCMC configuration. The loss and variance are averaged
-      over the batch and over all devices inside a pmap.
-    """
-        keys = jax.random.split(key, num=data.positions.shape[0])
-        e_l, e_l_mat = batch_local_energy(params, keys, data)
-        loss = constants.pmean(jnp.mean(e_l))
-        loss_diff = e_l - loss
-        variance = constants.pmean(jnp.mean(loss_diff * jnp.conj(loss_diff)))
-
-        def batch_local_energy_pos(pos):
-            network_data = nn.AINetData(
-                positions=pos,
-                spins=data.spins,
-                atoms=data.atoms,
-                charges=data.charges,
-            )
-            return batch_local_energy(params, keys, network_data)[0].sum()
-
-        grad_e_l = jax.grad(batch_local_energy_pos)(data.positions)
-        grad_e_l = jnp.tanh(jax.lax.stop_gradient(grad_e_l))
-        return loss, AuxiliaryLossData(
-            variance=variance.real,
-            local_energy=e_l,
-            clipped_energy=e_l,
-            grad_local_energy=grad_e_l,
-            local_energy_mat=e_l_mat,
-        )
-
-    @total_energy.defjvp
-    def total_energy_jvp(primals, tangents):  # pylint: disable=unused-variable
-        """Custom Jacobian-vector product for unbiased local energy gradients."""
-        params, key, data = primals
-        loss, aux_data = total_energy(params, key, data)
-
-        if clip_local_energy > 0.0:
-            aux_data.clipped_energy, diff = clip_local_values(
-                aux_data.local_energy,
-                loss,
-                clip_local_energy,
-                clip_from_median,
-                center_at_clipped_energy,
-                complex_output,
-            )
-        else:
-            diff = aux_data.local_energy - loss
-
-        def log_q(params_, pos_, spins_, atoms_, charges_):
-            out = batch_network(params_, pos_, spins_, atoms_, charges_)
-            kfac_jax.register_normal_predictive_distribution(out[:, None])
-            return out.sum()
-
-        score = jax.grad(log_q, argnums=1)
-        primals = (params, data.positions, data.spins, data.atoms, data.charges)
-        tangents = (
-            tangents[0],
-            tangents[2].positions,
-            tangents[2].spins,
-            tangents[2].atoms,
-            tangents[2].charges,
-        )
-        score_primal, score_tangent = jax.jvp(score, primals, tangents)
-
-        score_norm = jnp.linalg.norm(score_primal, axis=-1, keepdims=True)
-        median = jnp.median(constants.all_gather(score_norm))
-        deviation = jnp.mean(jnp.abs(score_norm - median))
-        mask = score_norm < (median + 5 * deviation)
-        log_q_tangent_out = (aux_data.grad_local_energy * score_tangent * mask).sum(
-            axis=1
-        )
-        log_q_tangent_out *= len(mask) / mask.sum()
-
-        _, psi_tangent = jax.jvp(batch_network, primals, tangents)
-        log_q_tangent_out += diff * psi_tangent
-        primals_out = loss, aux_data
-        tangents_out = (log_q_tangent_out.mean(), aux_data)
         return primals_out, tangents_out
 
     return total_energy

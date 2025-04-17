@@ -201,12 +201,11 @@ def main(atoms: jnp.array,
             #jax.debug.print("time.time{}", time.time())
             #jax.debug.print("time_of_last_ckpt:{}", time_of_last_ckpt)
             #if time.time() - time_of_last_ckpt > save_frequency * 60:
-            #if t > 1:
-                # jax.debug.print("opt_state:{}", opt_state)
-            """here, we store every step optimization."""
-            save_params = np.asarray(params)
-            save_opt_state = np.asarray(opt_state, dtype=object)
-            #jax.debug.print("save_params:{}", save_params)
-            #jax.debug.print("ckpt_save_path:{}", ckpt_save_path)
-            checkpoint.save(ckpt_save_path, t, data, save_params, save_opt_state)
-            #time_of_last_ckpt = time.time()
+            if t % 1000 == 0:
+                """here, we store every step optimization."""
+                save_params = np.asarray(params)
+                save_opt_state = np.asarray(opt_state, dtype=object)
+                # jax.debug.print("save_params:{}", save_params)
+                # jax.debug.print("ckpt_save_path:{}", ckpt_save_path)
+                checkpoint.save(ckpt_save_path, t, data, save_params, save_opt_state)
+                # time_of_last_ckpt = time.time()

@@ -17,6 +17,7 @@
 from typing import Any, Callable, Optional, Sequence, Tuple, Union
 import chex
 from AIQMCrelease3.wavefunction_Ynlm import nn
+#from AIQMCrelease3.FerimiNEetnn import networks
 from AIQMCrelease3.utils import utils
 import jax
 from jax import lax
@@ -49,7 +50,7 @@ class MakeLocalEnergy(Protocol):
 
     def __call__(
             self,
-            f: nn.AINetLike,
+            f: nn.AINetData,
             charges: jnp.ndarray,
             nspins: Sequence[int],
             use_scan: bool = False,
@@ -98,7 +99,7 @@ def local_kinetic_energy(
     logabs_f = utils.select_output(f, 1)
 
     def _lapl_over_f(params, data):
-        global phase_primal
+        #global phase_primal
         n = data.positions.shape[0]
         eye = jnp.eye(n)
         grad_f = jax.grad(logabs_f, argnums=1)
@@ -130,50 +131,7 @@ def local_kinetic_energy(
             result -= 1.j * jnp.sum(primal * phase_primal)
         return result
     return _lapl_over_f
-'''
 
-
-def local_kinetic_energy(f: nn.AINetLike) -> KineticEnergy:
-    phase_f = utils.select_output(f, 0)
-    logabs_f = utils.select_output(f, 1)
-    second_grad_value = jax.jacfwd(jax.jacrev(logabs_f, argnums=1), argnums=1)
-    angle_grad_hessian = jax.jacfwd(jax.jacrev(phase_f, argnums=1), argnums=1)
-    grad_phase = jax.grad(phase_f, argnums=1)
-    grad_f = jax.grad(logabs_f, argnums=1)
-
-    def _lapl_over_f(params, data):
-        hessian_value_logabs = second_grad_value(params, data.positions, data.spins, data.atoms, data.charges)
-        hessian_value_logabs = jnp.diagonal(hessian_value_logabs)
-        jax.debug.print("hessian_value_logabs:{}", hessian_value_logabs)
-        """This hessian method has some problems. 23.1.2025."""
-        hessian_value_angle_f = angle_grad_hessian(params, data.positions, data.spins, data.atoms, data.charges)
-        hessian_value_angle_f = jnp.diagonal(hessian_value_angle_f)
-        jax.debug.print("hessian_value_angle_f:{}", hessian_value_angle_f)
-
-        def grad_phase_closure(x):
-            return grad_phase(params, x, data.spins, data.atoms, data.charges)
-
-        def grad_f_closure(x):
-            return grad_f(params, x, data.spins, data.atoms, data.charges)
-
-        first_derivative_angle, dgrad_phase = jax.linearize(grad_phase_closure, data.positions)
-        first_derivative_f, dgrad_f = jax.linearize(grad_f_closure, data.positions)
-        jax.debug.print("dgrad_f:{}", dgrad_f)
-        jax.debug.print("dgrad_phase:{}", dgrad_phase)
-
-        #first_derivative_angle = grad_phase(params, data.positions, data.spins, data.atoms, data.charges)
-        #first_derivative_f = grad_f(params, data.positions, data.spins, data.atoms, data.charges)
-
-        #jax.debug.print("first_derivative_f:{}", first_derivative_f)
-        #jax.debug.print("first_derivative_angle:{}", first_derivative_angle)
-        kinetic_energy = -1/2 * (jnp.sum(hessian_value_logabs) + 1.j * jnp.sum(hessian_value_angle_f) +\
-                         jnp.sum(jnp.square(first_derivative_f)) - jnp.sum(jnp.square(first_derivative_angle)) + \
-                         jnp.sum(1.j * 2 * first_derivative_angle * first_derivative_f))
-        jax.debug.print("kinetic_energy:{}", kinetic_energy)
-        return kinetic_energy
-
-    return _lapl_over_f
-'''
 def potential_electron_electron(r_ee: Array) -> jnp.ndarray:
     """Returns the electron-electron potential.
 

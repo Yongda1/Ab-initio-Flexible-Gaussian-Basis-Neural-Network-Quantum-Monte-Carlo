@@ -239,9 +239,9 @@ def main(atoms: jnp.array,
 
 
     """we already write the envelope function in the nn_wrong.py."""
-    feature_layer = nn.make_ferminet_features(natoms=natoms, nspins=(1, 1), ndim=ndim, )
+    feature_layer = nn.make_ferminet_features(natoms=natoms, nspins=(3, 3), ndim=ndim, )
     network = nn.make_fermi_net(ndim=ndim,
-                                nspins=(1, 1),
+                                nspins=(3, 3),
                                 determinants=1,
                                 feature_layer=feature_layer,
                                 charges=charges,

@@ -12,26 +12,18 @@ from AIQMCrelease3 import checkpoint
 from jax.experimental import multihost_utils
 from AIQMCrelease3.VMC import VMCmcstep
 from AIQMCrelease3.wavefunction_Ynlm import nn
-#from AIQMCrelease3.Energy import pphamiltonian
-#from AIQMCrelease3.Loss import pploss as qmc_loss_functions
-from AIQMCrelease3.Loss import loss as qmc_loss_functions
+from AIQMCrelease3.Energy import pphamiltonian
+from AIQMCrelease3.Loss import pploss as qmc_loss_functions
 from AIQMCrelease3 import constants
-from AIQMCrelease3.Energy import hamiltonian
-#from AIQMCrelease3 import constants
-#from AIQMCrelease3 import curvature_tags_and_blocks
+from AIQMCrelease3 import curvature_tags_and_blocks
 from AIQMCrelease3.Optimizer import adam
 from AIQMCrelease3.utils import writers
 from AIQMCrelease3.initial_electrons_positions.init import init_electrons
 from AIQMCrelease3.spin_indices import jastrow_indices_ee
 from AIQMCrelease3.spin_indices import spin_indices_h
+from AIQMCrelease3.Optimizer import kfac
 import functools
 #logging.basicConfig(level = logging.INFO)
-#from jax.config import config
-#config.update("jax_debug_nans", True)
-#config.parse_flags_with_absl()
-
-
-
 
 def main(atoms: jnp.array,
          charges: jnp.array,
@@ -94,7 +86,6 @@ def main(atoms: jnp.array,
         pos, spins = init_electrons(subkey, structure=structure, atoms=atoms, charges=charges,
                                     electrons=spins,
                                     batch_size=host_batch_size, init_width=1.0)
-        #jax.debug.print("spins:{}", spins)
         generate_spin_indices = spins
         batch_pos = jnp.reshape(pos, data_shape + (-1,))
         batch_pos = kfac_jax.utils.broadcast_all_local_devices(batch_pos)
@@ -105,8 +96,6 @@ def main(atoms: jnp.array,
 
     #jax.debug.print("data:{}", data)
     parallel_indices, antiparallel_indices, n_parallel, n_antiparallel = jastrow_indices_ee(spins=spins, nelectrons=nelectrons)
-    #jax.debug.print("parallel_indices:{}", parallel_indices)
-    #jax.debug.print("antiparallel_indices:{}", antiparallel_indices)
     spin_up_indices, spin_down_indices = spin_indices_h(generate_spin_indices)
     network = nn.make_ai_net(ndim=ndim,
                              nelectrons=nelectrons,
@@ -127,7 +116,6 @@ def main(atoms: jnp.array,
     params = kfac_jax.utils.replicate_all_local_devices(params)
     # jax.debug.print("params:{}", params)
     signed_network = network.apply
-    logabs_network = lambda *args, **kwargs: signed_network(*args, **kwargs)[1]
 
     def log_network(*args, **kwargs):
         phase, mag = signed_network(*args, **kwargs)
@@ -139,16 +127,31 @@ def main(atoms: jnp.array,
         ndim=ndim,
         nelectrons=nelectrons,
         nsteps=nsteps,
-        batch_size= int(batch_size / (num_devices * num_hosts)))
+        batch_size=int(batch_size / (num_devices * num_hosts)))
     jax.debug.print("batch_size_run:{}", int(batch_size / (num_devices * num_hosts)))
     mc_step_parallel = jax.pmap(mc_step, donate_argnums=1)
     logging.info('--------------Create Hamiltonian--------------')
+    """tomorrow, we start to check the pseudopotential part."""
+    localenergy = pphamiltonian.local_energy(f=signed_network,
+                                             lognetwork=log_network,
+                                             charges=charges,
+                                             nspins=spins,
+                                             rn_local=Rn_local,
+                                             local_coes=Local_coes,
+                                             local_exps=Local_exps,
+                                             rn_non_local=Rn_non_local,
+                                             non_local_coes=Non_local_coes,
+                                             non_local_exps=Non_local_exps,
+                                             natoms=natoms,
+                                             nelectrons=nelectrons,
+                                             ndim=ndim,
+                                             list_l=list_l,
+                                             use_scan=False)
 
-    localenergy = hamiltonian.local_energy(f=signed_network, charges=charges, nspins=spins, use_scan=False)
-
-    evaluate_loss = qmc_loss_functions.make_loss(network=log_network, local_energy=localenergy,
-                                                 clip_local_energy=2.0,
-                                                 clip_from_median=True,
+    evaluate_loss = qmc_loss_functions.make_loss(network=log_network,
+                                                 local_energy=localenergy,
+                                                 clip_local_energy=5.0,
+                                                 clip_from_median=False,
                                                  center_at_clipped_energy=True,
                                                  complex_output=True,
                                                  )
@@ -157,13 +160,37 @@ def main(atoms: jnp.array,
         return rate * jnp.power(1.0 / (1.0 + (t_ / delay)), decay)
 
     """we try adam optimzier here."""
-    optimizer = optax.chain(optax.scale_by_adam(b1=0.9, b2=0.999, eps=1e-8, eps_root=0.0), optax.scale_by_schedule(learning_rate_schedule), optax.scale(-1.))
+    val_and_grad = jax.value_and_grad(evaluate_loss, argnums=0, has_aux=True)
+
+    def learning_rate_schedule(t_: jnp.array, rate=0.05, delay=1.0, decay=10000) -> jnp.array:
+        return rate * jnp.power(1.0 / (1.0 + (t_ / delay)), decay)
+
+    optimizer = kfac_jax.Optimizer(
+        val_and_grad,
+        l2_reg=0.0,
+        norm_constraint=0.001,
+        value_func_has_aux=True,
+        value_func_has_rng=True,
+        learning_rate_schedule=learning_rate_schedule,
+        curvature_ema=0.95,
+        inverse_update_period=1,
+        min_damping=1.0e-4,
+        num_burnin_steps=0,
+        register_only_generic=False,
+        estimation_mode='fisher_exact',
+        multi_device=True,
+        pmap_axis_name=constants.PMAP_AXIS_NAME,
+        auto_register_kwargs=dict(graph_patterns=curvature_tags_and_blocks.GRAPH_PATTERNS)
+    )
 
     sharded_key = kfac_jax.utils.make_different_rng_key_on_all_devices(key)
     sharded_key, subkeys = kfac_jax.utils.p_split(sharded_key)
-    opt_state = jax.pmap(optimizer.init)(params)
-    opt_state = opt_state_ckpt or opt_state
-    step =  adam.make_training_step(optimizer_step=adam.make_opt_update_step(evaluate_loss, optimizer))
+    opt_state = optimizer.init(params=params, rng=subkeys, batch=data)
+
+    step_kfac = kfac.make_kfac_training_step(
+        damping=0.001,
+        optimizer=optimizer,
+        reset_if_nan=False)
 
     train_schema = ['step', 'energy']
     writer_manager = writers.Writer(
@@ -181,12 +208,9 @@ def main(atoms: jnp.array,
             sharded_key, subkeys = kfac_jax.utils.p_split(sharded_key)
             #jax.debug.print("subkeys:{}", subkeys)
             #jax.debug.print("before_run_data:{}", data)
-            #print("--------------------------")
             data = mc_step_parallel(params, data, subkeys)
             #jax.debug.print("after_run_data:{}", data)
-            #print("--------------------------")
-
-            data, params, opt_state, loss, aux_data = step(data, params, opt_state, subkeys)
+            data, params, opt_state, loss, aux_data =  step_kfac(data, params, opt_state, subkeys)
             loss = loss[0]
             logging_str = ('Step %05d: ', '%03.4f E_h,')
             logging_args = t, loss,
@@ -200,12 +224,11 @@ def main(atoms: jnp.array,
             #jax.debug.print("time.time{}", time.time())
             #jax.debug.print("time_of_last_ckpt:{}", time_of_last_ckpt)
             #if time.time() - time_of_last_ckpt > save_frequency * 60:
-            if t % 100 == 0:
-                # jax.debug.print("opt_state:{}", opt_state)
+            if t % 1000 == 0:
                 """here, we store every step optimization."""
                 save_params = np.asarray(params)
                 save_opt_state = np.asarray(opt_state, dtype=object)
-                #jax.debug.print("save_params:{}", save_params)
-                #jax.debug.print("ckpt_save_path:{}", ckpt_save_path)
+                # jax.debug.print("save_params:{}", save_params)
+                # jax.debug.print("ckpt_save_path:{}", ckpt_save_path)
                 checkpoint.save(ckpt_save_path, t, data, save_params, save_opt_state)
-            #time_of_last_ckpt = time.time()
+                # time_of_last_ckpt = time.time()

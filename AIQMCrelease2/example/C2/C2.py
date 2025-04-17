@@ -5,9 +5,9 @@ structure = jnp.array([[10, 0, 0],
                        [0, 10, 0],
                        [0, 0, 10]])
 Symbol = ['C', 'C']
-atoms = jnp.array([[0.0, 0.0, -1.0], [0.0, 0.0, 1.0]])
-charges = jnp.array([4.0, 4.0])
-spins = jnp.array([1.0, -1.0, 1.0, -1.0, 1.0, -1.0, 1.0, -1.0])
+atoms = jnp.array([[0.0, 0.0, 0.0]])
+charges = jnp.array([6.0])
+spins = jnp.array([1.0, -1.0, 1.0, -1.0, 1.0, -1.0,])
 
 Rn_local = jnp.array([[1.0, 3.0, 2.0],
                       [1.0, 3.0, 2.0]])
@@ -30,14 +30,14 @@ Non_local_exps = jnp.array([[[7.76079, 0], [0, 0], [0, 0]],
 output = main(atoms=atoms,
               charges=charges,
               spins=spins,
-              nelectrons=8,
-              natoms=2,
+              nelectrons=6,
+              natoms=1,
               ndim=3,
-              batch_size=1,
-              iterations=1,
+              batch_size=100,
+              iterations=1000,
               tstep=0.05,
-              nspins=(4, 4),
-              nsteps=1,
+              nspins=(3, 3),
+              nsteps=5,
               list_l=2,
               save_path='Save',
               restore_path=None,

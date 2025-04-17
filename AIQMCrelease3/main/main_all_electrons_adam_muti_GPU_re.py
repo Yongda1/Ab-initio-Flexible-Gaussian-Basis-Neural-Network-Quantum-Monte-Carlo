@@ -12,14 +12,11 @@ from AIQMCrelease3 import checkpoint
 from jax.experimental import multihost_utils
 from AIQMCrelease3.VMC import VMCmcstep
 from AIQMCrelease3.wavefunction_Ynlm import nn
-#from AIQMCrelease3.Energy import pphamiltonian
-#from AIQMCrelease3.Loss import pploss as qmc_loss_functions
-from AIQMCrelease3.Loss import loss as qmc_loss_functions
-from AIQMCrelease3 import constants
 from AIQMCrelease3.Energy import hamiltonian
-#from AIQMCrelease3 import constants
-#from AIQMCrelease3 import curvature_tags_and_blocks
-from AIQMCrelease3.Optimizer import adam
+from AIQMCrelease3.Loss import loss as qmc_loss_functions
+#from ferminet import loss as qmc_loss_functions
+from AIQMCrelease3 import constants
+#from AIQMCrelease3.Optimizer import adam
 from AIQMCrelease3.utils import writers
 from AIQMCrelease3.initial_electrons_positions.init import init_electrons
 from AIQMCrelease3.spin_indices import jastrow_indices_ee
@@ -30,8 +27,74 @@ import functools
 #config.update("jax_debug_nans", True)
 #config.parse_flags_with_absl()
 
+def make_opt_update_step(evaluate_loss,
+                         optimizer: optax.GradientTransformation):
+  """Returns an OptUpdate function for performing a parameter update."""
+
+  # Differentiate wrt parameters (argument 0)
+  loss_and_grad = jax.value_and_grad(evaluate_loss, argnums=0, has_aux=True)
+
+  def opt_update(
+      params: nn.ParamTree,
+      data: nn.AINetData,
+      opt_state: Optional[optax.OptState],
+      key: chex.PRNGKey,
+  ):
+    """Evaluates the loss and gradients and updates the parameters using optax."""
+    (loss, aux_data), grad = loss_and_grad(params, key, data)
+    grad = constants.pmean(grad)
+    updates, opt_state = optimizer.update(grad, opt_state, params)
+    params = optax.apply_updates(params, updates)
+    return params, opt_state, loss, aux_data
+
+  return opt_update
 
 
+def make_training_step(
+    optimizer_step,
+    reset_if_nan: bool = False,
+):
+  """Factory to create traning step for non-KFAC optimizers.
+
+  Args:
+    mcmc_step: Callable which performs the set of MCMC steps. See make_mcmc_step
+      for creating the callable.
+    optimizer_step: OptUpdate callable which evaluates the forward and backward
+      passes and updates the parameters and optimizer state, as required.
+    reset_if_nan: If true, reset the params and opt state to the state at the
+      previous step when the loss is NaN
+
+  Returns:
+    step, a callable which performs a set of MCMC steps and then an optimization
+    update. See the Step protocol for details.
+  """
+  @functools.partial(constants.pmap, donate_argnums=(0, 1, 2))
+  def step(
+      data: nn.AINetData,
+      params: nn.ParamTree,
+      state: Optional[optax.OptState],
+      key: chex.PRNGKey,
+  ):
+    """A full update iteration (except for KFAC): MCMC steps + optimization."""
+    # MCMC loop
+    mcmc_key, loss_key = jax.random.split(key, num=2)
+    #data, pmove = mcmc_step(params, data, mcmc_key, mcmc_width)
+
+    # Optimization step
+    new_params, new_state, loss, aux_data = optimizer_step(params,
+                                                           data,
+                                                           state,
+                                                           loss_key)
+    if reset_if_nan:
+      new_params = jax.lax.cond(jnp.isnan(loss),
+                                lambda: params,
+                                lambda: new_params)
+      new_state = jax.lax.cond(jnp.isnan(loss),
+                               lambda: state,
+                               lambda: new_state)
+    return data, new_params, new_state, loss, aux_data
+
+  return step
 
 def main(atoms: jnp.array,
          charges: jnp.array,
@@ -128,7 +191,6 @@ def main(atoms: jnp.array,
     # jax.debug.print("params:{}", params)
     signed_network = network.apply
     logabs_network = lambda *args, **kwargs: signed_network(*args, **kwargs)[1]
-
     def log_network(*args, **kwargs):
         phase, mag = signed_network(*args, **kwargs)
         return mag + 1.j * phase
@@ -147,7 +209,7 @@ def main(atoms: jnp.array,
     localenergy = hamiltonian.local_energy(f=signed_network, charges=charges, nspins=spins, use_scan=False)
 
     evaluate_loss = qmc_loss_functions.make_loss(network=log_network, local_energy=localenergy,
-                                                 clip_local_energy=2.0,
+                                                 clip_local_energy=5.0,
                                                  clip_from_median=True,
                                                  center_at_clipped_energy=True,
                                                  complex_output=True,
@@ -163,7 +225,7 @@ def main(atoms: jnp.array,
     sharded_key, subkeys = kfac_jax.utils.p_split(sharded_key)
     opt_state = jax.pmap(optimizer.init)(params)
     opt_state = opt_state_ckpt or opt_state
-    step =  adam.make_training_step(optimizer_step=adam.make_opt_update_step(evaluate_loss, optimizer))
+    step =make_training_step(optimizer_step=make_opt_update_step(evaluate_loss, optimizer))
 
     train_schema = ['step', 'energy']
     writer_manager = writers.Writer(
@@ -187,6 +249,7 @@ def main(atoms: jnp.array,
             #print("--------------------------")
 
             data, params, opt_state, loss, aux_data = step(data, params, opt_state, subkeys)
+            jax.debug.print("loss:{}", loss)
             loss = loss[0]
             logging_str = ('Step %05d: ', '%03.4f E_h,')
             logging_args = t, loss,
