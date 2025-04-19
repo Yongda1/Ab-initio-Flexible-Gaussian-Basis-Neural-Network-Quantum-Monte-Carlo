@@ -16,31 +16,35 @@
 
 from typing import Tuple
 import chex
-from AIQMCrelease3 import constants
-from AIQMCrelease3.Energy import hamiltonian
-from AIQMCrelease3.wavefunction_Ynlm import nn
+from AIQMCpretrain1 import constants
+from AIQMCpretrain1.Energy import hamiltonian
+#from AIQMCpretrain1.wavefunction_Ynlm import nn
+from AIQMCpretrain1.wavefunction import networks as nn
 import jax
 import jax.numpy as jnp
 import kfac_jax
 from typing_extensions import Protocol
 
-
 @chex.dataclass
 class AuxiliaryLossData:
-    """Auxiliary data returned by total_energy.
+  """Auxiliary data returned by total_energy.
 
   Attributes:
+    energy: mean energy over batch, and over all devices if inside a pmap.
     variance: mean variance over batch, and over all devices if inside a pmap.
     local_energy: local energy for each MCMC configuration.
     clipped_energy: local energy after clipping has been applied
     grad_local_energy: gradient of the local energy.
     local_energy_mat: for excited states, the local energy matrix.
+    s_ij: Matrix of overlaps between wavefunctions.
+    mean_s_ij: Mean value of the overlap between wavefunctions across walkers.
   """
-    variance: jax.Array
-    local_energy: jax.Array
-    clipped_energy: jax.Array
-    grad_local_energy: jax.Array | None
-    local_energy_mat: jax.Array | None
+  energy: jax.Array  # for some losses, the energy and loss are not the same
+  variance: jax.Array
+  local_energy: jax.Array
+  clipped_energy: jax.Array
+  grad_local_energy: jax.Array | None = None
+  local_energy_mat: jax.Array | None = None
 
 
 class LossAINet(Protocol):
@@ -76,7 +80,7 @@ def clip_local_values(
         clip_scale: float,
         clip_from_median: bool,
         center_at_clipped_value: bool,
-        complex_output: bool = False,
+        complex_output: bool = True,
 ) -> Tuple[jnp.ndarray, jnp.ndarray]:
     """Clips local operator estimates to remove outliers.
 
@@ -140,7 +144,7 @@ def make_loss(network: nn.LogAINetLike,
               clip_local_energy: float = 0.0,
               clip_from_median: bool = True,
               center_at_clipped_energy: bool = True,
-              complex_output: bool = False) -> LossAINet:
+              complex_output: bool = True) -> LossAINet:
     """Creates the loss function, including custom gradients.
 
   Args:
@@ -202,18 +206,15 @@ def make_loss(network: nn.LogAINetLike,
     """
         keys = jax.random.split(key, num=data.positions.shape[0])
         e_l, e_l_mat = batch_local_energy(params, keys, data)
-        #jax.debug.print("e_l:{}", e_l)
+        jax.debug.print("e_l:{}", e_l)
         loss = constants.pmean(jnp.mean(e_l))
         loss_diff = e_l - loss
         variance = constants.pmean(jnp.mean(loss_diff * jnp.conj(loss_diff)))
-        #jax.debug.print("loss:{}", loss)
-        # jax.debug.print("type_loss:{}", type(loss))
-        #jax.debug.print("variance:{}", variance)
         return loss, AuxiliaryLossData(
+            energy=loss,
             variance=variance.real,
             local_energy=e_l,
             clipped_energy=e_l,
-            grad_local_energy=None,
             local_energy_mat=e_l_mat,
         )
 

@@ -4,8 +4,9 @@ import chex
 import jax
 from jax import numpy as jnp
 from jax import lax
-from AIQMCrelease3.wavefunction_Ynlm import nn
-from AIQMCrelease3.utils import utils
+#from AIQMCpretrain1.wavefunction_Ynlm import nn
+from AIQMCpretrain1.wavefunction import networks as nn
+from AIQMCpretrain1.utils import utils
 
 
 def limdrift(g, tau, acyrus):

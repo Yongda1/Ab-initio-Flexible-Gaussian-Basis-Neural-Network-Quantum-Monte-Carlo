@@ -4,11 +4,11 @@ import jax
 import functools
 from typing_extensions import Protocol
 from typing import Optional, Tuple, Union
-from AIQMCrelease3.wavefunction_Ynlm import nn
+from AIQMCpretrain1.wavefunction import networks as nn
 import kfac_jax
 import jax.numpy as jnp
-from AIQMCrelease3.Loss import pploss as qmc_loss_functions
-from AIQMCrelease3 import constants
+from AIQMCpretrain1.Loss import loss as qmc_loss_functions
+from AIQMCpretrain1 import constants
 
 OptimizerState = Union[optax.OptState, kfac_jax.Optimizer.State]
 

@@ -23,10 +23,30 @@ def make_pp_like_envelope():
 
     return params
 
+  '''
+
+  def init(natom: int, nelectrons: int, ndim: int = 3) -> Sequence[Mapping[str, jnp.ndarray]]:
+    params = []
+    for electron in range(nelectrons):
+      params.append({
+        'alpha': jnp.ones(shape=1),
+        'beta': jnp.ones(shape=natom)})
+
+    return params
+
+  '''
+
   def apply(orbitals: jnp.array, r_ae: jnp.ndarray, ae: jnp.array, charges: jnp.array, params_envelope) \
           -> jnp.ndarray:
     r_ae = jnp.reshape(r_ae, (-1))
-    return (jnp.sum(jnp.exp(-params_envelope['beta'] * r_ae**2) * params_envelope['alpha']) +
+    return (jnp.sum(charges * params_envelope['nu'] * jnp.exp(-params_envelope['beta'] * r_ae**params_envelope['mu']) * params_envelope['alpha']) +
             jnp.sum(jnp.exp(-ae * params_envelope['pi']) * params_envelope['sigma'] * params_envelope['xi'])) * orbitals
+  '''
 
+  def apply(orbitals: jnp.array, r_ae: jnp.ndarray, ae: jnp.array, charges: jnp.array, params_envelope) \
+          -> jnp.ndarray:
+    r_ae = jnp.reshape(r_ae, (-1))
+    return (jnp.sum(jnp.exp(-params_envelope['beta'] * r_ae) * params_envelope['alpha'])) * orbitals
+
+  '''
   return init, apply

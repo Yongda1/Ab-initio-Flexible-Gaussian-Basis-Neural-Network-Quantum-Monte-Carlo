@@ -213,11 +213,11 @@ def make_ai_net_layers(nspins: Tuple[int, int],
         dims_two_in = num_two_features
         #jax.debug.print("num_one_features:{}", num_one_features)
         #jax.debug.print("num_two_features:{}", num_two_features)
-        dims_one_convolu_in = num_one_features
+        #dims_one_convolu_in = num_one_features
         key1, subkey1 = jax.random.split(key)
         layers = []
         layers_y = []
-        dims_y_in = 4 * natoms + 1 + 1  # 4 is the number of l orbitals, 2 is the number of atoms. s, p(3) = 4, r=(1, 2, 3), 1 is the mean value of high angular momentum.
+        dims_y_in = 4 * natoms  # 4 is the number of l orbitals, 2 is the number of atoms. s, p(3) = 4, r=(1, 2, 3), 1 is the mean value of high angular momentum.
         for i in range(len(hidden_dims)):
             layer_params = {}
             layer_params_y = {}
@@ -230,14 +230,16 @@ def make_ai_net_layers(nspins: Tuple[int, int],
             #jax.debug.print("dims_one_in:{}", dims_one_in)
             """create convolutional layer.we need rewrite the function in network blocks.
             we also need think the dimension change after every loop."""
+            '''
             layer_params['convolutional'] = network_blocks.init_convolu_layer(
                 nelectrons,
                 convolu_key,
                 in_dim_1=nelectrons,
                 in_dim_2=dims_one_in,
                 include_bias=True)
+            '''
             #jax.debug.print("layer_params[convolutional]:{}", layer_params['convolutional'])
-            dims_one_in = int(dims_one_in / 4)
+            #dims_one_in = int(dims_one_in / 4)
             #jax.debug.print("dims_one_in_con:{}", dims_one_in)
             """someting is wrong about the dimension. solve it later. 18.2.2025."""
             layer_params['single'] = network_blocks.init_linear_layer(single_key,
@@ -291,9 +293,9 @@ def make_ai_net_layers(nspins: Tuple[int, int],
         h_one_in = construct_symmetric_features(h_one, h_two_embedding, nspins)
         #jax.debug.print("h_one_in:{}", h_one_in)
         #jax.debug.print("h_one_in:{}", h_one_in)
-        h_one_next_con = jnp.tanh(network_blocks.convolu_layer(nelectrons, h_one_in, **params['convolutional'], ))
+        #h_one_next_con = jnp.tanh(network_blocks.convolu_layer(nelectrons, h_one_in, **params['convolutional'], ))
         #jax.debug.print("h_one_next_con:{}", h_one_next_con)
-        h_one_next = jnp.tanh(network_blocks.linear_layer(h_one_next_con, **params['single']))
+        h_one_next = jnp.tanh(network_blocks.linear_layer(h_one_in, **params['single']))
         #jax.debug.print("h_one_next:{}", h_one_next)
         #jax.debug.print("h_one_before_residual:{}", h_one)
         """here, we have some problems.we need do more to match the dimension. 5.4.2025."""
@@ -327,16 +329,16 @@ def make_ai_net_layers(nspins: Tuple[int, int],
         temp = ae / r_ae
         y_lm_s_p = jax.vmap(jax.vmap(y_l_real, in_axes=0), in_axes=0)(temp)
         #jax.debug.print("y_lm_s_p:{}", y_lm_s_p)
-        y_lm_d_f = jax.vmap(jax.vmap(y_l_real_high, in_axes=0), in_axes=0)(temp, r_ae)
+        #y_lm_d_f = jax.vmap(jax.vmap(y_l_real_high, in_axes=0), in_axes=0)(temp, r_ae)
         y_lm_s_p = jnp.reshape(y_lm_s_p, (nelectrons, -1))
-        y_lm_d_f = jnp.reshape(y_lm_d_f, (nelectrons, -1)) #12 is the number of high spherical harmonic functions.
+        #y_lm_d_f = jnp.reshape(y_lm_d_f, (nelectrons, -1)) #12 is the number of high spherical harmonic functions.
         """now, we need consider how to add the high spherical functions into the low spherical functions."""
         y_one = y_lm_s_p
-        y_two = y_lm_d_f
-        y_two_in = jnp.mean(y_two, axis=-1, keepdims=True)
-        y_one_average = jnp.mean(y_one, axis=-1, keepdims=True)
-        y_one = jnp.concatenate([y_one, y_two_in], axis=-1)
-        y_one = jnp.concatenate([y_one, y_one_average], axis=-1)
+        #y_two = y_lm_d_f
+        #y_two_in = jnp.mean(y_two, axis=-1, keepdims=True)
+        #y_one_average = jnp.mean(y_one, axis=-1, keepdims=True)
+        #y_one = jnp.concatenate([y_one, y_two_in], axis=-1)
+        #y_one = jnp.concatenate([y_one, y_one_average], axis=-1)
         for i in range(len(hidden_dims_Ynlm)):
             y_one = apply_layer_y(params['streams_y'][i], y_one)
 
@@ -381,7 +383,7 @@ def make_orbitals(nspins: Tuple[int, int],
         #jax.debug.print("nspin_orbitals:{}", nspin_orbitals)
         natom = charges.shape[0]
         orbitals = []
-        y_coefficients = []
+        #y_coefficients = []
         for nspin_orbital in nspin_orbitals:
             key, subkey = jax.random.split(key)
             orbitals.append(
@@ -391,14 +393,16 @@ def make_orbitals(nspins: Tuple[int, int],
                     out_dim=nspin_orbital,
                     include_bias=True,
                 ))
+        '''
         y_coefficients.append(network_blocks.init_linear_layer(
             subkey,
             in_dim=dims_y_in,
             out_dim=nelectrons,
             include_bias=False))
+        '''
         #jax.debug.print("dims_orbital_in:{}", dims_orbital_in)
         params['orbitals'] = orbitals
-        params['y'] = y_coefficients
+        #params['y'] = y_coefficients
         params['jastrow_ee'] = jastrow_ee_init(n_parallel=n_parallel, n_antiparallel=n_antiparallel)
         params['jastrow_ae'] = jastrow_ae_init(nelectrons=nelectrons, natoms=natom)
         output_dims = [nspin_orbital // 2 for nspin_orbital in nspin_orbitals]
@@ -415,18 +419,27 @@ def make_orbitals(nspins: Tuple[int, int],
         ae, ee, r_ae, r_ee = construct_input_features(pos, atoms, ndim=3)
         #jax.debug.print("r_ee:{}", r_ee)
         #jax.debug.print("ee:{}", ee)
-        jax.debug.print("r_ae:{}", r_ae.shape)
+        #jax.debug.print("r_ae:{}", r_ae.shape)
         h_to_orbitals, y_to_orbitals = equivariant_layers_apply(params['layers'],
                                                                 ae=ae,
                                                                 r_ae=r_ae,
                                                                 ee=ee,
                                                                 r_ee=r_ee,)
 
-        active_spin_channels = [spin for spin in nspins if spin > 0]
-        #jax.debug.print("active_spin_channels:{}", active_spin_channels)
-        #active_spin_partitions = network_blocks.array_partitions(active_spin_channels)
-        #jax.debug.print("active_spin_partitions:{}", active_spin_partitions)
         #jax.debug.print("h_to_orbitals:{}", h_to_orbitals)
+        #jax.debug.print("y_to_orbitals:{}", y_to_orbitals)
+        #orbitals_with_envelope = []
+        #for i in range(nelectrons):
+        #    test = envelope_apply(h_to_orbitals[i], r_ae[i], ae[i], charges, params['envelope'][i])
+        #    orbitals_with_envelope.append(test)
+
+        #h_to_orbitals = jnp.array(orbitals_with_envelope)
+        #jax.debug.print("h_to_orbitals_after:{}", h_to_orbitals)
+        #h_to_orbitals = h_to_orbitals * jnp.sum(y_to_orbitals, axis=-1, keepdims=True)
+
+        #jax.debug.print("h_to_orbitals_angular:{}", h_to_orbitals)
+
+        active_spin_channels = [spin for spin in nspins if spin > 0]
         """here, we need reconstruct the spin configuration according to the spin configuration we input."""
         #jax.debug.print("spins:{}", spins)
         h_up = h_to_orbitals[spin_up_indices]
@@ -434,32 +447,13 @@ def make_orbitals(nspins: Tuple[int, int],
         #jax.debug.print("h_up:{}", h_up)
         #jax.debug.print("h_down:{}", h_down)
         h_to_orbitals_with_spin = [h_up, h_down]
-        #jax.debug.print("h_two_orbitals_with_spin:{}", h_to_orbitals_with_spin)
-        #h_to_orbitals = jnp.split(h_to_orbitals, network_blocks.array_partitions(nspins), axis=0)
         """here, we split the vector with different spin. 7.4.2025. """
-        #jax.debug.print("h_to_orbitals_after array_partitions:{}", h_to_orbitals)
-        #jax.debug.print("nspins:{}", nspins)
-        #h_to_orbitals = [h for h, spin in zip(h_to_orbitals_with_spin, nspins) if spin > 0]
         """here, we just check the shape of h_two_orbitals."""
-        #jax.debug.print("h_to_orbitals_after spin:{}", h_to_orbitals)
-        #jax.debug.print("h_to_orbitals_with_spin:{}", h_to_orbitals_with_spin)
-        #jax.debug.print("params[orbitals]:{}", params['orbitals'])
         orbitals = [network_blocks.linear_layer(h, **p) for h, p in zip(h_to_orbitals_with_spin, params['orbitals'])]
-        #jax.debug.print("orbitals_real:{}", orbitals)
-        linear_y_coes = params['y'][0]['w']
-        norm = jnp.linalg.norm(linear_y_coes, axis=-1, keepdims=True)
-        linear_y_coes = linear_y_coes / norm
-        y_orbitals = network_blocks.linear_layer(y_to_orbitals, linear_y_coes)
-        #jax.debug.print("orbital[..., ::2]:{}", orbitals[0][..., ::2])
-        #jax.debug.print("orbital[..., 1::2]:{}", orbitals[0][..., 1::2])
-        #jax.debug.print("orbitals:{}", orbitals)
+
         orbitals = [orbital[..., ::2] + 1.0j * orbital[..., 1::2] for orbital in orbitals]
         """i just used the simplest envelope function. leave this problem to students. 
         I need focus on 2D ewald summation, i.e.PBC, 27.2.2025."""
-        #jax.debug.print("orbitals_complex:{}", orbitals)
-        #jax.debug.print("ae:{}", ae)
-        #jax.debug.print("r_ae:{}", r_ae)
-        #jax.debug.print("params[envelope]:{}", params['envelope'])
         """OK, let us rewrite the envelope function for these orbitals."""
         #jax.debug.print("active_spin_channels:{}", active_spin_channels)
         """we need check the following reshape. 21.2.2025."""
@@ -476,34 +470,37 @@ def make_orbitals(nspins: Tuple[int, int],
         #jax.debug.print("orbitals:{}", orbitals.shape)
         #jax.debug.print("r_ae:{}", r_ae.shape)
         #jax.debug.print("ae:{}", ae.shape)
+        '''
         orbitals_with_envelope = []
         for i in range(nelectrons):
             test = envelope_apply(orbitals[i], r_ae[i], ae[i], charges, params['envelope'][i])
             orbitals_with_envelope.append(test)
 
         orbitals_with_envelope = jnp.array(orbitals_with_envelope)
-        total_orbitals = orbitals_with_envelope * y_orbitals
+        '''
+
+        total_orbitals = orbitals
         """something in Jastrow is wrong here 26.2.2025."""
         """The jastrow has some problems.we need solve it 6.4.2025."""
         """I dont find anything wrong in the Jastrow module."""
         #jax.debug.print("r_ee:{}", r_ee)
-        r_ee = jnp.reshape(r_ee, (nelectrons, nelectrons))
+        #r_ee = jnp.reshape(r_ee, (nelectrons, nelectrons))
         """by removing the norm calculation in Jastrow, the 'Nan' problem is solved. 
         Actually, I dont understand why. Maybe it is some underlying bug in Jax."""
-        jastrow_ee = jnp.exp(jastrow_ee_apply(r_ee=r_ee,
-                                           parallel_indices=parallel_indices,
-                                           antiparallel_indices=antiparallel_indices,
-                                           params=params['jastrow_ee']) / nelectrons)
+        #jastrow_ee = jnp.exp(jastrow_ee_apply(r_ee=r_ee,
+        #                                   parallel_indices=parallel_indices,
+        #                                   antiparallel_indices=antiparallel_indices,
+        #                                   params=params['jastrow_ee']) / nelectrons)
         #jax.debug.print("jastrow:{}", jastrow)
         #jax.debug.print("r_ae:{}", r_ae)
         """to be continued... 21.2.2025."""
-        r_ae = jnp.reshape(r_ae, (nelectrons, -1))
-        jastrow_ae = jnp.exp(jastrow_ae_apply(r_ae=r_ae, params=params['jastrow_ae'])/nelectrons)
+        #r_ae = jnp.reshape(r_ae, (nelectrons, -1))
+        #jastrow_ae = jnp.exp(jastrow_ae_apply(r_ae=r_ae, params=params['jastrow_ae'])/nelectrons)
         #jax.debug.print("jastrow_ae_ee:{}", jastrow_ae * jastrow_ee)
         """we first move to all electrons calculation today 6.4.2025."""
-        orbitals_with_jastrow = total_orbitals * jastrow_ee * jastrow_ae
-        total_orbitals_jastrow = [orbitals_with_jastrow]# if 多行列式, 4 * 8 * 8
-        return total_orbitals_jastrow
+        orbitals_with_jastrow = total_orbitals #* jastrow_ee * jastrow_ae
+        #total_orbitals_jastrow = [orbitals_with_jastrow]# if 多行列式, 4 * 8 * 8
+        return orbitals_with_jastrow
 
     return init, apply
 
@@ -522,8 +519,8 @@ def make_ai_net(nspins: Tuple[int, int],
                 determinants: int = 1,
                 bias_orbitals: bool = True,
                 rescale_inputs: bool = False,
-                hidden_dims: AILayers = ((4, 4), (4, 4), (4, 4)),
-                hidden_dims_Ynlm: AIYnlmLayers = ((6), (6), (6))):
+                hidden_dims: AILayers = ((128, 16), (128, 16), (128, 16)),
+                hidden_dims_Ynlm: AIYnlmLayers = ((16), (16), (16))):
 
     feature_layer = make_ainet_features(natoms, ndim=ndim, rescale_inputs=rescale_inputs)
 
@@ -548,15 +545,15 @@ def make_ai_net(nspins: Tuple[int, int],
               atoms: jnp.array,
               charges: jnp.array,) -> Tuple[jnp.array, jnp.array]:
         orbitals = orbitals_apply(params, pos, spins, atoms, charges)
-        return network_blocks.logdet_matmul(orbitals)
+        return network_blocks.slogdet(orbitals)
 
     return Network(init=init, apply=apply, orbitals=orbitals_apply)
 
 
-
-from AIQMCrelease3.initial_electrons_positions.init import init_electrons
-from AIQMCrelease3.spin_indices import jastrow_indices_ee
-from AIQMCrelease3.spin_indices import spin_indices_h
+'''
+from AIQMCpretrain1.initial_electrons_positions.init import init_electrons
+from AIQMCpretrain1.spin_indices import jastrow_indices_ee
+from AIQMCpretrain1.spin_indices import spin_indices_h
 
 atoms = jnp.array([[0.0, 0.0, -1.0], [0.0, 0.0, 1.0]])
 charges = jnp.array([6.0, 6.0])
@@ -597,3 +594,4 @@ pos = jnp.reshape(pos, (-1)) # 10 * 3 = 30
 #ae, ee, r_ae, r_ee = construct_input_features(pos, atoms, ndim=3)
 wavefunction_value = network.apply(params, pos, spins, atoms, charges)
 jax.debug.print("wavefunction_value:{}", wavefunction_value)
+'''

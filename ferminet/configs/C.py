@@ -1,5 +1,4 @@
 import sys
-
 from absl import logging
 from ferminet.utils import system
 from ferminet import base_config
@@ -19,7 +18,7 @@ cfg.system.molecule = [system.Atom('C', (0, 0, 0))]
 
 # Set training parameters
 cfg.batch_size = 100
-cfg.pretrain.iterations = 0
+cfg.pretrain.iterations = 10
 cfg.optim.optimizer = 'adam'
 
 train.train(cfg)

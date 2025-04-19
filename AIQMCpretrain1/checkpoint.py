@@ -5,7 +5,7 @@ import os
 from typing import Optional
 import zipfile
 from absl import logging
-from AIQMCrelease3.wavefunction_Ynlm import nn
+from AIQMCpretrain1.wavefunction_Ynlm import nn
 import numpy as np
 import jax
 

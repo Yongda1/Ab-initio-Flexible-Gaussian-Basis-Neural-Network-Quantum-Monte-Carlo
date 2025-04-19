@@ -16,9 +16,9 @@
 
 from typing import Tuple
 import chex
-from AIQMCrelease3 import constants
-from AIQMCrelease3.Energy import pphamiltonian
-from AIQMCrelease3.wavefunction_Ynlm import nn
+from AIQMCpretrain1 import constants
+from AIQMCpretrain1.Energy import pphamiltonian
+from AIQMCpretrain1.wavefunction_Ynlm import nn
 import jax
 import jax.numpy as jnp
 import kfac_jax

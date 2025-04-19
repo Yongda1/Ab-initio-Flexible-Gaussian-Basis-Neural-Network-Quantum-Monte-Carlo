@@ -1,4 +1,4 @@
-from AIQMCrelease3.wavefunction_Ynlm import nn
+from AIQMCpretrain1.wavefunction_Ynlm import nn
 import jax
 import optax
 import jax.numpy as jnp
@@ -7,8 +7,8 @@ import functools
 from typing_extensions import Protocol
 from typing import Optional, Mapping, Sequence, Tuple, Union
 import kfac_jax
-from AIQMCrelease3.Loss import pploss as qmc_loss_functions
-from AIQMCrelease3 import constants
+from AIQMCpretrain1.Loss import pploss as qmc_loss_functions
+from AIQMCpretrain1 import constants
 
 
 OptimizerState = Union[optax.OptState, kfac_jax.Optimizer.State]

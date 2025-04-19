@@ -341,6 +341,7 @@ def pretrain_hartree_fock(
     sharded_key, subkeys = kfac_jax.utils.p_split(sharded_key)
     data, params, opt_state_pt, loss, pmove = pretrain_step(
         data, params, opt_state_pt, subkeys, scf_approx)
+    jax.debug.print("loss:{}", loss)
     logging.info('Pretrain iter %05d: %g %g', t, loss[0], pmove[0])
     if logger:
       logger(t, loss[0])

@@ -16,8 +16,9 @@
 
 from typing import Any, Callable, Optional, Sequence, Tuple, Union
 import chex
-from AIQMCrelease3.wavefunction_Ynlm import nn
-from AIQMCrelease3.utils import utils
+#from AIQMCpretrain1.wavefunction_Ynlm import nn
+from AIQMCpretrain1.wavefunction import networks as nn
+from AIQMCpretrain1.utils import utils
 import jax
 from jax import lax
 import jax.numpy as jnp
@@ -250,7 +251,7 @@ def local_energy(
              data: nn.AINetData) -> Tuple[jnp.ndarray, Optional[jnp.ndarray]]:
 
         ae, _, r_ae, r_ee = nn.construct_input_features(data.positions, data.atoms)
-        potential = (potential_energy(r_ae, r_ee, data.atoms, charges))
+        potential = potential_energy(r_ae, r_ee, data.atoms, charges)
         kinetic = ke(params, data)
         #jax.debug.print("kinetic:{}", kinetic)
         total_energy = potential + kinetic
