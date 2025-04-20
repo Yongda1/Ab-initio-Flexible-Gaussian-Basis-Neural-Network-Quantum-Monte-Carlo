@@ -131,7 +131,6 @@ def local_energy(
         f: nn.AINetLike,
         lognetwork,
         charges: jnp.array,
-        nspins: Sequence[int],
         rn_local: jnp.array,
         local_coes: jnp.array,
         local_exps: jnp.array,
@@ -144,7 +143,7 @@ def local_energy(
         list_l: int,
         use_scan: bool = False,
         complex_output: bool = False) -> LocalEnergy:
-    del nspins
+    #del nspins
     """To be continued 22.1.2025."""
     ke = local_kinetic_energy(f,
                               use_scan=use_scan,

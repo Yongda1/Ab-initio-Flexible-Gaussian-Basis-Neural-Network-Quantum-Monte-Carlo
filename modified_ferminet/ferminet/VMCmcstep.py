@@ -98,7 +98,7 @@ def walkers_update(logabs_f: nn.LogFermiNetLike,
     wave_x2 = logabs_f_vmap(params, x2, spins, atoms, charges)
     x1 = jnp.reshape(x1, (batch_size, nelectrons, -1))
     wave_x1 = logabs_f_vmap(params, x1, spins, atoms, charges)
-    acceptance = jnp.abs(jnp.exp(wave_x2 - wave_x1)) ** 2 * t_pro
+    acceptance = jnp.abs((wave_x2 / wave_x1)) ** 2 * t_pro
     final_configuration, newkey = walkers_accept(initial_configuration,
                                                  changed_configuration,
                                                  acceptance,

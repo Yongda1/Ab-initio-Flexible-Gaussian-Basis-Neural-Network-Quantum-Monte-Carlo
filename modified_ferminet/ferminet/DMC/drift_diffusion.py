@@ -22,12 +22,12 @@ def walkers_accept(x1, x2, acceptance, key, nelectrons: int, batch_size: int):
     return x_new, subkey, tdamp
 
 
-def propose_drift_diffusion(logabs_f: nn.LogAINetLike,
+def propose_drift_diffusion(logabs_f: nn.LogFermiNetLike,
                             tstep: float,
                             ndim: int,
                             nelectrons: int,
                             batch_size: int):
-    def drift_diffusion(params, key: chex.PRNGKey, data: nn.AINetData):
+    def drift_diffusion(params, key: chex.PRNGKey, data: nn.FermiNetData):
         key, subkey = jax.random.split(key)
         x1 = data.positions
         grad_value = jax.grad(logabs_f, argnums=1)
@@ -84,7 +84,7 @@ def propose_drift_diffusion(logabs_f: nn.LogAINetLike,
         wave_x2 = logabs_f_vmap(params, x2, spins, atoms, charges)
         x1 = jnp.reshape(x1, (batch_size, nelectrons, -1))
         wave_x1 = logabs_f_vmap(params, x1, spins, atoms, charges)
-        wfratio = jnp.exp(wave_x2 - wave_x1)
+        wfratio = wave_x2 / wave_x1
         ratio = jnp.abs(wfratio) ** 2 * t_pro
         ratio *= jnp.sign(wfratio)
         acceptance = ratio
@@ -96,7 +96,7 @@ def propose_drift_diffusion(logabs_f: nn.LogAINetLike,
                                                      batch_size)
 
         final_configuration = jnp.reshape(final_configuration, (batch_size, -1))
-        new_data = nn.AINetData(**(dict(data) | {'positions': final_configuration}))
+        new_data = nn.FermiNetData(**(dict(data) | {'positions': final_configuration}))
 
         grad_new_s = grad_f(new_data.positions)
         grad_new_eff_s = limdrift(grad_new_s, tstep, 0.25)

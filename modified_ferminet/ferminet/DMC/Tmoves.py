@@ -2,9 +2,9 @@
 import jax
 import chex
 import jax.numpy as jnp
-from AIQMCrelease3.wavefunction_Ynlm import nn
-from AIQMCrelease3.pseudopotential import pseudopotential
-from AIQMCrelease3.pseudopotential.pseudopotential import get_non_v_l, get_P_l
+from modified_ferminet.ferminet import networks as nn
+from modified_ferminet.ferminet.DMC.pseudopotential import pseudopotential
+from modified_ferminet.ferminet.DMC.pseudopotential.pseudopotential import get_non_v_l, get_P_l
 
 
 def P_l_theta(x: jnp.array, list_l: float):
@@ -65,7 +65,7 @@ def compute_tmoves(list_l: float,
 
 
     """For a given electron, evaluate all possible t-moves."""
-    def calculate_ratio_weight_tmoves(data: nn.AINetData, params: nn.ParamTree, key: chex.PRNGKey):
+    def calculate_ratio_weight_tmoves(data: nn.FermiNetData, params: nn.ParamTree, key: chex.PRNGKey):
         """I forgot how to write this part....7.2.2025."""
         Points_OA, Points_OB, Points_OC, Points_OD, weights = pseudopotential.get_rot(batch_size=1,
                                                                                       key=key)

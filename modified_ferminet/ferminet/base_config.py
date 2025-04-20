@@ -223,7 +223,7 @@ def default() -> ml_collections.ConfigDict:
       'network': {
           'network_type': 'ferminet',  # One of 'ferminet' or 'psiformer'.
           # If true, the network outputs complex numbers rather than real.
-          'complex': False,
+          'complex': True,
           # Config specific to original FermiNet architecture.
           # Only used if network_type is 'ferminet'.
           'ferminet': {

@@ -74,12 +74,12 @@ def main(atoms: jnp.array,
     else:
         raise ValueError('DMC must use the wave function from VMC!')
 
-    spins_test = jnp.array([[1., 1., 1., - 1., - 1., - 1., ]])
-    parallel_indices, antiparallel_indices, n_parallel, n_antiparallel = jastrow_indices_ee(spins=spins_test, nelectrons=nelectrons )
-    spin_up_indices, spin_down_indices = spin_indices_h(spins_test)
+    #spins_test = jnp.array([[1., 1., 1., - 1., - 1., - 1., ]])
+    parallel_indices, antiparallel_indices, n_parallel, n_antiparallel = jastrow_indices_ee(spins=spins, nelectrons=nelectrons )
+    #spin_up_indices, spin_down_indices = spin_indices_h(spins)
     feature_layer = nn.make_ferminet_features(
         natoms=charges.shape[0],
-        nspins=(3, 3),
+        nspins=(2, 2),
         ndim=3,
         rescale_inputs=False,
     )
@@ -90,6 +90,7 @@ def main(atoms: jnp.array,
         ndim=3,
         determinants=1,
         states=0,
+        nelectrons=nelectrons,
         envelope=envelope,
         feature_layer=feature_layer,
         jastrow='default',
@@ -103,19 +104,18 @@ def main(atoms: jnp.array,
         n_antiparallel=n_antiparallel,
     )
 
-    '''
+
     signed_network = network.apply
 
     def log_network(*args, **kwargs):
         phase, mag = signed_network(*args, **kwargs)
         return mag + 1.j * phase
 
-    logabs_f = utils.select_output(signed_network, 1)
+    logabs_f = lambda *args, **kwargs: signed_network(*args, **kwargs)[1]
 
     localenergy = pphamiltonian.local_energy(f=signed_network,
                                              lognetwork=log_network,
                                              charges=charges,
-                                             nspins=spins,
                                              rn_local=Rn_local,
                                              local_coes=Local_coes,
                                              local_exps=Local_exps,
@@ -215,12 +215,13 @@ def main(atoms: jnp.array,
             logging_str = ('Block %05d:', '%03.4f E_h,')
             logging_args = block, t, e_est,
             logging.info(logging_str, *logging_args)
-
+            mcmc_width=0
             if time.time() - time_of_last_ckpt > save_frequency * 60:
                 """np.savez cannot save inhomogeneous array. So, we have to use the following line to convert the format of the arrays."""
                 save_params = np.asarray(params)
                 save_opt_state = np.asarray(opt_state, dtype=object)
-                checkpoint.save(ckpt_restore_path, block, data, save_params, save_opt_state)
+                checkpoint.save(ckpt_restore_path, block, data, save_params, save_opt_state, mcmc_width)
+
                 time_of_last_ckpt = time.time()
 
             weights, newindices = branch_parallel(data, weights, subkeys)
@@ -254,7 +255,7 @@ def main(atoms: jnp.array,
             #jax.debug.print("x2:{}", x2)
             x2 = jnp.reshape(x2, (num_devices * num_hosts, int(batch_size/(num_devices * num_hosts)), -1))
             #jax.debug.print("x2:{}", x2)
-            data = nn.AINetData(**(dict(data) | {'positions': x2}))
+            data = nn.FermiNetData(**(dict(data) | {'positions': x2}))
 
             """leave this to tomorrow. 13.2.2025. we also need update the branchcut."""
             e_trial = e_est - feedback * jnp.log(jnp.mean(weights)).real
@@ -266,4 +267,3 @@ def main(atoms: jnp.array,
                 'positions': np.asarray(x2),
             }
             writer.write(block, **writer_kwargs)
-            '''

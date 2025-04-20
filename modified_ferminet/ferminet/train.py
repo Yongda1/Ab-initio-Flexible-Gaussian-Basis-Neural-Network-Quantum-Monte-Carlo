@@ -19,7 +19,6 @@ import importlib
 import os
 import time
 from typing import Optional, Mapping, Sequence, Tuple, Union
-
 from absl import logging
 import chex
 from modified_ferminet.ferminet import checkpoint
@@ -37,7 +36,7 @@ from modified_ferminet.ferminet.utils import statistics
 from modified_ferminet.ferminet.utils import system
 from modified_ferminet.ferminet.utils import utils
 from modified_ferminet.ferminet.utils import writers
-from modified_ferminet.ferminet import VMCmcstep
+#from modified_ferminet.ferminet import VMCmcstep
 import jax
 from jax.experimental import multihost_utils
 import jax.numpy as jnp

@@ -6,13 +6,11 @@ import chex
 import jax
 import jax.numpy as jnp
 import kfac_jax
-#from AIQMCrelease1.main import main_adam
 from jax import Array
 from typing import Tuple
-from AIQMCpretrain1.wavefunction_Ynlm import nn
+from modified_ferminet.ferminet import networks as nn
 from typing_extensions import Protocol
 
-from AIQMCpretrain1.wavefunction_Ynlm.nn import AINetData
 
 """for the implementation in the codes, we need consider the full situations with more atoms. 
 However, light atoms basically dont have l=2 in the pseudopotential. 
@@ -67,12 +65,12 @@ Non_local_exps = jnp.array([[[2.894473589836, 1.550339816290], [2.986528872039, 
 
 
 class LocalPPEnergy(Protocol):
-    def __call__(self, data: nn.AINetData) -> jnp.array:
+    def __call__(self, data: nn.FermiNetData) -> jnp.array:
         """Returns the local pp energy of a Hamiltonian at a configuration."""
 
 
 class NonlocalPPcoes(Protocol):
-    def __call__(self, data: nn.AINetData) -> jnp.array:
+    def __call__(self, data: nn.FermiNetData) -> jnp.array:
         """Returns the nonlocal coes of a hamiltonian at a configuration."""
 
 '''
@@ -103,7 +101,7 @@ def local_pp_energy(nelectrons: int,
 
     local_part2_parallel = jax.vmap(exp_single, in_axes=(0, None, None, None), out_axes=0)
 
-    def pp_local_part_energy(data: nn.AINetData):
+    def pp_local_part_energy(data: nn.FermiNetData):
         """here, it can be improved. 26.1.2025."""
         ae = jnp.reshape(data.positions, [-1, 1, ndim]) - data.atoms[None, ...]
         r_ae = jnp.linalg.norm(ae, axis=-1)
@@ -151,7 +149,7 @@ def get_non_v_l(ndim: int,
 
     non_local_parallel = jax.vmap(jax.vmap(exp_non_single, in_axes=(0, 0, 0, 0)), in_axes=(0, None, None, None), out_axes=0)
 
-    def get_non_local_coe(data: nn.AINetData):
+    def get_non_local_coe(data: nn.FermiNetData):
         ae = jnp.reshape(data.positions, [-1, 1, ndim]) - data.atoms[None, ...]
         r_ae = jnp.linalg.norm(ae, axis=-1)
         #jax.debug.print("r_ae:{}", r_ae)
@@ -269,7 +267,7 @@ def P_l(x: jnp.array, list_l: float):
                (3 * 2 + 1)/(4 * jnp.pi) * 0.5 * (5 * x * x * x - 3 * x)
 
 
-def get_P_l(nelectrons: int, natoms: int, ndim: int, log_network_inner: nn.AINetLike):
+def get_P_l(nelectrons: int, natoms: int, ndim: int, log_network_inner: nn.FermiNetLike):
     """currently, we apply CO2 molecular into the codes. So, we need debug this part again."""
 
     def rot_coords_single(r_ae_inner: jnp.array, Points_inner: jnp.array):
@@ -300,7 +298,7 @@ def get_P_l(nelectrons: int, natoms: int, ndim: int, log_network_inner: nn.AINet
                                          in_axes=(None, 0, None, None, None), out_axes=0),
                                 in_axes=(None, 0, None, None, None), out_axes=0)
 
-    def generate_points_information(data: nn.AINetData, params: nn.ParamTree, Points: jnp.array, weights: float):
+    def generate_points_information(data: nn.FermiNetData, params: nn.ParamTree, Points: jnp.array, weights: float):
         ae = jnp.reshape(data.positions, [-1, 1, ndim]) - data.atoms[None, ...]
         r_ae = jnp.linalg.norm(ae, axis=-1)
         r_ae = jnp.reshape(r_ae, (nelectrons, natoms, 1))

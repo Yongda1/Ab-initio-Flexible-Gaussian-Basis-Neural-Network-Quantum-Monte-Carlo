@@ -705,7 +705,7 @@ def make_schnet_electron_nuclear_convolution() -> ...:
 
 
 def make_fermi_net_layers(
-    nspins: Tuple[int, int], natoms: int, hidden_dims_Ynlm, options: FermiNetOptions
+    nspins: Tuple[int, int], natoms: int, nelectrons: int, hidden_dims_Ynlm, options: FermiNetOptions
 ) -> Tuple[InitLayersFn, ApplyLayersFn]:
   """Creates the permutation-equivariant and interaction layers for FermiNet.
 
@@ -1084,7 +1084,7 @@ def make_fermi_net_layers(
 
     temp = ae / r_ae
     y_lm_s_p = jax.vmap(jax.vmap(y_l_real, in_axes=0), in_axes=0)(temp)
-    y_lm_s_p = jnp.reshape(y_lm_s_p, (6, -1))
+    y_lm_s_p = jnp.reshape(y_lm_s_p, (nelectrons, -1))
     #y_lm_d_f = jnp.reshape(y_lm_d_f, (nelectrons, -1)) #12 is the number of high spherical harmonic functions.
     y_one = y_lm_s_p
     for i in range(len(hidden_dims_Ynlm)):
@@ -1454,6 +1454,7 @@ def make_fermi_net(
     ndim: int = 3,
     determinants: int = 16,
     states: int = 0,
+    nelectrons: int,
     envelope: Optional[envelopes.Envelope] = None,
     feature_layer: Optional[FeatureLayer] = None,
     jastrow: Union[str, jastrows.JastrowType] = jastrows.JastrowType.NONE,
@@ -1558,7 +1559,7 @@ def make_fermi_net(
     if options.bias_orbitals:
       raise ValueError('Cannot bias orbitals w/STO envelope.')
 
-  equivariant_layers = make_fermi_net_layers(nspins, charges.shape[0], hidden_dims_Ynlm, options)
+  equivariant_layers = make_fermi_net_layers(nspins, charges.shape[0], nelectrons, hidden_dims_Ynlm, options)
 
   orbitals_init, orbitals_apply = make_orbitals(
       nspins=nspins,
