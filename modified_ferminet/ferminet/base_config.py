@@ -220,6 +220,8 @@ def default() -> ml_collections.ConfigDict:
           'scale_by_nuclear_distance': False,
           'blocks': 1,  # Number of blocks to split the MCMC sampling into
       },
+      'single_move': False,
+      'pp': False,
       'network': {
           'network_type': 'ferminet',  # One of 'ferminet' or 'psiformer'.
           # If true, the network outputs complex numbers rather than real.
