@@ -11,15 +11,16 @@ logging.set_verbosity(logging.INFO)
 
 # Define H2 molecule
 cfg = base_config.default()
-cfg.system.electrons = (2, 2)  # (alpha electrons, beta electrons)
-cfg.system.nelectrons = 4
+cfg.system.electrons = (3, 3)  # (alpha electrons, beta electrons)
+cfg.system.nelectrons = 6
 cfg.single_move = False
-cfg.pp_use = True
+cfg.pp_use = False
 cfg.network.complex = True
 cfg.system.molecule = [system.Atom('C', (0, 0, 0))]
 # Set training parameters
 cfg.batch_size = 100
 cfg.pretrain.iterations = 10
+cfg.network.jastrow = 'simple_ee'
 cfg.optim.optimizer = 'adam'
 cfg.network.determinants = 1
 cfg.network.full_det = True

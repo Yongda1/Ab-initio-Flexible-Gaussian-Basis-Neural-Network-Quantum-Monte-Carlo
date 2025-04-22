@@ -59,7 +59,7 @@ def default() -> ml_collections.ConfigDict:
           # 'vmc_overlap': minimize \sum_i <H_i> + \lambda \sum_ij <psi_i psi_j>
           'objective': 'vmc',
           'iterations': 1000,  # number of iterations
-          'optimizer': 'kfac',  # one of adam, kfac, lamb, none
+          'optimizer': 'adam',  # one of adam, kfac, lamb, none
           'laplacian': 'default',  # of of default or folx (for forward lapl)
           # If 0, use standard vmap. If >0, the max batch size for batched_vmap
           'max_vmap_batch_size': 0,
@@ -82,7 +82,7 @@ def default() -> ml_collections.ConfigDict:
           # If true, keep the parameters and optimizer state from the previous
           # step and revert them if they become NaN after an update. Mainly
           # useful for excited states
-          'reset_if_nan': False,
+          'reset_if_nan': True,
           # If using Wasserstein QMC, this parameter controls the amount of
           # "default" VMC gradient to mix in. Otherwise, it is ignored.
           'vmc_weight': 0.0,
@@ -198,13 +198,13 @@ def default() -> ml_collections.ConfigDict:
           # Number of burn in steps after pretraining.  If zero do not burn in
           # or reinitialize walkers.
           'burn_in': 100,
-          'steps': 10,  # Number of MCMC steps to make between network updates.
+          'steps': 0,  # Number of MCMC steps to make between network updates.
           # Width of (atom-centred) Gaussian used to generate initial electron
           # configurations.
           'init_width': 1.0,
           # Width of Gaussian used for random moves for RMW or step size for
           # HMC.
-          'move_width': 0.02,
+          'move_width': 0.01,
           # Number of steps after which to update the adaptive MCMC step size
           'adapt_frequency': 100,
           'use_hmc': False,  # Use HMC (True) or Random Walk Metropolis (False)
@@ -276,7 +276,7 @@ def default() -> ml_collections.ConfigDict:
           },
           # Config common to all architectures.
           'determinants': 16,  # Number of determinants.
-          'bias_orbitals': False,  # include bias in last layer to orbitals
+          'bias_orbitals': True,  # include bias in last layer to orbitals
           # If true, determinants are dense rather than block-sparse
           'full_det': True,
           # If specified, include a pre-determinant Jastrow factor.
@@ -307,7 +307,7 @@ def default() -> ml_collections.ConfigDict:
       'debug': {
           # Check optimizer state, parameters and loss and raise an exception if
           # NaN is found.
-          'check_nan': False,
+          'check_nan': True,
           'deterministic': False,  # Use a deterministic seed.
       },
       'pretrain': {

@@ -501,7 +501,7 @@ def train(cfg: ml_collections.ConfigDict, writer_manager=None):
 
   use_complex = cfg.network.get('complex', False)
   if cfg.network.network_type == 'ferminet':
-    spins_test = jnp.array([[1. , 1., - 1., - 1.,]])
+    spins_test = jnp.array([[1. , 1.,  1, - 1., - 1., -1]])
     parallel_indices, antiparallel_indices, n_parallel, n_antiparallel = \
         spin_indices.jastrow_indices_ee(spins=spins_test,
                                         nelectrons=cfg.system.nelectrons)
@@ -752,6 +752,7 @@ def train(cfg: ml_collections.ConfigDict, writer_manager=None):
       )
 
   if cfg.pp_use:
+      """we need debug this pseudopotential module 22.4.2025. I am not sure if it is working well."""
       natoms = 1
       charges = jnp.array([4.0])
       Rn_local = jnp.array([[1.0, 3.0, 2.0]])

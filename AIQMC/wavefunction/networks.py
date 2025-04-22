@@ -1309,13 +1309,14 @@ def make_orbitals(
     # Added pre-determinant for compatibility with pretraining.
     """I dont understand when the jastrow is applied, the energy is not good."""
     if jastrow_apply is not None:
-
+        '''
         jastrow = jnp.exp(
             jastrow_apply(r_ee, params['jastrow'], nspins) / sum(nspins)
         )
         orbitals = [orbital * jastrow for orbital in orbitals]
         '''
         """good news is my Jastrow is working well. next is testing the angular momentum part."""
+        """It shows some unstability. Maybe it is due to we dont have the information of derivative? 22.4.2025."""
         r_ee = jnp.reshape(r_ee, (6, -1))
         #r_ae = jnp.reshape(r_ae, (6, -1))
         jastrow = jnp.exp(jastrow_ee_apply(r_ee=r_ee,
@@ -1324,7 +1325,6 @@ def make_orbitals(
                         params=params['jastrow_ee']) / 6) #+ jastrow_ae_apply(r_ae=r_ae, params=params['jastrow_ae'])/6)
 
         #jax.debug.print("jastrow:{}", jastrow)
-        '''
         orbitals = [orbital * jastrow for orbital in orbitals]
 
     return orbitals
