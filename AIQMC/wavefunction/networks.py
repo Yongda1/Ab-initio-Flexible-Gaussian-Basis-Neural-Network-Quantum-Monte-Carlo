@@ -15,7 +15,6 @@
 """Implementation of Fermionic Neural Network in JAX."""
 import enum
 from typing import Any, Iterable, Mapping, MutableMapping, Optional, Sequence, Tuple, Union
-
 import attr
 import chex
 from AIQMC.wavefunction import envelopes
@@ -828,7 +827,7 @@ def make_fermi_net_layers(
     key, subkey = jax.random.split(key)
     layers = []
     layers_y = []
-    dims_y_in = 4 * natoms
+    dims_y_in = (4 + 12) * natoms
     for i in range(len(options.hidden_dims)):
       layer_params = {}
       layer_params_y = {}
@@ -1084,9 +1083,13 @@ def make_fermi_net_layers(
 
     temp = ae / r_ae
     y_lm_s_p = jax.vmap(jax.vmap(y_l_real, in_axes=0), in_axes=0)(temp)
+    y_lm_d_f = jax.vmap(jax.vmap(y_l_real_high, in_axes=0), in_axes=0)(ae, r_ae)
+    #jax.debug.print("y_lm_d_f:{}", y_lm_d_f)
+    #jax.debug.print("y_lm_s_p:{}", y_lm_s_p)
     y_lm_s_p = jnp.reshape(y_lm_s_p, (nelectrons, -1))
-    #y_lm_d_f = jnp.reshape(y_lm_d_f, (nelectrons, -1)) #12 is the number of high spherical harmonic functions.
-    y_one = y_lm_s_p
+    y_lm_d_f = jnp.reshape(y_lm_d_f, (nelectrons, -1)) #12 is the number of high spherical harmonic functions.
+    y_one = jnp.concatenate([y_lm_s_p, y_lm_d_f], axis=-1)
+
     for i in range(len(hidden_dims_Ynlm)):
         y_one = apply_layer_y(params['streams_y'][i], y_one)
 
@@ -1129,7 +1132,6 @@ def make_orbitals(
     charges: jnp.ndarray,
     parallel_indices: jnp.array,
     antiparallel_indices: jnp.array,
-    nelectrons: int,
     n_parallel: int,
     n_antiparallel: int,
     options: BaseNetworkOptions,
@@ -1215,7 +1217,7 @@ def make_orbitals(
       )
     params['orbital'] = orbitals
     params['jastrow_ee'] = jastrow_ee_init(n_parallel=n_parallel, n_antiparallel=n_antiparallel)
-    params['jastrow_ae'] = jastrow_ae_init(nelectrons=nelectrons, natoms=1)
+    params['jastrow_ae'] = jastrow_ae_init(nelectrons=6, natoms=1)
     return params
 
   def apply(
@@ -1305,24 +1307,25 @@ def make_orbitals(
 
     # Optionally apply Jastrow factor for electron cusp conditions.
     # Added pre-determinant for compatibility with pretraining.
-    '''
+    """I dont understand when the jastrow is applied, the energy is not good."""
     if jastrow_apply is not None:
-        
+
         jastrow = jnp.exp(
             jastrow_apply(r_ee, params['jastrow'], nspins) / sum(nspins)
         )
         orbitals = [orbital * jastrow for orbital in orbitals]
         '''
-    """good news is my Jastrow is working well. next is testing the angular momentum part."""
-    r_ee = jnp.reshape(r_ee, (nelectrons, -1))
-    r_ae = jnp.reshape(r_ae, (nelectrons, -1))
-    jastrow = jnp.exp(jastrow_ee_apply(r_ee=r_ee,
-                    parallel_indices=parallel_indices,
-                    antiparallel_indices=antiparallel_indices,
-                    params=params['jastrow_ee']) / nelectrons +
-                      jastrow_ae_apply(r_ae=r_ae, params=params['jastrow_ae'])/nelectrons)
+        """good news is my Jastrow is working well. next is testing the angular momentum part."""
+        r_ee = jnp.reshape(r_ee, (6, -1))
+        #r_ae = jnp.reshape(r_ae, (6, -1))
+        jastrow = jnp.exp(jastrow_ee_apply(r_ee=r_ee,
+                        parallel_indices=parallel_indices,
+                        antiparallel_indices=antiparallel_indices,
+                        params=params['jastrow_ee']) / 6) #+ jastrow_ae_apply(r_ae=r_ae, params=params['jastrow_ae'])/6)
 
-    orbitals = [orbital * jastrow for orbital in orbitals]
+        #jax.debug.print("jastrow:{}", jastrow)
+        '''
+        orbitals = [orbital * jastrow for orbital in orbitals]
 
     return orbitals
 
@@ -1568,7 +1571,6 @@ def make_fermi_net(
       charges=charges,
       parallel_indices=parallel_indices,
       antiparallel_indices=antiparallel_indices,
-      nelectrons=nelectrons,
       n_parallel=n_parallel,
       n_antiparallel=n_antiparallel,
       options=options,

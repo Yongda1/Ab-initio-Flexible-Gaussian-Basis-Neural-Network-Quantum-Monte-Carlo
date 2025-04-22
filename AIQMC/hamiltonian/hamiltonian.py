@@ -15,10 +15,12 @@
 """Evaluating the Hamiltonian on a wavefunction."""
 
 from typing import Any, Callable, Optional, Sequence, Tuple, Union
+
 import chex
-from modified_ferminet.ferminet import networks
+from AIQMC.wavefunction import networks
 from modified_ferminet.ferminet import pseudopotential as pp
-from modified_ferminet.ferminet.utils import utils
+from AIQMC.tools.utils import utils
+#import folx
 import jax
 from jax import lax
 import jax.numpy as jnp
@@ -136,7 +138,7 @@ def local_kinetic_energy(
         result -= 1.j * jnp.sum(primal * phase_primal)
       return result
 
-    return _lapl_over_f
+  return _lapl_over_f
 
 
 def potential_electron_electron(r_ee: Array) -> jnp.ndarray:
@@ -199,14 +201,14 @@ def local_energy(
     use_scan: bool = False,
     complex_output: bool = False,
     laplacian_method: str = 'default',) -> LocalEnergy:
-  """Creates the function to evaluate the local energy.
-  """
+  """Creates the function to evaluate the local energy."""
   del nspins
 
   def _e_l(
       params: networks.ParamTree, key: chex.PRNGKey, data: networks.FermiNetData
   ) -> Tuple[jnp.ndarray, Optional[jnp.ndarray]]:
     """Returns the total energy.
+
     Args:
       params: network parameters.
       key: RNG state.

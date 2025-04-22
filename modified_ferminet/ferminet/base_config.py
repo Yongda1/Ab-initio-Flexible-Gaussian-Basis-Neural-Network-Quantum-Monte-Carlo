@@ -58,7 +58,7 @@ def default() -> ml_collections.ConfigDict:
           # 'wqmc': minimise <H> by Wasserstein QMC
           # 'vmc_overlap': minimize \sum_i <H_i> + \lambda \sum_ij <psi_i psi_j>
           'objective': 'vmc',
-          'iterations': 100,  # number of iterations
+          'iterations': 1000,  # number of iterations
           'optimizer': 'kfac',  # one of adam, kfac, lamb, none
           'laplacian': 'default',  # of of default or folx (for forward lapl)
           # If 0, use standard vmap. If >0, the max batch size for batched_vmap

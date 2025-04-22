@@ -58,7 +58,7 @@ def default() -> ml_collections.ConfigDict:
           # 'wqmc': minimise <H> by Wasserstein QMC
           # 'vmc_overlap': minimize \sum_i <H_i> + \lambda \sum_ij <psi_i psi_j>
           'objective': 'vmc',
-          'iterations': 100,  # number of iterations
+          'iterations': 1000,  # number of iterations
           'optimizer': 'kfac',  # one of adam, kfac, lamb, none
           'laplacian': 'default',  # of of default or folx (for forward lapl)
           # If 0, use standard vmap. If >0, the max batch size for batched_vmap
@@ -149,10 +149,10 @@ def default() -> ml_collections.ConfigDict:
           # list of system.Atom objects with element type and position.
           'molecule': config_dict.placeholder(list),
           # number of spin up, spin-down electrons
-          'nelectrons': 6,
           'electrons': tuple(),
           # Dimensionality. Change with care. FermiNet implementation currently
           # assumes 3D systems.
+          'nelectrons': 6,
           'ndim': 3,
           # Number of excited states. If 0, use normal ground state machinery.
           # If 1, compute ground state using excited state machinery. If >1,
@@ -221,6 +221,8 @@ def default() -> ml_collections.ConfigDict:
           'scale_by_nuclear_distance': False,
           'blocks': 1,  # Number of blocks to split the MCMC sampling into
       },
+      'single_move': False,
+      'pp_use': False,
       'network': {
           'network_type': 'ferminet',  # One of 'ferminet' or 'psiformer'.
           # If true, the network outputs complex numbers rather than real.

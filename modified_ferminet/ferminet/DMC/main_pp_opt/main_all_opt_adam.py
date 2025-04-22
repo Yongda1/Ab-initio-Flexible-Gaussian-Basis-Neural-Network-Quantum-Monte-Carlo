@@ -272,6 +272,7 @@ def train(cfg: ml_collections.ConfigDict, writer_manager=None):
       determinants=cfg.network.determinants,
       states=cfg.system.states,
       envelope=envelope,
+      nelectrons=6,
       feature_layer=feature_layer,
       jastrow=cfg.network.get('jastrow', 'default'),
       bias_orbitals=cfg.network.bias_orbitals,
@@ -449,7 +450,7 @@ def train(cfg: ml_collections.ConfigDict, writer_manager=None):
       logging.info(logging_str, *logging_args)
       writer.write(t, **writer_kwargs)
 
-      if t % 10 == 0:
+      if t % 100 == 0:
         checkpoint.save(ckpt_save_path, t, data, params, opt_state, mcmc_width)
 
 
@@ -461,10 +462,10 @@ cfg.system.electrons = (3, 3)  # (alpha electrons, beta electrons)
 cfg.network.complex = True
 cfg.system.molecule = [system.Atom('C', (0, 0, 0))]
 # Set training parameters
-cfg.batch_size = 4
+cfg.batch_size = 100
 cfg.pretrain.iterations = 20
 cfg.optim.optimizer = 'adam'
-cfg.optim.iterations = 1
+cfg.optim.iterations = 1000
 #cfg.system.use_pp = True
 #cfg.system.pp.symbols = 'C'
 cfg.network.determinants = 1

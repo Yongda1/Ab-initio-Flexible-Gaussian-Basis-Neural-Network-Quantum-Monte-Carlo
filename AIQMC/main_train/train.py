@@ -21,22 +21,24 @@ import time
 from typing import Optional, Mapping, Sequence, Tuple, Union
 from absl import logging
 import chex
-from modified_ferminet.ferminet import checkpoint
-from modified_ferminet.ferminet import constants
-#from ferminet import curvature_tags_and_blocks
-from modified_ferminet.ferminet import envelopes
-from modified_ferminet.ferminet import hamiltonian
-from modified_ferminet.ferminet import loss as qmc_loss_functions
-from modified_ferminet.ferminet import mcmc
-from modified_ferminet.ferminet import networks
-from modified_ferminet.ferminet import observables
-from modified_ferminet.ferminet import pretrain
-from modified_ferminet.ferminet import psiformer
-from modified_ferminet.ferminet.utils import statistics
-from modified_ferminet.ferminet.utils import system
-from modified_ferminet.ferminet.utils import utils
-from modified_ferminet.ferminet.utils import writers
-#from modified_ferminet.ferminet import VMCmcstep
+from AIQMC import checkpoint
+from AIQMC import constants
+from AIQMC.wavefunction import envelopes
+from AIQMC.hamiltonian import hamiltonian
+from AIQMC.hamiltonian import pphamiltonian
+from AIQMC.loss_function import loss as qmc_loss_functions
+from AIQMC.loss_function import pploss as qmc_pploss_functions
+from AIQMC.monte_carlo_step import mcmc
+from AIQMC.monte_carlo_step import VMCmcstep
+from AIQMC.wavefunction import networks
+from AIQMC import observables
+from AIQMC.pretainHF import pretrain
+from AIQMC.psiformer import psiformer
+from AIQMC.tools.utils import statistics
+from AIQMC.tools.utils import system
+from AIQMC.tools.utils import utils
+from AIQMC.tools.utils import writers
+
 import jax
 from jax.experimental import multihost_utils
 import jax.numpy as jnp
@@ -499,14 +501,14 @@ def train(cfg: ml_collections.ConfigDict, writer_manager=None):
 
   use_complex = cfg.network.get('complex', False)
   if cfg.network.network_type == 'ferminet':
-    spins_test = jnp.array([[1. , 1.,  1., - 1., - 1., - 1.,]])
+    spins_test = jnp.array([[1. , 1., - 1., - 1.,]])
     parallel_indices, antiparallel_indices, n_parallel, n_antiparallel = \
         spin_indices.jastrow_indices_ee(spins=spins_test,
-                                        nelectrons=6)
+                                        nelectrons=cfg.system.nelectrons)
     network = networks.make_fermi_net(
         nspins,
         charges,
-        nelectrons=6,
+        nelectrons=cfg.system.nelectrons,
         ndim=cfg.system.ndim,
         determinants=cfg.network.determinants,
         states=cfg.system.states,
@@ -730,121 +732,79 @@ def train(cfg: ml_collections.ConfigDict, writer_manager=None):
   # Main training
 
   # Construct MCMC step
-  atoms_to_mcmc = atoms if cfg.mcmc.scale_by_nuclear_distance else None
-
-  mcmc_step = mcmc.make_mcmc_step(
-      batch_network,
-      device_batch_size,
-      steps=cfg.mcmc.steps,
-      atoms=atoms_to_mcmc,
-      blocks=cfg.mcmc.blocks * num_states,
-  )
-  '''
-  mcmc_step = VMCmcstep.main_monte_carlo(f=signed_network,
-                                         tstep=0.02,
-                                         ndim=3,
-                                         nelectrons=6,
-                                         nsteps=10,
-                                         batch_size=device_batch_size)
-  '''
-  # Construct loss and optimizer
-  laplacian_method = cfg.optim.get('laplacian', 'default')
-  if cfg.system.make_local_energy_fn:
-    if laplacian_method != 'default':
-      raise NotImplementedError(f'Laplacian method {laplacian_method}'
-                                'not yet supported by custom local energy fns.')
-    if cfg.optim.objective == 'vmc_overlap':
-      raise NotImplementedError('Overlap penalty not yet supported for custom'
-                                'local energy fns.')
-    local_energy_module, local_energy_fn = (
-        cfg.system.make_local_energy_fn.rsplit('.', maxsplit=1))
-    local_energy_module = importlib.import_module(local_energy_module)
-    make_local_energy = getattr(local_energy_module, local_energy_fn)  # type: hamiltonian.MakeLocalEnergy
-    local_energy_fn = make_local_energy(
-        f=signed_network,
-        charges=charges,
-        nspins=nspins,
-        use_scan=False,
-        states=cfg.system.get('states', 0),
-        **cfg.system.make_local_energy_kwargs)
+  if cfg.single_move:
+      """do not use single move. It is not stable."""
+      mcmc_step = VMCmcstep.main_monte_carlo(f=signed_network,
+                                                tstep=0.02,
+                                                ndim=3,
+                                                nelectrons=cfg.system.nelectrons,
+                                                nsteps=10,
+                                                batch_size=device_batch_size)
   else:
-    pp_symbols = cfg.system.get('pp', {'symbols': None}).get('symbols')
-    local_energy_fn = hamiltonian.local_energy(
-        f=signed_network,
-        charges=charges,
-        nspins=nspins,
-        use_scan=False,
-        complex_output=use_complex,
-        laplacian_method=laplacian_method,
-        states=cfg.system.get('states', 0),
-        state_specific=(cfg.optim.objective == 'vmc_overlap'),
-        pp_type=cfg.system.get('pp', {'type': 'ccecp'}).get('type'),
-        pp_symbols=pp_symbols if cfg.system.get('use_pp') else None)
+      atoms_to_mcmc = atoms if cfg.mcmc.scale_by_nuclear_distance else None
 
-  if cfg.optim.get('spin_energy', 0.0) > 0.0:
-    # Minimize <H + c * S^2> instead of just <H>
-    # Create a new local_energy function that takes the weighted sum of
-    # the local energy and the local spin magnitude.
-    local_s2_fn = observables.make_s2(
-        signed_network,
-        nspins=nspins,
-        states=cfg.system.states)
-    def local_energy_and_s2_fn(params, keys, data):
-      local_energy, aux_data = local_energy_fn(params, keys, data)
-      s2 = local_s2_fn(params, data, None)
-      weight = cfg.optim.get('spin_energy', 0.0)
-      if cfg.system.states:
-        aux_data = aux_data + weight * s2
-        local_energy_and_s2 = local_energy + weight * jnp.trace(s2)
-      else:
-        local_energy_and_s2 = local_energy + weight * s2
-      return local_energy_and_s2, aux_data
-    local_energy = local_energy_and_s2_fn
-  else:
-    local_energy = local_energy_fn
+      mcmc_step = mcmc.make_mcmc_step(
+          batch_network,
+          device_batch_size,
+          steps=cfg.mcmc.steps,
+          atoms=atoms_to_mcmc,
+          blocks=cfg.mcmc.blocks * num_states,
+      )
 
-  if cfg.optim.objective == 'vmc':
-    evaluate_loss = qmc_loss_functions.make_loss(
-        log_network if use_complex else logabs_network,
-        local_energy,
-        clip_local_energy=cfg.optim.clip_local_energy,
-        clip_from_median=cfg.optim.clip_median,
-        center_at_clipped_energy=cfg.optim.center_at_clip,
-        complex_output=use_complex,
-        max_vmap_batch_size=cfg.optim.get('max_vmap_batch_size', 0),
-    )
-  elif cfg.optim.objective == 'wqmc':
-    evaluate_loss = qmc_loss_functions.make_wqmc_loss(
-        log_network if use_complex else logabs_network,
-        local_energy,
-        clip_local_energy=cfg.optim.clip_local_energy,
-        clip_from_median=cfg.optim.clip_median,
-        center_at_clipped_energy=cfg.optim.center_at_clip,
-        complex_output=use_complex,
-        max_vmap_batch_size=cfg.optim.get('max_vmap_batch_size', 0),
-        vmc_weight=cfg.optim.get('vmc_weight', 1.0)
-    )
-  elif cfg.optim.objective == 'vmc_overlap':
-    if not cfg.system.states:
-      raise ValueError('Overlap penalty only works with excited states')
-    if cfg.optim.overlap.weights is None:
-      overlap_weight = tuple([1./(1.+x) for x in range(cfg.system.states)])
-      overlap_weight = tuple([x/sum(overlap_weight) for x in overlap_weight])
-    else:
-      assert len(cfg.optim.overlap.weights) == cfg.system.states
-      overlap_weight = cfg.optim.overlap.weights
-    evaluate_loss = qmc_loss_functions.make_energy_overlap_loss(
-        log_network_for_loss,
-        local_energy,
-        clip_local_energy=cfg.optim.clip_local_energy,
-        clip_from_median=cfg.optim.clip_median,
-        center_at_clipped_energy=cfg.optim.center_at_clip,
-        overlap_penalty=cfg.optim.overlap.penalty,
-        overlap_weight=overlap_weight,
-        complex_output=cfg.network.get('complex', False),
-        max_vmap_batch_size=cfg.optim.get('max_vmap_batch_size', 0))
+  if cfg.pp_use:
+      natoms = 1
+      charges = jnp.array([4.0])
+      Rn_local = jnp.array([[1.0, 3.0, 2.0]])
+      Rn_non_local = jnp.array([[[2.0, 2.0], [2.0, 2.0], [2.0, 2.0]]])
+      Local_coes = jnp.array([[4.00000, 57.74008, -25.81955]])
+      Local_exps = jnp.array([[14.43502, 8.39889, 7.38188]])
+      Non_local_coes = jnp.array([[[52.13345, 0], [0, 0], [0, 0]]])
+      Non_local_exps = jnp.array([[[7.76079, 0], [0, 0], [0, 0]]])
+
+      localenergy = pphamiltonian.local_energy(f=signed_network,
+                                               lognetwork=log_network,
+                                               charges=charges,
+                                               rn_local=Rn_local,
+                                               local_coes=Local_coes,
+                                               local_exps=Local_exps,
+                                               rn_non_local=Rn_non_local,
+                                               non_local_coes=Non_local_coes,
+                                               non_local_exps=Non_local_exps,
+                                               natoms=natoms,
+                                               nelectrons=cfg.system.nelectrons,
+                                               ndim=3,
+                                               list_l=2,
+                                               use_scan=False)
+
+      evaluate_loss = qmc_pploss_functions.make_loss(network=log_network,
+                                                   local_energy=localenergy,
+                                                   clip_local_energy=5.0,
+                                                   clip_from_median=False,
+                                                   center_at_clipped_energy=True,
+                                                   complex_output=True,
+                                                   )
   else:
-    raise ValueError(f'Not a recognized objective: {cfg.optim.objective}')
+      laplacian_method = cfg.optim.get('laplacian', 'default')
+      #pp_symbols = cfg.system.get('pp', {'symbols': None}).get('symbols')
+      local_energy_fn = hamiltonian.local_energy(
+          f=signed_network,
+          charges=charges,
+          nspins=nspins,
+          use_scan=False,
+          complex_output=use_complex,
+          laplacian_method=laplacian_method)
+      local_energy = local_energy_fn
+
+      if cfg.optim.objective == 'vmc':
+        evaluate_loss = qmc_loss_functions.make_loss(
+            log_network if use_complex else logabs_network,
+            local_energy,
+            clip_local_energy=cfg.optim.clip_local_energy,
+            clip_from_median=cfg.optim.clip_median,
+            center_at_clipped_energy=cfg.optim.center_at_clip,
+            complex_output=use_complex,
+            max_vmap_batch_size=cfg.optim.get('max_vmap_batch_size', 0),
+        )
 
   # Compute the learning rate
   def learning_rate_schedule(t_: jnp.ndarray) -> jnp.ndarray:
