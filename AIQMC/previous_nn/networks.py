@@ -584,35 +584,6 @@ def y_l_real_high(x: jnp.array, y: jnp.array):
                       1/4 * jnp.sqrt(21/(2 * jnp.pi)) * ((x[0] * (5 * x[2]**2 - y**2))/y**3),
                       1/4 * jnp.sqrt(105/jnp.pi) * (((x[0]**2 - x[1]**2) * x[3])/y**3),
                       1/4 * jnp.sqrt(35/(2 * jnp.pi)) * ((x[0] * (x[0]**2 - 3*x[1]**2))/y**3)])
-
-def exp_feature(x: jnp.array):
-    """
-    :param x: r_ae
-    :return:
-    """
-    return jnp.array([0.0051583 * jnp.exp(-1 * 13.073594 * x),
-                      0.0603424 * jnp.exp(-1 * 6.541187 * x),
-                      -0.1978471 * jnp.exp(-1 * 4.573411 * x),
-                      -0.0810340 * jnp.exp(-1 * 1.637494 * x),
-                      0.2321726 * jnp.exp(-1 * 0.819297 * x),
-                      0.2914643 * jnp.exp(-1 * 0.409924 * x),
-                      0.4336405 * jnp.exp(-1 * 0.231300 * x),
-                      0.2131940 * jnp.exp(-1 * 0.102619 * x),
-                      0.0049848 * jnp.exp(-1 * 0.051344 * x),
-                      1.000000 * jnp.exp(-1 * 0.127852 * x),
-                      0.0209076 * jnp.exp(-1 * 9.934169 * x),
-                      0.0572698 * jnp.exp(-1 * 3.886955 * x),
-                      0.1122682 * jnp.exp(-1 * 1.871016 * x),
-                      0.2130082 * jnp.exp(-1 * 0.935757 * x),
-                      0.2835815 * jnp.exp(-1 * 0.468003 * x),
-                      0.3011207 * jnp.exp(-1 * 0.239473 * x),
-                      0.2016934 * jnp.exp(-1 * 0.117063 * x),
-                      0.0453575 * jnp.exp(-1 * 0.058547 * x),
-                      0.0029775 * jnp.exp(-1 * 0.029281 * x),
-                      1.000000 * jnp.exp(-1 * 0.149161 * x),
-                      1.000000 * jnp.exp(-1 * 0.561160 * x)])
-
-
 ## Network layers: main layers ##
 
 
@@ -733,7 +704,7 @@ def make_schnet_electron_nuclear_convolution() -> ...:
 
 
 def make_fermi_net_layers(
-    nspins: Tuple[int, int], natoms: int, nelectrons: int, hidden_dims_Ynlm, hidden_dims_exp, options: FermiNetOptions
+    nspins: Tuple[int, int], natoms: int, nelectrons: int, hidden_dims_Ynlm, options: FermiNetOptions
 ) -> Tuple[InitLayersFn, ApplyLayersFn]:
   """Creates the permutation-equivariant and interaction layers for FermiNet.
 
@@ -856,16 +827,11 @@ def make_fermi_net_layers(
     key, subkey = jax.random.split(key)
     layers = []
     layers_y = []
-    layers_exp = []
     dims_y_in = (4 + 12) * natoms
-    dims_exponent_in = 21 * natoms
-
     for i in range(len(options.hidden_dims)):
       layer_params = {}
       layer_params_y = {}
-      layer_params_exponent = {}
-
-      key, single_key, single_y_key, single_exp_key, *double_keys, aux_key = jax.random.split(key, num=7)
+      key, single_key, single_y_key, *double_keys, aux_key = jax.random.split(key, num=6)
 
       # Learned convolution on each layer.
       if options.schnet_electron_electron_convolutions:
@@ -898,8 +864,6 @@ def make_fermi_net_layers(
       #jax.debug.print("i:{}", i)
       dims_y_out = hidden_dims_Ynlm[i]
 
-      dims_exp_out = hidden_dims_exp[i]
-
       layer_params['single'] = network_blocks.init_linear_layer(
           single_key,
           in_dim=dims_one_in,
@@ -911,12 +875,6 @@ def make_fermi_net_layers(
                                                                        out_dim=dims_y_out,
                                                                        include_bias=True)
       # jax.debug.print("single_parameters:{}", layer_params['single'])
-      layer_params_exponent['exponent'] = network_blocks.init_linear_layer(single_exp_key,
-                                                                           in_dim=dims_exponent_in,
-                                                                           out_dim=dims_exp_out,
-                                                                           include_bias=True)
-
-
 
 
       if i < len(options.hidden_dims) - 1 or options.use_last_layer:
@@ -946,11 +904,9 @@ def make_fermi_net_layers(
 
       layers.append(layer_params)
       layers_y.append(layer_params_y)
-      layers_exp.append(layer_params_exponent)
       dims_one_in = dims_one_out
       dims_two_in = dims_two_out
       dims_y_in = dims_y_out
-      dims_exponent_in = dims_exp_out
 
 
 
@@ -984,9 +940,6 @@ def make_fermi_net_layers(
 
     params['streams'] = layers
     params['streams_y'] = layers_y
-    params['streams_exp'] = layers_exp
-
-    #jax.debug.print("params[streams_exp]:{}", layers_exp)
     output_dims_y = dims_y_in
     return output_dims, output_dims_y, params
 
@@ -1064,15 +1017,8 @@ def make_fermi_net_layers(
         residual = lambda x, y: (x + y) / jnp.sqrt(2.0) if x.shape == y.shape else y
         y_one_next = jnp.tanh(network_blocks.linear_layer(y_one, **params['single_Ynlm']))
         y_one = residual(y_one, y_one_next)
-        """to be continued... 19.2.2025."""
+        """to be contiuned... 19.2.2025."""
         return y_one
-
-  def apply_layer_exp(params: Mapping[str, ParamTree], exp_one: jnp.array):
-      #jax.debug.print("exp_one:{}", exp_one)
-      #jax.debug.print("**params['exponent']:{}", **params['exponent'])
-      exp_one_next = network_blocks.linear_layer(exp_one, **params['exponent'])
-      return exp_one_next
-
 
   def apply(
       params,
@@ -1143,13 +1089,6 @@ def make_fermi_net_layers(
     y_lm_s_p = jnp.reshape(y_lm_s_p, (nelectrons, -1))
     y_lm_d_f = jnp.reshape(y_lm_d_f, (nelectrons, -1)) #12 is the number of high spherical harmonic functions.
     y_one = jnp.concatenate([y_lm_s_p, y_lm_d_f], axis=-1)
-    #jax.debug.print("r_ae:{}", r_ae)
-    exp_one = jax.vmap(jax.vmap(exp_feature, in_axes=0), in_axes=0)(r_ae)
-    #jax.debug.print("exp_one:{}", exp_one)
-    exp_one = jnp.reshape(exp_one, (nelectrons, -1))
-
-    for i in range(len(hidden_dims_exp)):
-        exp_one = apply_layer_exp(params['streams_exp'][i], exp_one)
 
     for i in range(len(hidden_dims_Ynlm)):
         y_one = apply_layer_y(params['streams_y'][i], y_one)
@@ -1180,8 +1119,7 @@ def make_fermi_net_layers(
       # the output of the one-electron stream to the orbital projection layer.
       h_to_orbitals = h_one
     y_to_orbitals = y_one
-    exp_to_orbitals = exp_one
-    return h_to_orbitals, y_to_orbitals, exp_to_orbitals
+    return h_to_orbitals, y_to_orbitals
 
   return init, apply
 
@@ -1304,7 +1242,7 @@ def make_orbitals(
       nalpha+nbeta) (or (ndet, nalpha, nalpha) and (ndet, nbeta, nbeta)).
     """
     ae, ee, r_ae, r_ee = construct_input_features(pos, atoms, ndim=options.ndim)
-    h_to_orbitals, y_to_orbitals, exp_to_orbitals = equivariant_layers_apply(
+    h_to_orbitals, y_to_orbitals = equivariant_layers_apply(
         params['layers'],
         ae=ae,
         r_ae=r_ae,
@@ -1314,10 +1252,7 @@ def make_orbitals(
         charges=charges,
     )
     #jax.debug.print("y_to_orbitals:{}", y_to_orbitals)
-    #jax.debug.print("exp_to_orbitals:{}", exp_to_orbitals)
-    h_to_orbitals = h_to_orbitals * \
-                    jnp.sum(y_to_orbitals, axis=-1, keepdims=True) * \
-                    jnp.sum(exp_to_orbitals, axis=-1, keepdims=True)
+    h_to_orbitals = h_to_orbitals * jnp.sum(y_to_orbitals, axis=-1, keepdims=True)
 
     if options.envelope.apply_type == envelopes.EnvelopeType.PRE_ORBITAL:
       envelope_factor = options.envelope.apply(
@@ -1382,14 +1317,14 @@ def make_orbitals(
         '''
         """good news is my Jastrow is working well. next is testing the angular momentum part."""
         """It shows some unstability. Maybe it is due to we dont have the information of derivative? 22.4.2025."""
-        #r_ee = jnp.reshape(r_ee, (6, -1))
+        r_ee = jnp.reshape(r_ee, (6, -1))
         #r_ae = jnp.reshape(r_ae, (6, -1))
         jastrow = jnp.exp(jastrow_ee_apply(r_ee=r_ee,
                         parallel_indices=parallel_indices,
                         antiparallel_indices=antiparallel_indices,
                         params=params['jastrow_ee']) / 6) #+ jastrow_ae_apply(r_ae=r_ae, params=params['jastrow_ae'])/6)
 
-        jax.debug.print("jastrow:{}", jastrow)
+        #jax.debug.print("jastrow:{}", jastrow)
         orbitals = [orbital * jastrow for orbital in orbitals]
 
     return orbitals
@@ -1535,7 +1470,6 @@ def make_fermi_net(
     # FermiNet-specific kwargs below.
     hidden_dims: FermiLayers = ((256, 32), (256, 32), (256, 32)),
     hidden_dims_Ynlm = ((16), (16), (16), (16)),
-    hidden_dims_exp = ((16), (16), (16), (16)),
     use_last_layer: bool = False,
     separate_spin_channels: bool = False,
     schnet_electron_electron_convolutions: Tuple[int, ...] = tuple(),
@@ -1630,8 +1564,7 @@ def make_fermi_net(
     if options.bias_orbitals:
       raise ValueError('Cannot bias orbitals w/STO envelope.')
 
-  equivariant_layers = make_fermi_net_layers(nspins, charges.shape[0], nelectrons,
-                                             hidden_dims_Ynlm, hidden_dims_exp, options)
+  equivariant_layers = make_fermi_net_layers(nspins, charges.shape[0], nelectrons, hidden_dims_Ynlm, options)
 
   orbitals_init, orbitals_apply = make_orbitals(
       nspins=nspins,

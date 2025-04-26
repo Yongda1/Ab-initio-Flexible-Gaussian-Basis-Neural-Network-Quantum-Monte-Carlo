@@ -1,0 +1,254 @@
+"""This module is the main function for DMC.
+we also need make the dmc engine be suitable for the large scale run."""
+import numpy as np
+import jax.numpy as jnp
+import time
+import jax
+import kfac_jax
+from jax.experimental import multihost_utils
+from typing import Optional, Tuple, Union
+from absl import logging
+from AIQMC import checkpoint # this check point needs to be rewritten.
+from AIQMC.wavefunction import networks
+from AIQMC.wavefunction import envelopes
+from AIQMC.tools import utils
+from AIQMC.hamiltonian import hamiltonian
+from AIQMC.DMC.total_energy import calculate_total_energy
+from AIQMC.DMC.dmc import dmc_propagate
+from AIQMC.DMC.branch import branch
+from AIQMC.DMC.estimate_energy import estimate_energy
+from AIQMC.tools.utils import writers
+from AIQMC.wavefunction import spin_indices
+from AIQMC import constants
+import ml_collections
+
+def main(cfg: ml_collections.ConfigDict,
+         charges: jnp.array,
+         tstep: float,
+         nelectrons: int,
+         nsteps: int, #meaningless parameters.
+         natoms: int,
+         ndim: int,
+         batch_size: int,
+         iterations: int, #means the steps in DMC run.
+         nblocks: int,
+         feedback: float,
+         nspins: Tuple,
+         save_path: Optional[str],
+         restore_path: Optional[str],):
+
+    logging.info('Diffusion Quantum Monte Carlo Start running')
+    num_devices = jax.local_device_count()  # the amount of GPU per host
+    num_hosts = jax.device_count() // num_devices  # the amount of host
+    logging.info('Start QMC with $i devices per host, across %i hosts.', num_devices, num_hosts)
+    if batch_size % (num_devices * num_hosts) != 0:
+        raise ValueError('Batch size must be divisible by number of devices!')
+    host_batch_size = batch_size // num_hosts  # how many configurations we put on one host
+    device_batch_size = host_batch_size // num_devices  # how many configurations we put on one GPU
+    seed = jnp.asarray([1e6 * time.time()])
+    seed = int(multihost_utils.broadcast_one_to_all(seed)[0])
+    key = jax.random.PRNGKey(seed)
+    sharded_key = kfac_jax.utils.make_different_rng_key_on_all_devices(key)
+    sharded_key, subkeys = kfac_jax.utils.p_split(sharded_key)
+    ckpt_save_path = checkpoint.create_save_path(save_path=save_path)
+    ckpt_restore_path = checkpoint.get_restore_path(restore_path=restore_path)
+    """here, the restore calculation can be read from save path or restore path."""
+    ckpt_restore_filename = (checkpoint.find_last_checkpoint(ckpt_save_path))
+    jax.debug.print("ckpt_restore_filename:{}", ckpt_restore_filename)
+    if ckpt_restore_filename:
+        (t_init,
+         data,
+         params,
+         opt_state_ckpt,
+         mcmc_width_ckpt,
+         density_state_ckpt) = checkpoint.restore(ckpt_restore_filename, host_batch_size)
+        jax.debug.print("data.position:{}", data.positions)
+    else:
+        raise ValueError('DMC must use the wave function from VMC!')
+
+    spins_test = jnp.array([[1., 1., 1, - 1., - 1., -1]])
+    parallel_indices, antiparallel_indices, n_parallel, n_antiparallel = \
+        spin_indices.jastrow_indices_ee(spins=spins_test,
+                                        nelectrons=cfg.system.nelectrons)
+    envelope = envelopes.make_isotropic_envelope()
+    feature_layer = networks.make_ferminet_features(
+        natoms=1,
+        nspins=(3, 3),
+        ndim=3,
+        rescale_inputs=cfg.network.get('rescale_inputs', False),
+    )
+    use_complex = cfg.network.get('complex', False)
+    network = networks.make_fermi_net(
+        nspins,
+        charges,
+        nelectrons=cfg.system.nelectrons,
+        ndim=cfg.system.ndim,
+        determinants=cfg.network.determinants,
+        states=cfg.system.states,
+        envelope=envelope,
+        feature_layer=feature_layer,
+        jastrow=cfg.network.get('jastrow', 'default'),
+        bias_orbitals=cfg.network.bias_orbitals,
+        full_det=cfg.network.full_det,
+        rescale_inputs=cfg.network.get('rescale_inputs', False),
+        complex_output=use_complex,
+        parallel_indices=parallel_indices,
+        antiparallel_indices=antiparallel_indices,
+        n_parallel=n_parallel,
+        n_antiparallel=n_antiparallel,
+        **cfg.network.ferminet,
+    )
+
+    signed_network = network.apply
+
+    def log_network(*args, **kwargs):
+        phase, mag = signed_network(*args, **kwargs)
+        return mag + 1.j * phase
+
+    logabs_network = lambda *args, **kwargs: signed_network(*args, **kwargs)[1]
+
+    laplacian_method = cfg.optim.get('laplacian', 'default')
+    local_energy_fn = hamiltonian.local_energy(
+        f=signed_network,
+        charges=charges,
+        nspins=nspins,
+        use_scan=False,
+        complex_output=use_complex,
+        laplacian_method=laplacian_method)
+    local_energy = local_energy_fn
+    
+    total_e = calculate_total_energy(local_energy=local_energy)
+    total_e_parallel = jax.pmap(total_e)
+    e_trial, variance_trial = total_e_parallel(params, subkeys, data)
+    e_est, variance_est = total_e_parallel(params, subkeys, data)
+    loss = constants.pmean(jnp.mean(e_est))
+    jax.debug.print("e_trial:{}", e_trial)
+    jax.debug.print("variance_trial:{}", variance_trial)
+    jax.debug.print("e_est:{}", e_est)
+    jax.debug.print("variance_est:{}", variance_est)
+    jax.debug.print("loss:{}", loss)
+
+    """we need think more about the parallel strategy. So later, we have to modify the shape of weights and branchcut."""
+    weights = jnp.ones(shape=(num_devices * num_hosts, int(batch_size / (num_devices * num_hosts))))
+    esigma = jnp.std(e_est)
+    dmc_run = dmc_propagate(signed_network=signed_network,
+                            log_network=log_network,
+                            logabs_f=logabs_network,
+                            nelectrons=nelectrons,
+                            natoms=natoms,
+                            ndim=ndim,
+                            batch_size=int(batch_size/(num_devices * num_hosts)), #we also need to write the number of walker on each GPU.
+                            tstep=tstep,
+                            nsteps=nsteps,
+                            charges=charges,
+                            nspins=nspins,)
+
+    branchcut_start = jnp.ones(shape=(num_devices * num_hosts, int(batch_size / (num_devices * num_hosts)))) * 10
+    branch_parallel = jax.pmap(branch, in_axes=(0, 0, 0))
+    energy_data = jnp.zeros(shape=(nblocks, iterations, batch_size))
+    weights_data = jnp.zeros(shape=(nblocks, iterations, batch_size))
+    #jax.debug.print("energy_data:{}", energy_data)
+
+    """Start the main loop."""
+    opt_state = opt_state_ckpt
+
+    """the writer module need be modified. 14.2.2025."""
+    train_schema = ['block', 'energy', 'positions']
+    writer_manager = writers.Writer(
+        name='DMC_states',
+        schema=train_schema,
+        directory=ckpt_restore_path,
+        iteration_key=None,
+        log=False
+    )
+
+    with writer_manager as writer:
+        for block in range(0, nblocks):
+            for t in range(t_init, t_init+iterations):
+                """this dmc has some problems. We need rewrite it somehow 26.4.2025.
+                Is the drift part wrong? Check it tomorrow."""
+                energy, new_weights, new_data = dmc_run(params,
+                                                        subkeys,
+                                                        data,
+                                                        weights,
+                                                        branchcut_start * esigma,
+                                                        e_trial,
+                                                        e_est,)
+                #jax.debug.print("energy:{}", energy)
+                #jax.debug.print("new_weights:{}", new_weights)
+                #jax.debug.print("new_data:{}", new_data)
+
+                data = new_data
+                weights = new_weights
+                energy = jnp.reshape(energy, batch_size)
+                weights_step = jnp.reshape(weights, batch_size)
+                #temp = energy_data[block]
+                #jax.debug.print("block:{}", block)
+                #jax.debug.print("t:{}", t-t_init)
+                #jax.debug.print("weights:{}", weights)
+                temp_energy = energy_data[block].at[t-t_init].set(energy.real)
+                temp_weights = weights_data[block].at[t-t_init].set(weights_step)
+                energy_data = energy_data.at[block].set(temp_energy)
+                weights_data = weights_data.at[block].set(temp_weights)
+
+
+            e_est = estimate_energy(energy_data, weights_data)
+            """for the energy store part, we need rewrite it."""
+            #jax.debug.print("e_est:{}", e_est)
+            logging_str = ('Block %05d:', '%03.4f E_h,')
+            logging_args = block, e_est,
+            logging.info(logging_str, *logging_args)
+
+            """rewrite this part. Here something is wrong. 25.4.2025."""
+            if block % 2 == 0:
+                """np.savez cannot save inhomogeneous array. So, we have to use the following line to convert the format of the arrays."""
+                save_params = np.asarray(params)
+                save_opt_state = np.asarray(opt_state, dtype=object)
+                checkpoint.save(ckpt_restore_path, block, data, save_params, save_opt_state, mcmc_width=0.1)
+
+            weights, newindices = branch_parallel(data, weights, subkeys)
+            x1 = data.positions
+            #jax.debug.print("x1:{}", x1)
+            #jax.debug.print("newindices:{}", newindices)
+            x2 = []
+            """we need change the parallel rules here, 4.4.2025. Fortunately, the above code is running smoothly.
+            after we finish the pseudopotential part, we start to rewrite the following lines. 9.4.2025."""
+            #x1 = jnp.reshape(x1, (batch_size, -1))
+            #jax.debug.print("x1:{}", x1)
+            #newindices = jnp.reshape(newindices, -1)
+
+            for i in range(len(x1)):
+                unique, counts = jnp.unique(newindices[i], return_counts=True)
+                temp = x1[i][unique]
+                number_branches = jnp.max(counts)
+                """here, we need think what if the walker is killed. 13.2.2025.
+                we need add one more walker into the configurations.
+                But now the problem is how to generate the new walker?
+                Actually, this part belong to branch function. Currently, it is not a good solution. Maybe improve it later.
+                we need find how to generate the new walkers. 26.4.2025."""
+                if len(unique) < batch_size:
+                    n = batch_size - len(unique)
+                    extra_walkers = temp[-1] + tstep * jax.random.uniform(key, (n, nelectrons * ndim))
+                    temp = jnp.concatenate([temp, extra_walkers], axis=0)
+                    logging.info(f"max branches {number_branches} and number of walkers killed {n}")
+                else:
+                    logging.info(f"max branches {number_branches} and number of walkers killed {0}")
+
+                x2.append(temp)
+
+            x2 = jnp.array(x2)
+            #jax.debug.print("x2:{}", x2)
+            x2 = jnp.reshape(x2, (num_devices * num_hosts, int(batch_size/(num_devices * num_hosts)), -1))
+            #jax.debug.print("x2:{}", x2)
+            data = networks.FermiNetData(**(dict(data) | {'positions': x2}))
+
+            """leave this to tomorrow. 13.2.2025. we also need update the branchcut."""
+            e_trial = e_est - feedback * jnp.log(jnp.mean(weights)).real
+
+            writer_kwargs = {
+                'block': block,
+                'energy': np.asarray(e_est),
+                #'weights_data': np.asarray(weights_data),
+                'positions': np.asarray(x2),
+            }
+            writer.write(block, **writer_kwargs)

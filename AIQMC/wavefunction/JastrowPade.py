@@ -31,13 +31,15 @@ def _jastrow_ee(r_ees: jnp.array, params: ParamTree, parallel_indices: jnp.array
     """
     #jax.debug.print("ee:{}", ee)
     #r_ees = jnp.linalg.norm(ee, axis=-1)
-    #jax.debug.print("r_ees:{}", r_ees)
+    jax.debug.print("r_ees:{}", r_ees)
     r_ees_parallel = r_ees_parallel_spins_parallel(parallel_indices, r_ees)
-    #jax.debug.print("r_ees_parallel:{}", r_ees_parallel)
+    jax.debug.print("r_ees_parallel:{}", r_ees_parallel)
     r_ees_antiparallel = r_ees_parallel_spins_parallel(antiparallel_indices, r_ees)
-    #jax.debug.print("r_ees_antiparallel:{}", r_ees_antiparallel)
-    jastrow_ee_par = jnp.sum(jastrow_fun(r_ees_parallel, 0.25, params['ee_par']))
-    jastrow_ee_anti = jnp.sum(jastrow_fun(r_ees_antiparallel, 0.5, params['ee_anti']))
+    jax.debug.print("r_ees_antiparallel:{}", r_ees_antiparallel)
+    jax.debug.print("params['ee_par']:{}", params['ee_par'])
+    jax.debug.print("params['eePanti']:{}", params['ee_anti'])
+    jastrow_ee_par = jnp.sum(jax.vmap(jastrow_fun, in_axes=(0, None, 0))(r_ees_parallel, 0.25, params['ee_par']))
+    jastrow_ee_anti = jnp.sum(jax.vmap(jastrow_fun, in_axes=(0, None, 0))(r_ees_antiparallel, 0.5, params['ee_anti']))
     return jastrow_ee_anti + jastrow_ee_par
 
 
@@ -49,6 +51,8 @@ def make_pade_ee_jastrow() -> ...:
     something is wrong. I dont unerstand. 8.4.2025"""
 
     def pade_ee_cusp_fun(r_ee: jnp.array, cusp: float, alpha: jnp.array) -> jnp.array:
+        #jax.debug.print("r_ee:{}", r_ee)
+        #jax.debug.print("alpha:{}", alpha)
         return (r_ee * cusp) / (1.0 + alpha * r_ee)
 
     def init(n_parallel: int, n_antiparallel: int) -> Mapping[str, jnp.array]:

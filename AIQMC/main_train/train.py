@@ -38,7 +38,6 @@ from AIQMC.tools.utils import statistics
 from AIQMC.tools.utils import system
 from AIQMC.tools.utils import utils
 from AIQMC.tools.utils import writers
-
 import jax
 from jax.experimental import multihost_utils
 import jax.numpy as jnp
@@ -424,6 +423,7 @@ def train(cfg: ml_collections.ConfigDict, writer_manager=None):
   # Convert mol config into array of atomic positions and charges
   atoms = jnp.stack([jnp.array(atom.coords) for atom in cfg.system.molecule])
   charges = jnp.array([atom.charge for atom in cfg.system.molecule])
+
   nspins = cfg.system.electrons
 
   # Generate atomic configurations for each walker
@@ -505,6 +505,8 @@ def train(cfg: ml_collections.ConfigDict, writer_manager=None):
     parallel_indices, antiparallel_indices, n_parallel, n_antiparallel = \
         spin_indices.jastrow_indices_ee(spins=spins_test,
                                         nelectrons=cfg.system.nelectrons)
+    #jax.debug.print("nspins:{}", nspins)
+    #jax.debug.print("charges:{}", charges)
     network = networks.make_fermi_net(
         nspins,
         charges,
@@ -903,7 +905,7 @@ def train(cfg: ml_collections.ConfigDict, writer_manager=None):
     sharded_key, subkeys = kfac_jax.utils.p_split(sharded_key)
     ptotal_energy = constants.pmap(evaluate_loss)
     initial_energy, _ = ptotal_energy(params, subkeys, data)
-    logging.info('Initial energy: %03.4f E_h', initial_energy[0])
+    #logging.info('Initial energy: %03.4f E_h', initial_energy[0])
 
   time_of_last_ckpt = time.time()
   weighted_stats = None
@@ -1036,8 +1038,11 @@ def train(cfg: ml_collections.ConfigDict, writer_manager=None):
 
       # Checkpointing
       #if time.time() - time_of_last_ckpt > cfg.log.save_frequency * 60:
-      if t % 100 == 0:
+
+      if t % 1 == 0:
+        jax.debug.print("t:{}", t)
         checkpoint.save(ckpt_save_path, t, data, params, opt_state, mcmc_width)
+        jax.debug.print("data:{}", data.positions)
         time_of_last_ckpt = time.time()
 
     # Shut down logging at end

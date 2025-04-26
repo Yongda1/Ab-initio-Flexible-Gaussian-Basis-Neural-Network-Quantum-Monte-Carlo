@@ -220,7 +220,10 @@ def make_loss(network: networks.LogFermiNetLike,
     """
     keys = jax.random.split(key, num=data.positions.shape[0])
     e_l, e_l_mat = batch_local_energy(params, keys, data)
+    #jax.debug.print("e_l:{}", e_l)
+    #jax.debug.print("data.positions:{}", data.positions)
     loss = constants.pmean(jnp.mean(e_l))
+    #jax.debug.print("loss:{}", loss)
     loss_diff = e_l - loss
     variance = constants.pmean(jnp.mean(loss_diff * jnp.conj(loss_diff)))
     return loss, AuxiliaryLossData(

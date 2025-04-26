@@ -198,7 +198,7 @@ def default() -> ml_collections.ConfigDict:
           # Number of burn in steps after pretraining.  If zero do not burn in
           # or reinitialize walkers.
           'burn_in': 100,
-          'steps': 0,  # Number of MCMC steps to make between network updates.
+          'steps': 10,  # Number of MCMC steps to make between network updates.
           # Width of (atom-centred) Gaussian used to generate initial electron
           # configurations.
           'init_width': 1.0,

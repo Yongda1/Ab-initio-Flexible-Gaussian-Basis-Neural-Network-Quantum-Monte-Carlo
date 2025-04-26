@@ -1,0 +1,3 @@
+In this DMC module, we create the DMC engine without T-moves.
+It means that we are running all-electrons calculation.
+Because T-moves is based on ccecp pseudopotential.

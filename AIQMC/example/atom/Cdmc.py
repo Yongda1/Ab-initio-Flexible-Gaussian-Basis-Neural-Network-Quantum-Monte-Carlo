@@ -1,8 +1,9 @@
 import sys
+import jax.numpy as jnp
 from absl import logging
 from AIQMC.tools.utils import system
 from AIQMC import base_config
-from AIQMC.main_train import train
+from AIQMC.DMC.main_dmc import main as train
 
 # Optional, for also printing training progress to STDOUT.
 # If running a script, you can also just use the --alsologtostderr flag.
@@ -19,9 +20,9 @@ cfg.network.complex = True
 cfg.system.molecule = [system.Atom('C', (0, 0, 0))]
 # Set training parameters
 cfg.batch_size = 100
-cfg.optim.iterations = 2
-cfg.pretrain.iterations = 50
-cfg.mcmc.steps = 10
+cfg.optim.iterations = 1000
+cfg.pretrain.iterations = 10
+cfg.mcmc.steps = 20
 cfg.network.hidden_dims = ((32, 16), (32, 16), (32, 16), (32, 16))
 """I dont understand that why the optimization with Jastrow Factors is not stable. """
 #cfg.network.jastrow = 'simple_ee'
@@ -29,4 +30,21 @@ cfg.optim.optimizer = 'adam'
 cfg.network.determinants = 1
 cfg.network.full_det = True
 cfg.log.save_path = 'save'
-train.train(cfg)
+
+atoms = jnp.array([[0.0, 0.0, 0.0]])
+charges = jnp.array([6.0])
+
+train(cfg,
+      charges=charges,
+      nelectrons=6,
+      natoms=1,
+      ndim=3,
+      batch_size=100,
+      iterations=10,
+      tstep=0.05,
+      nspins=(3, 3),
+      nsteps=5,
+      nblocks=20,
+      feedback=1.0,
+      save_path='save',
+      restore_path='restore_DMC')
