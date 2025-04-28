@@ -4,6 +4,7 @@ import jax
 import jax.numpy as jnp
 from AIQMC.DMC.drift_diffusion import propose_drift_diffusion
 from AIQMC.DMC.S_matrix import comput_S
+from AIQMC.DMC.S_matrix import comput_S_normal
 from AIQMC.hamiltonian import hamiltonian
 from AIQMC.DMC.total_energy import calculate_total_energy
 
@@ -52,12 +53,30 @@ def dmc_propagate(signed_network,
         eloc_new, variance_new = total_e_parallel(params,  key, new_data)
         #jax.debug.print("eloc_old:{}", eloc_old)
         #jax.debug.print("eloc_new:{}", eloc_new)
-        S_old = comput_S(e_trial=e_trial, e_est=e_est, branchcut=branchcut_start, v2=jnp.square(grad_eff_old), tau=tstep,
-                         eloc=eloc_old, nelec=nelectrons)
-        S_new = comput_S(e_trial=e_trial, e_est=e_est, branchcut=branchcut_start, v2=jnp.square(grad_new_eff), tau=tstep,
-                         eloc=eloc_new, nelec=nelectrons)
+
+        S_old = comput_S(e_trial=e_trial,
+                         e_est=e_est,
+                         branchcut=branchcut_start,
+                         v2=jnp.square(jnp.abs(grad_eff_old)),
+                         tau=tstep,
+                         eloc=eloc_old,
+                         nelec=nelectrons)
+
+        S_new = comput_S(e_trial=e_trial,
+                         e_est=e_est,
+                         branchcut=branchcut_start,
+                         v2=jnp.square(jnp.abs(grad_new_eff)),
+                         tau=tstep,
+                         eloc=eloc_new,
+                         nelec=nelectrons)
+
+
+        #S_old = comput_S_normal(e_trial=e_trial, eloc=eloc_old)
+        #S_new = comput_S_normal(e_trial=e_trial, eloc=eloc_new)
 
         wmult = jnp.exp(tstep * tdamp * (0.5 * S_new + 0.5 * S_old))
+        #wmult = jnp.exp(tstep * (0.5 * S_new + 0.5 * S_old))
         weights = wmult * weights
+        #jax.debug.print("weights:{}", weights)
         return eloc_new, weights, new_data
     return dmc_propagate_run

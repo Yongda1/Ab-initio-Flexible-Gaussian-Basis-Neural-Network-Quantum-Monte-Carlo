@@ -1039,10 +1039,10 @@ def train(cfg: ml_collections.ConfigDict, writer_manager=None):
       # Checkpointing
       #if time.time() - time_of_last_ckpt > cfg.log.save_frequency * 60:
 
-      if t % 1 == 0:
-        jax.debug.print("t:{}", t)
+      if t % 100 == 0:
+        #jax.debug.print("t:{}", t)
         checkpoint.save(ckpt_save_path, t, data, params, opt_state, mcmc_width)
-        jax.debug.print("data:{}", data.positions)
+        #jax.debug.print("data:{}", data.positions)
         time_of_last_ckpt = time.time()
 
     # Shut down logging at end

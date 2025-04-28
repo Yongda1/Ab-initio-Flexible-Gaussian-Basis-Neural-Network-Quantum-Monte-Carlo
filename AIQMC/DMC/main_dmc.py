@@ -21,6 +21,11 @@ from AIQMC.tools.utils import writers
 from AIQMC.wavefunction import spin_indices
 from AIQMC import constants
 import ml_collections
+from AIQMC.DMC.drift_diffusion import propose_drift_diffusion_new
+from AIQMC.DMC import mcmc_dmc
+from AIQMC.tools.utils import utils
+from AIQMC.DMC.S_matrix import comput_S_new
+
 
 def main(cfg: ml_collections.ConfigDict,
          charges: jnp.array,
@@ -40,7 +45,7 @@ def main(cfg: ml_collections.ConfigDict,
     logging.info('Diffusion Quantum Monte Carlo Start running')
     num_devices = jax.local_device_count()  # the amount of GPU per host
     num_hosts = jax.device_count() // num_devices  # the amount of host
-    logging.info('Start QMC with $i devices per host, across %i hosts.', num_devices, num_hosts)
+    logging.info(f'Start QMC with {num_devices} devices per host, across {num_hosts} hosts.')
     if batch_size % (num_devices * num_hosts) != 0:
         raise ValueError('Batch size must be divisible by number of devices!')
     host_batch_size = batch_size // num_hosts  # how many configurations we put on one host
@@ -122,10 +127,12 @@ def main(cfg: ml_collections.ConfigDict,
     e_trial, variance_trial = total_e_parallel(params, subkeys, data)
     e_est, variance_est = total_e_parallel(params, subkeys, data)
     loss = constants.pmean(jnp.mean(e_est))
+    e_trial = loss.real
+    e_est = loss.real
     jax.debug.print("e_trial:{}", e_trial)
-    jax.debug.print("variance_trial:{}", variance_trial)
+    #jax.debug.print("variance_trial:{}", variance_trial)
     jax.debug.print("e_est:{}", e_est)
-    jax.debug.print("variance_est:{}", variance_est)
+    #jax.debug.print("variance_est:{}", variance_est)
     jax.debug.print("loss:{}", loss)
 
     """we need think more about the parallel strategy. So later, we have to modify the shape of weights and branchcut."""
@@ -162,11 +169,93 @@ def main(cfg: ml_collections.ConfigDict,
         log=False
     )
 
+    """to debug drift-diffusion process"""
+    drift_diffusion = propose_drift_diffusion_new(f=signed_network,
+                                tstep=0.02,
+                                ndim=3,
+                                nelectrons=6,
+                                batch_size=device_batch_size,
+                                complex_output=True)
+
+    drift_diffusion_parallel = jax.pmap(jax.vmap(drift_diffusion, in_axes=(None, None, 0)))
+    atoms_to_mcmc = jnp.array([0, 0, 0])
+    batch_network = jax.vmap(logabs_network, in_axes=(None, 0, 0, 0, 0), out_axes=0)
+    mcmc_step = mcmc_dmc.make_mcmc_step(batch_network,
+                                        batch_size,
+                                        steps=1,
+                                        atoms=atoms_to_mcmc,
+                                        ndim=3,
+                                        blocks=1)
+    mcmc_step_parallel = jax.pmap(mcmc_step)
+    mcmc_width = kfac_jax.utils.replicate_all_local_devices(
+        jnp.asarray(cfg.mcmc.move_width))
+    pmoves = np.zeros(cfg.mcmc.adapt_frequency)
+
+    phase_f = utils.select_output(signed_network, 0)
+    logabs_f = utils.select_output(signed_network, 1)
+    grad_f = jax.grad(logabs_f, argnums=1)
+
+    def calculate_gradient(params, data: networks.FermiNetData):
+        def grad_f_closure(x):
+            return grad_f(params, x, data.spins, data.atoms, data.charges)
+
+        grad_phase = jax.grad(phase_f, argnums=1)
+
+        def grad_phase_closure(x):
+            return grad_phase(params, x, data.spins, data.atoms, data.charges)
+
+        primal, dgrad_f = jax.linearize(grad_f_closure, data.positions)
+        phase_primal, dgrad_phase = jax.linearize(grad_phase_closure, data.positions)
+        O = primal + 1.j * phase_primal
+        return O
+
+    calculate_gradient_parallel = jax.pmap(jax.vmap(calculate_gradient, in_axes=(None, 0)))
+    compute_S_kernel = comput_S_new(tstep, nelectrons)
+    comput_S_new_parallel = jax.pmap(jax.vmap(compute_S_kernel, in_axes=(0, 0, None, None, 0)), in_axes=(0, 0, None, None, 0))
+
     with writer_manager as writer:
         for block in range(0, nblocks):
+            #jax.debug.print("e_trial:{}", e_trial)
+            #jax.debug.print("e_est:{}", e_est)
+            jax.debug.print("weights:{}", weights)
             for t in range(t_init, t_init+iterations):
                 """this dmc has some problems. We need rewrite it somehow 26.4.2025.
                 Is the drift part wrong? Check it tomorrow."""
+                next_data, pmoves = mcmc_step_parallel(params, data, subkeys, mcmc_width)
+                #jax.debug.print("new_data_positions:{}", data.positions)
+                #new_data = drift_diffusion_parallel(params, subkeys, data)
+                e_loc_old, variance_est = total_e_parallel(params, subkeys, data)
+                e_loc_new, variance_est_next = total_e_parallel(params, subkeys, next_data)
+                #e_loc_old_mean = constants.pmean(jnp.mean(e_loc_old))
+                #e_loc_new_mean = constants.pmean(jnp.mean(e_loc_new))
+                #jax.debug.print("e_loc:{}", e_loc_old_mean)
+                #jax.debug.print("e_loc_next:{}", e_loc_new_mean)
+                O_old = calculate_gradient_parallel(params, data)
+                O_new = calculate_gradient_parallel(params, next_data)
+                #jax.debug.print("e_loc_old:{}", e_loc_old)
+                #jax.debug.print("e_loc_new:{}", e_loc_new)
+                #jax.debug.print("O_old:{}", O_old.shape)
+                #jax.debug.print("O_new:{}", O_new.shape)
+                #jax.debug.print("branchcut_start:{}", branchcut_start)
+
+                #O_old = jnp.reshape(O_old, (1, device_batch_size, nelectrons, ndim))
+                O_old = jnp.sum(jnp.square(O_old), axis=-1)
+                O_new = jnp.sum(jnp.square(O_new), axis=-1)
+                #jax.debug.print("O_old:{}", O_old.shape)
+                #jax.debug.print("e_loc_old:{}", e_loc_old.shape)
+                S_old = comput_S_new_parallel(O_old, e_loc_old, e_trial, e_est, branchcut_start)
+                S_new = comput_S_new_parallel(O_new, e_loc_new, e_trial, e_est, branchcut_start)
+                wmult = jnp.exp(tstep * (0.5 * S_new + 0.5 * S_old))
+                # wmult = jnp.exp(tstep * (0.5 * S_new + 0.5 * S_old))
+                weights = wmult * weights
+                #jax.debug.print("weights:{}", weights)
+                Energy_mean = estimate_energy(e_loc_new, weights)
+                jax.debug.print("Energy_mean:{}", Energy_mean)
+                data = next_data
+
+                """to be continued...27.4.2025."""
+
+                '''
                 energy, new_weights, new_data = dmc_run(params,
                                                         subkeys,
                                                         data,
@@ -177,7 +266,7 @@ def main(cfg: ml_collections.ConfigDict,
                 #jax.debug.print("energy:{}", energy)
                 #jax.debug.print("new_weights:{}", new_weights)
                 #jax.debug.print("new_data:{}", new_data)
-
+                jax.debug.print("energy_average:{}", jnp.mean(energy))
                 data = new_data
                 weights = new_weights
                 energy = jnp.reshape(energy, batch_size)
@@ -195,6 +284,8 @@ def main(cfg: ml_collections.ConfigDict,
             e_est = estimate_energy(energy_data, weights_data)
             """for the energy store part, we need rewrite it."""
             #jax.debug.print("e_est:{}", e_est)
+            #jax.debug.print("energy_data:{}", energy_data)
+            #jax.debug.print("weights_data:{}", weights_data)
             logging_str = ('Block %05d:', '%03.4f E_h,')
             logging_args = block, e_est,
             logging.info(logging_str, *logging_args)
@@ -243,7 +334,12 @@ def main(cfg: ml_collections.ConfigDict,
             data = networks.FermiNetData(**(dict(data) | {'positions': x2}))
 
             """leave this to tomorrow. 13.2.2025. we also need update the branchcut."""
-            e_trial = e_est - feedback * jnp.log(jnp.mean(weights)).real
+            jax.debug.print("e_est:{}", e_est)
+            jax.debug.print("e_trial:{}", e_trial)
+            e_trial_new = e_est - feedback * jnp.log(jnp.mean(weights)).real
+            jax.debug.print("e_trial_new:{}", e_trial_new)
+            jax.debug.print("e_est:{}", e_est)
+            """probably, we made some mistakes about these number storage."""
 
             writer_kwargs = {
                 'block': block,
@@ -252,3 +348,4 @@ def main(cfg: ml_collections.ConfigDict,
                 'positions': np.asarray(x2),
             }
             writer.write(block, **writer_kwargs)
+'''
