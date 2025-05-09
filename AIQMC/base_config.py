@@ -126,7 +126,7 @@ def default() -> ml_collections.ConfigDict:
           'save_frequency': 10.0,  # minutes between saving network params
           # Path to save/restore network to/from. If falsy,
           # creates a timestamped directory in the working directory.
-          'save_path': '',
+          'save_path': 'F:\Ab-initio-Flexible-Gaussian-Basis-Neural-Network-Quantum-Monte-Carlo\AIQMC\example\atom\save',
           # Path containing checkpoint to restore network from.
           # Ignored if falsy or save_path contains a checkpoint.
           'restore_path': '',

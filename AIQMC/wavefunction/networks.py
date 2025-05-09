@@ -1315,9 +1315,9 @@ def make_orbitals(
     )
     #jax.debug.print("y_to_orbitals:{}", y_to_orbitals)
     #jax.debug.print("exp_to_orbitals:{}", exp_to_orbitals)
-    h_to_orbitals = h_to_orbitals * \
-                    jnp.sum(y_to_orbitals, axis=-1, keepdims=True) * \
-                    jnp.sum(exp_to_orbitals, axis=-1, keepdims=True)
+    h_to_orbitals = h_to_orbitals #* \
+    #                jnp.sum(y_to_orbitals, axis=-1, keepdims=True) * \
+    #                jnp.sum(exp_to_orbitals, axis=-1, keepdims=True)
 
     if options.envelope.apply_type == envelopes.EnvelopeType.PRE_ORBITAL:
       envelope_factor = options.envelope.apply(
