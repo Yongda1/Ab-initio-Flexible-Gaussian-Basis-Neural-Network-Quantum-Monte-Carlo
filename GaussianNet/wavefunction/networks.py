@@ -5,8 +5,8 @@ import chex
 import jax
 import jax.numpy as jnp
 from typing_extensions import Protocol
-from AIQMC.wavefunction_new import network_blocks
-from AIQMC.wavefunction_new import JastrowPade
+from GaussianNet.wavefunction import network_blocks
+from GaussianNet.wavefunction import JastrowPade
 
 GaussianLayers = Tuple[Tuple[int, int], ...]
 AngularLayers = Tuple[Tuple[int], ...]
@@ -85,13 +85,12 @@ class OrbitalGnLike(Protocol):
                  ) -> Sequence[jnp.ndarray]:
         """"""
 
+
 @attr.s(auto_attribs=True)
 class Network:
     init: InitGaussianNet
     apply: GaussianNetLike
     orbitals: OrbitalGnLike
-
-
 
 
 def cartesian_to_spherical(x, y, z):
@@ -429,10 +428,10 @@ def make_orbitals(nspins: Tuple[int, int],
         #jax.debug.print("orbitals:{}", orbitals)
         #jax.debug.print("angular_value:{}", angular_value)
         angular_value = jnp.reshape(angular_value, (2, 3, 1))
-        jax.debug.print("angular_value:{}", angular_value)
-        jax.debug.print("orbitals:{}", orbitals)
+        #jax.debug.print("angular_value:{}", angular_value)
+        #jax.debug.print("orbitals:{}", orbitals)
         orbitals_angular = [orbital * angular for orbital, angular in zip(orbitals, angular_value)]
-        jax.debug.print("orbitals_angular:{}", orbitals_angular)
+        #jax.debug.print("orbitals_angular:{}", orbitals_angular)
 
         active_spin_channels = [spin for spin in nspins if spin > 0]
         shapes = [(spin, -1, sum(nspins)) for spin in active_spin_channels]
@@ -446,7 +445,7 @@ def make_orbitals(nspins: Tuple[int, int],
                                            params=params['jastrow_ee']) / 6)
         """to be continued... Jastrow 11.5.2025."""
         jax.debug.print("jastrow:{}", jastrow)
-        jax.debug.print("orbitals_angular:{}", orbitals_angular)
+        #jax.debug.print("orbitals_angular:{}", orbitals_angular)
         orbitals_angular_jastrow = [orbital * jastrow for orbital in orbitals_angular]
 
         return orbitals_angular_jastrow
@@ -533,15 +532,16 @@ pos, spins = init_electrons(
 )
 
 atoms = jnp.array([[0.0, 0.0, 0.0]])
-#jax.debug.print("atoms:{}", atoms.shape[1])
 pos = pos[0]
 spins = spins[0]
+jax.debug.print("spins:{}", spins)
 charges = jnp.array([0.0])
 spins_test = jnp.array([[1., 1.,  1, - 1., - 1., -1]])
 parallel_indices, antiparallel_indices, n_parallel, n_antiparallel = \
     spin_indices.jastrow_indices_ee(spins=spins_test,
                                     nelectrons=6)
-
+jax.debug.print("n_parallel:{}", n_parallel)
+jax.debug.print("n_antiparallel:{}", n_antiparallel)
 network = make_gaussian_net(nspins=(3, 3),
                             charges=charges,
                             parallel_indices=parallel_indices,
@@ -551,3 +551,4 @@ network = make_gaussian_net(nspins=(3, 3),
 
 params = network.init(subkey)
 wavefunction_value = network.apply(params, pos, spins, atoms, charges)
+jax.debug.print("wavefunction_value:{}", wavefunction_value)
