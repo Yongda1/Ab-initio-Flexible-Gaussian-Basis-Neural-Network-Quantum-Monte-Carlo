@@ -50,8 +50,8 @@ def make_pade_ee_jastrow() -> ...:
 
     def init(n_parallel: int, n_antiparallel: int) -> Mapping[str, jnp.array]:
         params = {}
-        params['ee_par'] = jnp.ones(shape=n_parallel)
-        params['ee_anti'] = jnp.ones(shape=n_antiparallel)
+        params['ee_par'] = jnp.ones(shape=1)
+        params['ee_anti'] = jnp.ones(shape=1)
         return params
 
     def apply(r_ee: jnp.array, params: ParamTree, parallel_indices: jnp.array, antiparallel_indices: jnp.array,) -> jnp.array:
