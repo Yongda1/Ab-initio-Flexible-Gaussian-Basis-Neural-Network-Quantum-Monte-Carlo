@@ -405,7 +405,7 @@ def train(cfg: ml_collections.ConfigDict,):
         mcmc_width_ckpt = None
         density_state_ckpt = None
 
-    train_schema = ['step', 'energy', 'ewmean', 'ewvar',]
+    
     sharded_key = kfac_jax.utils.make_different_rng_key_on_all_devices(key)
     #Pretain to match Hartree-Fock
     if (
@@ -482,12 +482,7 @@ def train(cfg: ml_collections.ConfigDict,):
         logging.info('Setting initial iteration to 0.')
         t_init = 0
 
-    writer_manager = writers.Writer(
-        name='train_stats',
-        schema=train_schema,
-        directory=ckpt_save_path,
-        iteration_key=None,
-        log=False)
+    
 
     mcmc_step_parallel = jax.pmap(jax.vmap(mcmc_step,
                                            in_axes=(networks.GaussianNetData(positions=0, spins=0, atoms=0, charges=0), None, 0)),
@@ -497,16 +492,23 @@ def train(cfg: ml_collections.ConfigDict,):
         def get_keys(key: chex.PRNGKey):
             keys = jax.random.split(key, num=batch_size)
             return keys
-
         return get_keys
 
+    train_schema = ['step', 'energy']
+    writer_manager = writers.Writer(
+        name='train_stats',
+        schema=train_schema,
+        directory=ckpt_save_path,
+        iteration_key=None,
+        log=False)
+    
     with writer_manager as writer:
         # Main training loop
         num_resets = 0  # used if reset_if_nan is true
         for t in range(t_init, cfg.optim.iterations):
             sharded_key, subkeys = kfac_jax.utils.p_split(sharded_key)
             jax.debug.print("subkeys:{}", subkeys)
-            generate_mc_keys = generate_batch_key(6)
+            generate_mc_keys = generate_batch_key(6) #the number of keys must be same with the number of
             mc_keys = jax.pmap(generate_mc_keys)(subkeys)
             jax.debug.print("data:{}", data)
             jax.debug.print("mc_keys:{}", mc_keys)
@@ -521,4 +523,15 @@ def train(cfg: ml_collections.ConfigDict,):
                 subkeys,)
 
             loss = loss[0]
-            jax.debug.print("loss:{}", loss)
+            logging_str = ('Step %05d: '
+                           '%03.4f E_h,')
+            logging_args = t, loss,
+            writer_kwargs = {
+                'step': t,
+                'energy': np.asarray(loss),
+            }
+            logging.info(logging_str, *logging_args)
+            writer.write(t, **writer_kwargs)
+            if t % 100 == 0:
+                mcmc_width = 1 # meaning less parameter
+                checkpoint.save(ckpt_save_path, t, data, params, opt_state, mcmc_width)
