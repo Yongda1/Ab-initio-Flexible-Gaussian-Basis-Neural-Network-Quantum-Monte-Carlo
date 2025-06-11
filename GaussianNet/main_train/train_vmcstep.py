@@ -486,7 +486,7 @@ def train(cfg: ml_collections.ConfigDict,):
 
     mcmc_step_parallel = jax.pmap(jax.vmap(mcmc_step,
                                            in_axes=(networks.GaussianNetData(positions=0, spins=0, atoms=0, charges=0), None, 0)),
-                                  in_axes=(networks.GaussianNetData(positions=0, spins=0, atoms=0, charges=0), 0, 0))
+                                  in_axes=(networks.GaussianNetData(positions=0, spins=0, atoms=0, charges=0), 0, 0), donate_argnums=(0, 1, 2))
 
     def generate_batch_key(batch_size: int):
         def get_keys(key: chex.PRNGKey):
@@ -507,15 +507,15 @@ def train(cfg: ml_collections.ConfigDict,):
         num_resets = 0  # used if reset_if_nan is true
         for t in range(t_init, cfg.optim.iterations):
             sharded_key, subkeys = kfac_jax.utils.p_split(sharded_key)
-            jax.debug.print("subkeys:{}", subkeys)
-            generate_mc_keys = generate_batch_key(6) #the number of keys must be same with the number of
+            #jax.debug.print("subkeys:{}", subkeys)
+            generate_mc_keys = generate_batch_key(batch_size=cfg.batch_size) #the number of keys must be same with the number of
             mc_keys = jax.pmap(generate_mc_keys)(subkeys)
-            jax.debug.print("data:{}", data)
-            jax.debug.print("mc_keys:{}", mc_keys)
+            #jax.debug.print("data:{}", data)
+            #jax.debug.print("mc_keys:{}", mc_keys)
             for i in range(10):
                 data, mc_keys = mcmc_step_parallel(data, params, mc_keys)
-                jax.debug.print("output_data:{}", data)
-                jax.debug.print("mc_keys:{}", mc_keys)
+
+            #jax.debug.print("data:{}", data)
             data, params, opt_state, loss, aux_data = step(
                 data,
                 params,

@@ -133,35 +133,7 @@ def construct_input_features(
     return ae, ee, r_ae, r_ee[..., None]
 
 
-def y_0(theta, phi):
-    return 1/2 * jnp.sqrt(1/jnp.pi)
-
-
-def y_1(theta, phi):
-    return jnp.array([1/2 * jnp.sqrt(3/(2 * jnp.pi)) * jnp.exp(-1 * 1.j * phi) * jnp.sin(theta),
-                      1/2 * jnp.sqrt(3/jnp.pi) * jnp.cos(theta),
-                      1/2 * jnp.sqrt(3/(2 * jnp.pi)) * jnp.exp(1.j * phi) * jnp.sin(theta)])
-
-
-def y_2(theta, phi):
-    return 1/4 * jnp.sqrt(15/(2 * jnp.pi)) * jnp.exp(-1 * 2 * 1.j * phi) * jnp.sin(theta)**2, \
-           1/2 * jnp.sqrt(15/(2 * jnp.pi)) * jnp.exp(-1 * 1.j * phi) * jnp.sin(theta) * jnp.cos(theta), \
-           1/4 * jnp.sqrt(5/jnp.pi)*(3 * jnp.cos(theta)**2 - 1), \
-           -1/2 * jnp.sqrt(15/(2 * jnp.pi)) * jnp.exp(1.j * phi) * jnp.sin(theta) * jnp.cos(theta), \
-           1/4 * jnp.sqrt(15/(2 * jnp.pi)) * jnp.exp(2 * 1.j * phi) * jnp.sin(theta)**2
-
-
-def y_0(x: jnp.ndarray):
-    """
-    to be continued... 19.2.2025
-    :param x: ae the cartesian  coordinate
-            y: r_ae
-    :return: d and f orbitals
-    """
-    return jnp.array([1 / 2 * jnp.sqrt(1 / jnp.pi)])
-
-
-def y_sp(x: jnp.ndarray):
+def y_1(x: jnp.ndarray):
     """x: x/r, y/r, z/r"""
     return jnp.array([1 / 2 * jnp.sqrt(1 / jnp.pi),
                       jnp.sqrt(3.0 / (4.0 * jnp.pi)) * x[0],
@@ -169,7 +141,7 @@ def y_sp(x: jnp.ndarray):
                       jnp.sqrt(3.0 / (4.0 * jnp.pi)) * x[2]])
 
 
-y_sp_parallel = jax.vmap(jax.vmap(y_sp, in_axes=0), in_axes=0)
+#y_1_parallel = jax.vmap(y_1, in_axes=0)
 
 
 def exp_feature(x: jnp.array):
@@ -319,6 +291,7 @@ def make_gaussian_net_layers(nspins: Tuple[int, int],
         )
         h_one = ae_features
         h_two = [ee_features]
+        jax.debug.print("ae_fearures:{}", ae_features)
         for i in range(len(hidden_dims)):
             h_one, h_two = apply_layer(params['embedding_layer'][i],
                                        h_one,
@@ -354,8 +327,6 @@ def make_embedding_angular_layers(nspins: Tuple[int, int],
             dims_one_in = dims_one_out
             layers_angular.append(layer_params_angular)
         params['angular_layer'] = layers_angular
-        #jax.debug.print("params_angular_layer:{}", params['angular_layer'])
-
         return params
 
     def apply_layer(params: Mapping[str, ParamTree],
@@ -373,6 +344,11 @@ def make_embedding_angular_layers(nspins: Tuple[int, int],
         ae, ee, r_ae, r_ee = construct_input_features(pos, atoms, ndim=3)
         y_one = ae / r_ae
         y_one = jnp.reshape(y_one, (6, 3))
+
+        '''
+        y_one = y_1_parallel(y_one)
+        '''
+
         for i in range(len(embedding_dim_eff_angular)):
             y_one = apply_layer(params['angular_layer'][i], y_one)
 
@@ -438,6 +414,7 @@ def make_orbitals(nspins: Tuple[int, int],
                   antiparallel_indices: jnp.array,
                   n_parallel: int,
                   n_antiparallel: int,
+                  n_determinants: int,
                   angular_init,
                   angular_apply,
                   exp_init,
@@ -449,7 +426,6 @@ def make_orbitals(nspins: Tuple[int, int],
     """the jastrow part needs to be done later.11.5.2025."""
     jastrow_ee_init, jastrow_ee_apply, jastrow_ae_init, jastrow_ae_apply = JastrowPade.get_jastrow(charges)
 
-
     def init(key: chex.PRNGKey) -> ParamTree:
         key, subkey, subsubkey, subsubsubkey = jax.random.split(key, num=4)
         params = {}
@@ -459,8 +435,9 @@ def make_orbitals(nspins: Tuple[int, int],
         active_spin_channels = [spin for spin in nspins if spin > 0]
         nchannels = len(active_spin_channels)
         nspin_orbitals = []
+        """here, add more determinants. 25.5.2025."""
         for nspin in active_spin_channels:
-            norbitals = sum(nspins) * 1 * 2
+            norbitals = sum(nspins) * n_determinants * 2
             nspin_orbitals.append(norbitals)
 
         output_dims = [nspin_orbital // 2 for nspin_orbital in nspin_orbitals]
@@ -488,6 +465,10 @@ def make_orbitals(nspins: Tuple[int, int],
         params['angular_map'] = angular_map
         params['jastrow_ee'] = jastrow_ee_init(n_parallel=n_parallel, n_antiparallel=n_antiparallel)
         params['jastrow_ae'] = jastrow_ae_init(nelectrons=6, natoms=1)
+        '''
+        angular_simple = network_blocks.init_linear_layer(subsubsubkey, in_dim=6, out_dim=4, include_bias=False)
+        params['angular_simple'] = angular_simple
+        '''
         return params
 
     def apply(params,
@@ -502,39 +483,57 @@ def make_orbitals(nspins: Tuple[int, int],
                                                  ee=ee,
                                                  r_ee=r_ee,
                                                  charges=charges)
-        #jax.debug.print("h_to_orbitals:{}", h_to_orbitals)
+        jax.debug.print("h_to_orbitals:{}", h_to_orbitals)
         angular_to_orbitals = angular_apply(params['angular'], pos, spins, atoms, charges)
+
+        '''
+        angulars_final = [network_blocks.linear_layer(h, p) for h, p in zip(angular_to_orbitals, params['angular_simple']['w'])]
+        '''
+
         exp_to_orbitals = exp_apply(params['exp'], pos, spins, atoms, charges)
         """to be continued... 19.5.2025."""
-        #jax.debug.print("exp_to_orbitals:{}", exp_to_orbitals)
         exp_to_orbitals = jnp.sum(exp_to_orbitals, axis=-1, keepdims=True)
-        #jax.debug.print("exp_to_orbitals:{}", exp_to_orbitals)
-        #jax.debug.print("h_to_orbitals:{}", h_to_orbitals)
         h_to_orbitals = exp_to_orbitals * h_to_orbitals
+
+        '''
+        for i in range(6):
+            h_to_orbitals = h_to_orbitals.at[i].set(angulars_final[i] * h_to_orbitals[i])
         #jax.debug.print("angular_to_orbitals:{}", angular_to_orbitals)
+        #jax.debug.print("h_to_orbitals:{}", h_to_orbitals)
+        '''
+
         h_to_orbitals = jnp.split(h_to_orbitals, network_blocks.array_partitions(nspins), axis=0)
         h_to_orbitals = [h for h, spin in zip(h_to_orbitals, nspins) if spin > 0]
 
         angular_to_orbitals = jnp.split(angular_to_orbitals, network_blocks.array_partitions(nspins), axis=0)
         angular_to_orbitals = [y for y, spin in zip(angular_to_orbitals, nspins) if spin > 0]
 
+        #jax.debug.print("orbital:{}", params['orbital'])
+
+
         angulars = [
             network_blocks.linear_layer(h, **p)
             for h, p in zip(angular_to_orbitals, params['angular_map'])
         ]
+
         #jax.debug.print("angular")
         orbitals = [
             network_blocks.linear_layer(h, **p)
             for h, p in zip(h_to_orbitals, params['orbital'])
         ]
         orbitals = [orbital[..., ::2] + 1.0j * orbital[..., 1::2] for orbital in orbitals]
-        angulars = [angular[..., ::2] + 1.0j * angular[..., 1::2] for angular in angulars]
-        #jax.debug.print("orbitals:{}", orbitals)
-        #jax.debug.print("angulars:{}", angulars)
 
+        '''
+        orbitals_angular = orbitals
+        '''
+
+        angulars = [angular[..., ::2] + 1.0j * angular[..., 1::2] for angular in angulars]
+        
         orbitals_angular = []
+        
         for i in range(len(orbitals)):
             orbitals_angular.append(orbitals[i] * angulars[i])
+
         """to be continued...16.5.2025"""
         """this line switch to the type with angular momentum functions."""
 
@@ -555,15 +554,16 @@ def make_orbitals(nspins: Tuple[int, int],
         orbitals_angular = [jnp.transpose(orbital, (1, 0, 2)) for orbital in orbitals_angular]
         orbitals_angular = [jnp.concatenate(orbitals_angular, axis=1)]
         #jax.debug.print("orbitals_angular:{}", orbitals_angular)
-
+        #jax.debug.print("orbitals_angular:{}", orbitals_angular)
+        '''
         jastrow = jnp.exp(jastrow_ee_apply(r_ee=r_ee,
                                            parallel_indices=parallel_indices,
                                            antiparallel_indices=antiparallel_indices,
                                            params=params['jastrow_ee']) / 6)
         """to be continued... Jastrow 11.5.2025."""
         orbitals_angular_jastrow = [orbital * jastrow for orbital in orbitals_angular]
-
-        return orbitals_angular_jastrow
+        '''
+        return orbitals_angular
 
     return init, apply
 
@@ -583,8 +583,8 @@ def make_gaussian_net(
         bias_orbitals: bool = False,
         full_det: bool = True,
         hidden_dims: GaussianLayers = ((32, 16), (32, 16), (32, 16), (32, 16)),
-        embedding_dim_eff_angular: AngularLayers = ((32), (32), (32), (32)),# 3 is the number of coordinates.
-        embedding_dim_poly_exponent: PolyexponentLayers = ((21), (21), (21), (21))):
+        embedding_dim_eff_angular: AngularLayers = ((32), (32), (32),),# 3 is the number of coordinates.
+        embedding_dim_poly_exponent: PolyexponentLayers = ((32), (32))):
     """The main function to create the many-body wave-function."""
     feature_layer = make_gaussian_features(natoms=natoms, ndim=ndim)
     """we only use isotropic function currently."""
@@ -609,6 +609,7 @@ def make_gaussian_net(
                                                   antiparallel_indices=antiparallel_indices,
                                                   n_parallel=n_parallel,
                                                   n_antiparallel=n_antiparallel,
+                                                  n_determinants=2,
                                                   angular_init=angular_init,
                                                   angular_apply=angular_apply,
                                                   exp_init=exp_init,
@@ -632,7 +633,7 @@ def make_gaussian_net(
     return Network(init=init, apply=apply, orbitals=orbitals_apply)
 
 
-'''
+
 #from GaussianNet.main_train.train import init_electrons
 from GaussianNet.tools.utils import system
 from GaussianNet.wavefunction import spin_indices
@@ -802,6 +803,9 @@ pos, spins = init_electrons(
 
 atoms = jnp.array([[0.0, 0.0, 0.0]])
 pos = pos[0]
+jax.debug.print("pos:{}", pos)
+pos = jnp.array([1, 1,  1, 2,  2, 2, 3, 3, 3,  4, 4,  4, 5, 5, 5, 6,  6,  6])
+pos = jnp.array([2,  2, 2, 1,  1, 1, 3, 3, 3,  4, 4,  4, 5, 5, 5, 6,  6,  6])
 spins = spins[0]
 jax.debug.print("spins:{}", spins)
 charges = jnp.array([0.0])
@@ -822,7 +826,7 @@ params = network.init(subkey)
 wavefunction_value = network.apply(params, pos, spins, atoms, charges)
 jax.debug.print("wavefunction_value:{}", wavefunction_value)
 signed_network = network.apply
-
+'''
 data = GaussianNetData(
             positions=pos, spins=spins, atoms=atoms, charges=charges
         )
@@ -834,4 +838,4 @@ new_data, key = walkers_update(f=signed_network,
                                ndim=3,
                                nelectrons=6,
                                batch_size=1)
-'''
+                               '''

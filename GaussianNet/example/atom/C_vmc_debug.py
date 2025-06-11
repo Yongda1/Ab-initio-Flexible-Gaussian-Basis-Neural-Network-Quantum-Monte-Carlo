@@ -22,8 +22,8 @@ cfg.pp_use = False
 cfg.network.complex = True
 cfg.system.molecule = [system.Atom('C', (0, 0, 0))]
 # Set training parameters
-cfg.batch_size = 6
-cfg.optim.iterations = 11
+cfg.batch_size = 10
+cfg.optim.iterations = 1001
 cfg.pretrain.iterations = 10
 cfg.mcmc.steps = 10
 #cfg.network.hidden_dims = ((32, 16), (32, 16), (32, 16), (32, 16))

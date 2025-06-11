@@ -50,17 +50,18 @@ def dmc_propagate(signed_network,
                           branchcut_start: jnp.array,
                           e_trial: jnp.array,
                           e_est: jnp.array,):
-        generate_mc_keys = generate_batch_key(6)
+        generate_mc_keys = generate_batch_key(100)
         mc_keys = jax.pmap(generate_mc_keys)(key)
 
         eloc_old, variance_old = total_e_parallel(params, key, data)
         """to be continued...21.5.2025."""
         data, mc_keys, grad_eff_old, grad_new_eff = drift_diffusion_parallel(data, params, mc_keys)
-
+        jax.debug.print("data:{}", data)
         eloc_new, variance_new = total_e_parallel(params,  key, data)
-
-        grad_eff_old = jnp.reshape(grad_eff_old, (6, -1))
-        grad_new_eff = jnp.reshape(grad_new_eff, (6, -1))
+        #jax.debug.print("grad_eff_old:{}", grad_eff_old)
+        #jax.debug.print("grad_new_eff:{}", grad_new_eff)
+        grad_eff_old = jnp.reshape(grad_eff_old, (100, -1))
+        grad_new_eff = jnp.reshape(grad_new_eff, (100, -1))
         #jax.debug.print("eloc_old:{}", eloc_old)
         #jax.debug.print("eloc_new:{}", eloc_new)
 

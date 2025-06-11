@@ -19,7 +19,7 @@ cfg.pp_use = False
 cfg.network.complex = True
 cfg.system.molecule = [system.Atom('C', (0, 0, 0))]
 # Set training parameters
-cfg.batch_size = 40
+cfg.batch_size = 100
 cfg.optim.iterations = 10
 cfg.pretrain.iterations = 0
 cfg.mcmc.steps = 20
@@ -39,7 +39,7 @@ train(cfg,
       nelectrons=6,
       natoms=1,
       ndim=3,
-      batch_size=6,
+      batch_size=100,
       iterations=10,
       tstep=0.01,
       nspins=(3, 3),

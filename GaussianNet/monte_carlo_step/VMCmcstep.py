@@ -62,19 +62,19 @@ def walkers_update(f: networks.GaussianNetLike,
             O_new = primal_x2 + 1.j * phase_primal_x2
             O_new = jnp.reshape(O_new, (nelectrons, ndim))
             O_new_eff = O_new[i]
-            jax.debug.print("forward:{}", forward)
-            jax.debug.print("O_eff:{}", O_eff)
-            jax.debug.print("O_new_eff:{}", O_new_eff)
+            #jax.debug.print("forward:{}", forward)
+            #jax.debug.print("O_eff:{}", O_eff)
+            #jax.debug.print("O_new_eff:{}", O_new_eff)
             backward = jnp.sum((gauss + (O_eff + O_new_eff) * tstep) ** 2)
-            jax.debug.print("backward:{}", backward)
+            #jax.debug.print("backward:{}", backward)
             t_pro = jnp.exp(1 / (2 * tstep) * (forward - backward))
-            jax.debug.print("ratio:{}", ratio)
-            jax.debug.print("t_pro:{}", t_pro)
+            #jax.debug.print("ratio:{}", ratio)
+           #jax.debug.print("t_pro:{}", t_pro)
             ratio_total = jnp.abs(ratio) * t_pro
             # ratio_total = ratio_total * jnp.sign(ratio)
             rnd = jax.random.uniform(key, shape=ratio_total.shape, minval=0, maxval=1.0)
             cond = ratio_total > rnd
-            jax.debug.print("cond:{}", cond)
+            #jax.debug.print("cond:{}", cond)
             x_new = x_new.at[i].set(jnp.where(cond, x2[i], x1[i]))
 
         x_new = jnp.reshape(x_new, (-1))
