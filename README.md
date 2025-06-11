@@ -1,4 +1,5 @@
 In this branch, we try to make pfaffian wave function.
+Jax version 0.5.3
 The current architectures is as follows,
 ![img.png](img.png)
 
