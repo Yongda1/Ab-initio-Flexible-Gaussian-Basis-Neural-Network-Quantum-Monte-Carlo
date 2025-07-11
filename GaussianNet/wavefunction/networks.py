@@ -343,8 +343,10 @@ def make_orbitals(nspins: Tuple[int, int],
         orbitals_angular = [jnp.transpose(orbital, (1, 0, 2)) for orbital in orbitals_angular]
         orbitals_angular = [jnp.concatenate(orbitals_angular, axis=1)]
         jax.debug.print("orbitals_angular:{}", orbitals_angular)
-        """the determinant is |psi_1(r_1)  psi_2(r_1)|
-                              |psi_1(r_2)  psi_2(r_2)|"""
+        """the determinant is |psi_1(r_1)  psi_2(r_1) psi_3(r_1) psi_4(r_1)|
+                              |psi_1(r_2)  psi_2(r_2) psi_3(r_2) psi_4(r_2)|
+                              |psi_1(r_3)  psi_2(r_3) psi_3(r_3) psi_4(r_3)|
+                              |psi_1(r_4)  psi_2(r_4) psi_3(r_4) psi_4(r_4)|"""
         """the next step, we need construct the chi(i,j)"""
 
         '''
@@ -360,9 +362,58 @@ def make_orbitals(nspins: Tuple[int, int],
     return init, apply
 
 
-def pfaffian(orbitals):
+def coefficients_layer(hidden_dims_coe):
+    def init(key: chex.PRNGKey) -> Tuple[int, ParamTree]:
+        params = {}
+        key, coe_key = jax.random.split(key, num=2)
+        dims_one_in = 2 #we always have two input variables.
+        layers = []
+        for i in range(len(hidden_dims_coe)):
+            layer_params = {}
+            dims_one_out= hidden_dims_coe[i]
+            layer_params['coe'] = network_blocks.init_linear_layer(
+                coe_key,
+                in_dim=dims_one_in,
+                out_dim=dims_one_out,
+                include_bias=True,
+            )
+            layers.append(layer_params)
+            dims_one_in = dims_one_out
+        output_dims = dims_one_in
+        params['coe_layers'] = layers
+        return output_dims, params
+
+    def apply_layer(params: Mapping[str, ParamTree],
+                    coe_in: jnp.ndarray):
+        coe_in_next = jnp.tanh(network_blocks.linear_layer(coe_in, **params['coe']))
+        return coe_in_next
+
+    def apply(params: Mapping[str, ParamTree],
+              coe_in: jnp.ndarray):
+        for i in range(len(hidden_dims_coe)):
+            coe_in = apply_layer(params['coe_layers'][i], coe_in,)
+        coe_to_pf_orbitals = coe_in
+        return coe_to_pf_orbitals
+
+    return init, apply
+
+
+def pfaffian(orbitals: jnp.ndarray, coefficient_layer, key: chex.PRNGKey):
     """we used this function to construct pfaffian wave function. However, the first step is to construct the pair orbitals.
-    chi(1,2)"""
+    chi(1,2), chi(1,3), chi(1,4), chi(2,3),  chi(3,4),  chi(2,4).
+    for instance, triplet chi(1,2) = c_(1,2)[psi_1(r_1)psi_2(r_2) - psi_2(r_1)psi_1(r_2)] +
+                                     c_(1,3)[psi_1(r_1)psi_3(r_2) - psi_3(r_1)psi_1(r_2)] +
+                                     c_(1,4)[psi_1(r_1)psi_4(r_2) - psi_4(r_1)psi_1(r_2)] +
+                                     c_(2,3)[psi_2(r_1)psi_3(r_2) - psi_3(r_1)psi_2(r_2)] +
+                                     c_(2,4)[psi_2(r_1)psi_4(r_2) - psi_4(r_1)psi_2(r_2)] +
+                                     c_(3,4)[psi_3(r_1)psi_4(r_2) - psi_4(r_1)psi_3(r_2)])]]
+    for only triplet states, pf[chi(i,j)] = chi(1,2)chi(3,4) - chi(1,3)chi(2,4) + chi(1,4)chi(2,3).
+    first, we need to generate the symmetry neural network c_(i,j)"""
+    '''to be continued...'''
+    coe_init, coe_apply = coefficient_layer
+
+
+
 
     return None
 
@@ -380,6 +431,7 @@ def make_gaussian_net(
         bias_orbitals: bool = False,
         full_det: bool = True,
         hidden_dims: GaussianLayers = ((32, 16), (32, 16), (32, 16), (32, 16)),
+        hidden_dims_coe = (16, 16, 16, 16),
         ):
     """The main function to create the many-body wave-function."""
     feature_layer = make_gaussian_features(natoms=natoms, ndim=ndim)
