@@ -3,7 +3,7 @@
   <component name="Black">
     <option name="sdkName" value="Python 3.12.3 WSL (Ubuntu): (/root/.venv/bin/python3.12)" />
   </component>
-  <component name="ProjectRootManager" version="2" project-jdk-name="JAXnew" project-jdk-type="Python SDK" />
+  <component name="ProjectRootManager" version="2" project-jdk-name="Python 3.12.11 WSL (Ubuntu): (/root/anaconda3/envs/JAX_new_0.6.3/bin/python3.12)" project-jdk-type="Python SDK" />
   <component name="PyPackaging">
     <option name="earlyReleasesAsUpgrades" value="true" />
   </component>

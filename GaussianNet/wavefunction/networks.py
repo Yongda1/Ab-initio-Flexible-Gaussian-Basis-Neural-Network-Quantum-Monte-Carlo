@@ -408,7 +408,9 @@ def pfaffian(orbitals: jnp.ndarray, coefficient_layer, key: chex.PRNGKey):
                                      c_(2,4)[psi_2(r_1)psi_4(r_2) - psi_4(r_1)psi_2(r_2)] +
                                      c_(3,4)[psi_3(r_1)psi_4(r_2) - psi_4(r_1)psi_3(r_2)])]]
     for only triplet states, pf[chi(i,j)] = chi(1,2)chi(3,4) - chi(1,3)chi(2,4) + chi(1,4)chi(2,3).
-    first, we need to generate the symmetry neural network c_(i,j)"""
+    first, we need to generate the symmetry neural network c_(i,j)
+    we need make a new approach to generate the pfaffian with arbitrary orbitals. 08.09.2025.
+    """
     '''to be continued...'''
     coe_init, coe_apply = coefficient_layer
 
