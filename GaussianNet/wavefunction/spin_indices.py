@@ -3,6 +3,12 @@ import jax.numpy as jnp
 import numpy as np
 
 def jastrow_indices_ee(spins: jnp.array, nelectrons: int):
+    """
+
+    :param spins: one dimensional array of spins, like [1, -1, 1, -1].
+    :param nelectrons: the number of electrons.
+    :return: the column of the output matrix is the indices of parallel spins
+    """
     temp = jnp.reshape(spins, (nelectrons, 1))
     spins = jnp.reshape(spins, (1, nelectrons))
     spins_total = spins * temp

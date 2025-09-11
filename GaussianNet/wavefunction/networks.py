@@ -1,6 +1,7 @@
 import enum
 from typing import Any, Iterable, Mapping, MutableMapping, Optional, Sequence, Tuple, Union
 import attr
+import math
 import chex
 import jax
 import jax.numpy as jnp
@@ -8,6 +9,8 @@ from typing_extensions import Protocol
 from GaussianNet.wavefunction import network_blocks
 from GaussianNet.wavefunction import JastrowPade
 from GaussianNet.wavefunction import envelopes
+from GaussianNet.wavefunction import generate_g_uu
+from GaussianNet.wavefunction.f_uu import c_uu
 
 GaussianLayers = Tuple[Tuple[int, int], ...]
 AngularLayers = Tuple[Tuple[int], ...]
@@ -247,6 +250,26 @@ def make_gaussian_net_layers(nspins: Tuple[int, int],
     return init, apply
 
 
+def pfaffian(orbitals: jnp.ndarray,):
+    """we used this function to construct pfaffian wave function. However, the first step is to construct the pair orbitals.
+        first, we need to generate the symmetry neural network c_(i,j)
+        we need make a new approach to generate the pfaffian with arbitrary orbitals. 08.09.2025.
+        """
+    """to include the parameters of coe_uu, coe_dd, we need reconstruct the new class for pfaffian 11.09.2025."""
+    jax.debug.print("orbitals:{}", orbitals)
+    """first, we need split the determinants into four parts including G_uu, G_dd, G_ud, G_du.10.09.2025."""
+    """first we try to solve the G_uu and G_dd part. Suppose that the number of electrons is even.10.09.2025."""
+    n_spin_up = 3
+    orbitals_uu = orbitals[0][0][0:n_spin_up, 0:n_spin_up]
+    orbitals_dd = orbitals[0][1][n_spin_up:, n_spin_up:]
+    #jax.debug.print("orbitals_dd:{}", orbitals_dd)
+    det_value_uu = generate_g_uu.split_matrix(orbitals_determinant=orbitals_uu, n_spin=n_spin_up)
+    jax.debug.print("det_value_uu:{}", det_value_uu)
+    det_value_dd = generate_g_uu.split_matrix(orbitals_determinant=orbitals_dd, n_spin=n_spin_up)
+    jax.debug.print("det_value_dd:{}", det_value_dd)
+    return det_value_uu, det_value_dd
+
+
 def make_orbitals(nspins: Tuple[int, int],
                   charges: jnp.ndarray,
                   parallel_indices: jnp.array,
@@ -254,12 +277,18 @@ def make_orbitals(nspins: Tuple[int, int],
                   n_parallel: int,
                   n_antiparallel: int,
                   n_determinants: int,
+                  number_of_coefficients: int,
                   envelope,
                   equivariant_layers: Tuple[InitLayersGn, ApplyLayersGn], ):
     """to be continued...11.5.2025."""
     equivariant_layers_init, equivariant_layers_apply = equivariant_layers
     """the jastrow part needs to be done later.11.5.2025."""
     jastrow_ee_init, jastrow_ee_apply, jastrow_ae_init, jastrow_ae_apply = JastrowPade.get_jastrow(charges)
+    """we add coe_uu here. 11.09.2025."""
+
+
+    coe_init, coe_apply = c_uu.coefficients_layer(hidden_dims_coe=(4, 4, 4, number_of_coefficients))
+
 
     def init(key: chex.PRNGKey) -> ParamTree:
         key, subkey, subsubkey, subsubsubkey = jax.random.split(key, num=4)
@@ -290,7 +319,9 @@ def make_orbitals(nspins: Tuple[int, int],
 
         params['orbital'] = orbitals
         params['jastrow_ee'] = jastrow_ee_init(n_parallel=n_parallel, n_antiparallel=n_antiparallel)
-        params['jastrow_ae'] = jastrow_ae_init(nelectrons=4, natoms=1)
+        params['jastrow_ae'] = jastrow_ae_init(nelectrons=6, natoms=1)
+        """parameters for the coe function.11.09.2025."""
+        output_dims, params['coe_uu'] = coe_init(subsubsubkey)
         return params
 
     def apply(params,
@@ -308,21 +339,21 @@ def make_orbitals(nspins: Tuple[int, int],
 
         h_to_orbitals = jnp.split(h_to_orbitals, network_blocks.array_partitions(nspins), axis=0)
         h_to_orbitals = [h for h, spin in zip(h_to_orbitals, nspins) if spin > 0]
-        jax.debug.print("h_to_orbitals:{}", h_to_orbitals)
-        jax.debug.print("orbital:{}", params['orbital'])
-        for h, p in zip(h_to_orbitals, params['orbital']):
-            jax.debug.print("h:{}", h)
-            jax.debug.print("p:{}", p)
-            value = network_blocks.linear_layer(h, **p)
-            jax.debug.print("value:{}", value)
+        #jax.debug.print("h_to_orbitals:{}", h_to_orbitals)
+        #jax.debug.print("orbital:{}", params['orbital'])
+        #for h, p in zip(h_to_orbitals, params['orbital']):
+            #jax.debug.print("h:{}", h)
+            #jax.debug.print("p:{}", p)
+            #value = network_blocks.linear_layer(h, **p)
+            #jax.debug.print("value:{}", value)
         orbitals = [
             network_blocks.linear_layer(h, **p)
             for h, p in zip(h_to_orbitals, params['orbital'])
         ]
-        jax.debug.print("orbitals:{}", orbitals)
+        #jax.debug.print("orbitals:{}", orbitals)
 
         orbitals = [orbital[..., ::2] + 1.0j * orbital[..., 1::2] for orbital in orbitals]
-        jax.debug.print("orbitals_complex:{}", orbitals)
+        #jax.debug.print("orbitals_complex:{}", orbitals)
 
         orbitals_angular = orbitals
 
@@ -339,16 +370,34 @@ def make_orbitals(nspins: Tuple[int, int],
 
         shapes = [(spin, -1, sum(nspins)) for spin in active_spin_channels]
         orbitals_angular = [jnp.reshape(orbital, shape) for orbital, shape in zip(orbitals_angular, shapes)]
-        jax.debug.print("orbitals_angular_before:{}", orbitals_angular)
+        #jax.debug.print("orbitals_angular_before:{}", orbitals_angular)
         orbitals_angular = [jnp.transpose(orbital, (1, 0, 2)) for orbital in orbitals_angular]
         orbitals_angular = [jnp.concatenate(orbitals_angular, axis=1)]
-        jax.debug.print("orbitals_angular:{}", orbitals_angular)
+        #jax.debug.print("orbitals_angular:{}", orbitals_angular)
         """the determinant is |psi_1(r_1)  psi_2(r_1) psi_3(r_1) psi_4(r_1)|
                               |psi_1(r_2)  psi_2(r_2) psi_3(r_2) psi_4(r_2)|
                               |psi_1(r_3)  psi_2(r_3) psi_3(r_3) psi_4(r_3)|
                               |psi_1(r_4)  psi_2(r_4) psi_3(r_4) psi_4(r_4)|"""
-        """the next step, we need construct the chi(i,j)"""
-
+        """the next step, we need construct the G_uu and G_dd 11.09.2025."""
+        uu, dd = pfaffian(orbitals=jnp.array(orbitals_angular))
+        jax.debug.print('uu:{}', uu)
+        jax.debug.print('dd:{}', dd)
+        #jax.debug.print("coe:{}", params['coe_uu'])
+        #jax.debug.print("r_ee:{}", r_ee)
+        r_ee_uu = jnp.reshape(r_ee, (6, -1))
+        """what we need here is three r12, r13, r23, i.e., r_ee_uu_1[0], r_ee_uu_1[1]"""
+        #jax.debug.print("parallel_indices:{}", parallel_indices)
+        #jax.debug.print("antiparallel_indices:{}", antiparallel_indices)
+        r_ees_parallel = jnp.array([r_ee_uu[parallel_indices[:, i][0], parallel_indices[:, i][1]] for i in range(6)])
+        #jax.debug.print("r_ees_parallel:{}", r_ees_parallel)
+        r_ees_parallel_uu = jnp.reshape(r_ees_parallel[0:3], (-1, 1))
+        r_ees_parallel_uu = jnp.repeat(r_ees_parallel_uu, repeats=3, axis=1)
+        jax.debug.print("r_ees_parallel_uu:{}", r_ees_parallel_uu)
+        coe_uu = jax.vmap(coe_apply, in_axes=(None, 0))(params['coe_uu'], r_ees_parallel_uu)
+        jax.debug.print("coe_uu:{}", coe_uu)
+        value_uu = jnp.sum(coe_uu * uu, axis=1)
+        jax.debug.print("value_uu:{}", value_uu)
+        """so far, we got the up triangle part of matrix elements of G_uu. 11.09.2025."""
         '''
         jastrow = jnp.exp(jastrow_ee_apply(r_ee=r_ee,
                                            parallel_indices=parallel_indices,
@@ -362,62 +411,10 @@ def make_orbitals(nspins: Tuple[int, int],
     return init, apply
 
 
-def coefficients_layer(hidden_dims_coe):
-    def init(key: chex.PRNGKey) -> Tuple[int, ParamTree]:
-        params = {}
-        key, coe_key = jax.random.split(key, num=2)
-        dims_one_in = 2 #we always have two input variables.
-        layers = []
-        for i in range(len(hidden_dims_coe)):
-            layer_params = {}
-            dims_one_out= hidden_dims_coe[i]
-            layer_params['coe'] = network_blocks.init_linear_layer(
-                coe_key,
-                in_dim=dims_one_in,
-                out_dim=dims_one_out,
-                include_bias=True,
-            )
-            layers.append(layer_params)
-            dims_one_in = dims_one_out
-        output_dims = dims_one_in
-        params['coe_layers'] = layers
-        return output_dims, params
-
-    def apply_layer(params: Mapping[str, ParamTree],
-                    coe_in: jnp.ndarray):
-        coe_in_next = jnp.tanh(network_blocks.linear_layer(coe_in, **params['coe']))
-        return coe_in_next
-
-    def apply(params: Mapping[str, ParamTree],
-              coe_in: jnp.ndarray):
-        for i in range(len(hidden_dims_coe)):
-            coe_in = apply_layer(params['coe_layers'][i], coe_in,)
-        coe_to_pf_orbitals = coe_in
-        return coe_to_pf_orbitals
-
-    return init, apply
-
-
-def pfaffian(orbitals: jnp.ndarray, coefficient_layer, key: chex.PRNGKey):
-    """we used this function to construct pfaffian wave function. However, the first step is to construct the pair orbitals.
-    chi(1,2), chi(1,3), chi(1,4), chi(2,3),  chi(3,4),  chi(2,4).
-    for instance, triplet chi(1,2) = c_(1,2)[psi_1(r_1)psi_2(r_2) - psi_2(r_1)psi_1(r_2)] +
-                                     c_(1,3)[psi_1(r_1)psi_3(r_2) - psi_3(r_1)psi_1(r_2)] +
-                                     c_(1,4)[psi_1(r_1)psi_4(r_2) - psi_4(r_1)psi_1(r_2)] +
-                                     c_(2,3)[psi_2(r_1)psi_3(r_2) - psi_3(r_1)psi_2(r_2)] +
-                                     c_(2,4)[psi_2(r_1)psi_4(r_2) - psi_4(r_1)psi_2(r_2)] +
-                                     c_(3,4)[psi_3(r_1)psi_4(r_2) - psi_4(r_1)psi_3(r_2)])]]
-    for only triplet states, pf[chi(i,j)] = chi(1,2)chi(3,4) - chi(1,3)chi(2,4) + chi(1,4)chi(2,3).
-    first, we need to generate the symmetry neural network c_(i,j)
-    we need make a new approach to generate the pfaffian with arbitrary orbitals. 08.09.2025.
-    """
-    '''to be continued...'''
-    coe_init, coe_apply = coefficient_layer
 
 
 
 
-    return None
 
 def make_gaussian_net(
         nspins: Tuple[int, int],
@@ -433,7 +430,8 @@ def make_gaussian_net(
         bias_orbitals: bool = False,
         full_det: bool = True,
         hidden_dims: GaussianLayers = ((32, 16), (32, 16), (32, 16), (32, 16)),
-        hidden_dims_coe = (16, 16, 16, 16),
+        #hidden_dims_coe = (16, 16, 16, 16),
+        number_of_coefficients: int = 1,
         ):
     """The main function to create the many-body wave-function."""
     feature_layer = make_gaussian_features(natoms=natoms, ndim=ndim)
@@ -452,8 +450,11 @@ def make_gaussian_net(
                                                   n_parallel=n_parallel,
                                                   n_antiparallel=n_antiparallel,
                                                   n_determinants=1,
+                                                  number_of_coefficients=number_of_coefficients,
                                                   envelope=envelope,
                                                   equivariant_layers=equivariant_layers)
+
+
 
     def init(key: chex.PRNGKey) -> ParamTree:
         key, subkey = jax.random.split(key, num=2)
@@ -465,6 +466,8 @@ def make_gaussian_net(
               atoms: jnp.ndarray,
               charges: jnp.ndarray, ) -> Tuple[jnp.ndarray, jnp.ndarray]:
         orbitals_with_angular = orbitals_apply(params, pos, spins, atoms, charges)
+        """here, we test the pfaffian function.10.09.2025."""
+        #output = pfaffian(orbitals_with_angular)
         result = network_blocks.logdet_matmul(orbitals_with_angular)
         return result
 
@@ -481,20 +484,27 @@ subkey = jax.random.fold_in(subkey, jax.process_index())
 
 atoms = jnp.array([[0.0, 0.0, 0.0]])
 #pos = jnp.array([1, 1, 1, 2, 2, 2, 3, 3, 3, 4, 4, 4, 5, 5, 5, 6, 6, 6])
-pos = jnp.array([2, 2, 2, 1, 1, 1, 3, 3, 3, 4, 4, 4,])
+pos = jnp.array([2, 2, 2, 1, 1, 1, 3, 3, 3, 4, 4, 4, 5, 5, 5, 6, 6, 6])
 charges = jnp.array([0.0])
-spins_test = jnp.array([[1., 1., - 1., - 1.]])
+spins_test = jnp.array([[1., 1., 1., - 1., - 1., -1.]])
 spins = spins_test
 parallel_indices, antiparallel_indices, n_parallel, n_antiparallel = spin_indices.jastrow_indices_ee(spins=spins_test,
-                                    nelectrons=4)
-#jax.debug.print("n_parallel:{}", n_parallel)
-#jax.debug.print("n_antiparallel:{}", n_antiparallel)
-network = make_gaussian_net(nspins=(2, 2),
+                                    nelectrons=6)
+jax.debug.print("parallel_indices:{}", parallel_indices)
+jax.debug.print("antiparallel_indices:{}", antiparallel_indices)
+jax.debug.print("n_parallel:{}", n_parallel)
+jax.debug.print("n_antiparallel:{}", n_antiparallel)
+
+n_spin_up = 3
+number_coe = int(math.factorial(n_spin_up) / (math.factorial(2) * math.factorial(n_spin_up - 2)))
+jax.debug.print("number_coe:{}", number_coe)
+network = make_gaussian_net(nspins=(3, 3),
                             charges=charges,
                             parallel_indices=parallel_indices,
                             antiparallel_indices=antiparallel_indices,
                             n_parallel=n_parallel,
-                            n_antiparallel=n_antiparallel, )
+                            n_antiparallel=n_antiparallel,
+                            number_of_coefficients=number_coe,)
 
 params = network.init(subkey)
 wavefunction_value = network.apply(params, pos, spins, atoms, charges)
