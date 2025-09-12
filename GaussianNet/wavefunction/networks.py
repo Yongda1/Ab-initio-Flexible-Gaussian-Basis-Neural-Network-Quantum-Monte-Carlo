@@ -10,7 +10,10 @@ from GaussianNet.wavefunction import network_blocks
 from GaussianNet.wavefunction import JastrowPade
 from GaussianNet.wavefunction import envelopes
 from GaussianNet.wavefunction import generate_g_uu
+from GaussianNet.wavefunction import generate_g_ud
 from GaussianNet.wavefunction.f_uu import c_uu
+from GaussianNet.wavefunction.f_ud import f_s
+from GaussianNet.wavefunction.f_ud import f_t
 
 GaussianLayers = Tuple[Tuple[int, int], ...]
 AngularLayers = Tuple[Tuple[int], ...]
@@ -261,13 +264,23 @@ def pfaffian(orbitals: jnp.ndarray,):
     """first we try to solve the G_uu and G_dd part. Suppose that the number of electrons is even.10.09.2025."""
     n_spin_up = 3
     orbitals_uu = orbitals[0][0][0:n_spin_up, 0:n_spin_up]
-    orbitals_dd = orbitals[0][1][n_spin_up:, n_spin_up:]
+    orbitals_dd = orbitals[0][0][n_spin_up:, n_spin_up:]
+    orbitals_ud = orbitals[0][0][n_spin_up:, 0:n_spin_up]
+    orbitals_du = orbitals[0][0][0:n_spin_up:, n_spin_up:]
+    jax.debug.print("orbitals_ud:{}", orbitals_ud)
     #jax.debug.print("orbitals_dd:{}", orbitals_dd)
+    f_s, f_t = generate_g_ud.split_matrix( orbitals_determinant_uu=orbitals_uu,
+                                               orbitals_determinant_dd=orbitals_dd,
+                                               orbitals_determinant_ud=orbitals_ud,
+                                               orbitals_determinant_du=orbitals_du)
+    jax.debug.print("f_s:{}", f_s)
+    jax.debug.print("f_t:{}", f_t)
+    """then we need generate the coefficients function 12.09.2025."""
     det_value_uu = generate_g_uu.split_matrix(orbitals_determinant=orbitals_uu, n_spin=n_spin_up)
-    jax.debug.print("det_value_uu:{}", det_value_uu)
+    #jax.debug.print("det_value_uu:{}", det_value_uu)
     det_value_dd = generate_g_uu.split_matrix(orbitals_determinant=orbitals_dd, n_spin=n_spin_up)
-    jax.debug.print("det_value_dd:{}", det_value_dd)
-    return det_value_uu, det_value_dd
+    #jax.debug.print("det_value_dd:{}", det_value_dd)
+    return det_value_uu, det_value_dd, f_s, f_t
 
 
 def make_orbitals(nspins: Tuple[int, int],
@@ -288,7 +301,9 @@ def make_orbitals(nspins: Tuple[int, int],
 
 
     coe_init, coe_apply = c_uu.coefficients_layer(hidden_dims_coe=(4, 4, 4, number_of_coefficients))
-
+    """we need rename the coefficient function to keep them consistent.12.09.2025."""
+    coe_f_s_init, coe_f_s_apply = f_s.coefficients_layer(hidden_dims_coe=(4, 4, 4, 9))
+    coe_f_t_init, coe_f_t_apply = f_t.coefficients_layer(hidden_dims_coe=(4, 4, 4, 9))
 
     def init(key: chex.PRNGKey) -> ParamTree:
         key, subkey, subsubkey, subsubsubkey = jax.random.split(key, num=4)
@@ -322,6 +337,8 @@ def make_orbitals(nspins: Tuple[int, int],
         params['jastrow_ae'] = jastrow_ae_init(nelectrons=6, natoms=1)
         """parameters for the coe function.11.09.2025."""
         output_dims, params['coe_uu'] = coe_init(subsubsubkey)
+        output_dims1, params['f_s'] = coe_f_s_init(subsubsubkey)
+        output_dims2, params['f_t'] = coe_f_t_init(subsubsubkey)
         return params
 
     def apply(params,
@@ -378,26 +395,49 @@ def make_orbitals(nspins: Tuple[int, int],
                               |psi_1(r_2)  psi_2(r_2) psi_3(r_2) psi_4(r_2)|
                               |psi_1(r_3)  psi_2(r_3) psi_3(r_3) psi_4(r_3)|
                               |psi_1(r_4)  psi_2(r_4) psi_3(r_4) psi_4(r_4)|"""
+
         """the next step, we need construct the G_uu and G_dd 11.09.2025."""
-        uu, dd = pfaffian(orbitals=jnp.array(orbitals_angular))
-        jax.debug.print('uu:{}', uu)
-        jax.debug.print('dd:{}', dd)
+        uu, dd, ud_s, ud_t = pfaffian(orbitals=jnp.array(orbitals_angular))
+        #jax.debug.print('uu:{}', uu)
+        #jax.debug.print('dd:{}', dd)
         #jax.debug.print("coe:{}", params['coe_uu'])
-        #jax.debug.print("r_ee:{}", r_ee)
+        #jax.debug.print("f_s:{}", params['f_s'])
+        #jax.debug.print("f_t:{}", params['f_t'])
+
         r_ee_uu = jnp.reshape(r_ee, (6, -1))
         """what we need here is three r12, r13, r23, i.e., r_ee_uu_1[0], r_ee_uu_1[1]"""
+        jax.debug.print("r_ee:{}", r_ee_uu)
         #jax.debug.print("parallel_indices:{}", parallel_indices)
         #jax.debug.print("antiparallel_indices:{}", antiparallel_indices)
         r_ees_parallel = jnp.array([r_ee_uu[parallel_indices[:, i][0], parallel_indices[:, i][1]] for i in range(6)])
         #jax.debug.print("r_ees_parallel:{}", r_ees_parallel)
         r_ees_parallel_uu = jnp.reshape(r_ees_parallel[0:3], (-1, 1))
         r_ees_parallel_uu = jnp.repeat(r_ees_parallel_uu, repeats=3, axis=1)
-        jax.debug.print("r_ees_parallel_uu:{}", r_ees_parallel_uu)
+        #jax.debug.print("r_ees_parallel_uu:{}", r_ees_parallel_uu)
         coe_uu = jax.vmap(coe_apply, in_axes=(None, 0))(params['coe_uu'], r_ees_parallel_uu)
-        jax.debug.print("coe_uu:{}", coe_uu)
+        #jax.debug.print("coe_uu:{}", coe_uu)
         value_uu = jnp.sum(coe_uu * uu, axis=1)
-        jax.debug.print("value_uu:{}", value_uu)
-        """so far, we got the up triangle part of matrix elements of G_uu. 11.09.2025."""
+        #jax.debug.print("value_uu:{}", value_uu)
+        """so far, we got the up triangle part of matrix elements of G_uu. 11.09.2025.
+               The G_dd part can be done in the same way. The problem is G_ud part. 12.09.2025."""
+        r_ees_antiparallel = jnp.array([r_ee_uu[antiparallel_indices[:, i][0], antiparallel_indices[:, i][1]] for i in range(9)])
+        jax.debug.print("r_ees_antiparallel:{}", r_ees_antiparallel)
+        r_ees_antiparallel = jnp.reshape(r_ees_antiparallel, (-1, 1))
+        r_ees_antiparallel_ud = jnp.repeat(r_ees_antiparallel, repeats=9, axis=1)
+        jax.debug.print("r_ees_antiparallel_ud:{}", r_ees_antiparallel_ud)
+        f_s = jax.vmap(coe_f_s_apply, in_axes=(None, 0))(params['f_s'], r_ees_antiparallel_ud)
+        f_t = jax.vmap(coe_f_t_apply, in_axes=(None, 0))(params['f_t'], r_ees_antiparallel_ud)
+        jax.debug.print("f_s:{}", f_s)
+        jax.debug.print("f_t:{}", f_t)
+        jax.debug.print("ud_s:{}", ud_s)
+        jax.debug.print("ud_t:{}", ud_t)
+        """the shape of ud_s and ud_t need to be modified futher. 12.09.2025."""
+
+
+
+
+
+
         '''
         jastrow = jnp.exp(jastrow_ee_apply(r_ee=r_ee,
                                            parallel_indices=parallel_indices,
@@ -423,7 +463,7 @@ def make_gaussian_net(
         antiparallel_indices: jnp.array,
         n_parallel: int,
         n_antiparallel: int,
-        nelectrons: int = 4,
+        nelectrons: int = 6,
         natoms: int = 1,
         ndim: int = 3,
         determinants: int = 1,
