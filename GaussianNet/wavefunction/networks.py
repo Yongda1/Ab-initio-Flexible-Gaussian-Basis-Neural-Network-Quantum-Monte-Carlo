@@ -431,13 +431,7 @@ def make_orbitals(nspins: Tuple[int, int],
         jax.debug.print("f_t:{}", f_t)
         jax.debug.print("ud_s:{}", ud_s)
         jax.debug.print("ud_t:{}", ud_t)
-        """the shape of ud_s and ud_t need to be modified futher. 12.09.2025."""
-
-
-
-
-
-
+        """the shape of ud_s and ud_t need to be modified further. 12.09.2025."""
         '''
         jastrow = jnp.exp(jastrow_ee_apply(r_ee=r_ee,
                                            parallel_indices=parallel_indices,
