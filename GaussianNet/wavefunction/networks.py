@@ -12,8 +12,13 @@ from GaussianNet.wavefunction import envelopes
 from GaussianNet.wavefunction import generate_g_uu
 from GaussianNet.wavefunction import generate_g_ud
 from GaussianNet.wavefunction.f_uu import c_uu
+from GaussianNet.wavefunction.f_dd import c_dd
 from GaussianNet.wavefunction.f_ud import f_s
 from GaussianNet.wavefunction.f_ud import f_t
+
+from pfapack import pfaffian as pf
+from pfapack.ctypes import pfaffian as cpf
+import numpy as np
 
 GaussianLayers = Tuple[Tuple[int, int], ...]
 AngularLayers = Tuple[Tuple[int], ...]
@@ -301,6 +306,7 @@ def make_orbitals(nspins: Tuple[int, int],
 
 
     coe_init, coe_apply = c_uu.coefficients_layer(hidden_dims_coe=(4, 4, 4, number_of_coefficients))
+    coe_init_dd, coe_apply_dd = c_dd.coefficients_layer(hidden_dims_coe=(4, 4, 4, number_of_coefficients))
     """we need rename the coefficient function to keep them consistent.12.09.2025."""
     coe_f_s_init, coe_f_s_apply = f_s.coefficients_layer(hidden_dims_coe=(4, 4, 4, 9))
     coe_f_t_init, coe_f_t_apply = f_t.coefficients_layer(hidden_dims_coe=(4, 4, 4, 9))
@@ -337,6 +343,7 @@ def make_orbitals(nspins: Tuple[int, int],
         params['jastrow_ae'] = jastrow_ae_init(nelectrons=6, natoms=1)
         """parameters for the coe function.11.09.2025."""
         output_dims, params['coe_uu'] = coe_init(subsubsubkey)
+        output_dims, params['coe_dd'] = coe_init_dd(subsubsubkey)
         output_dims1, params['f_s'] = coe_f_s_init(subsubsubkey)
         output_dims2, params['f_t'] = coe_f_t_init(subsubsubkey)
         return params
@@ -398,49 +405,84 @@ def make_orbitals(nspins: Tuple[int, int],
 
         """the next step, we need construct the G_uu and G_dd 11.09.2025."""
         uu, dd, ud_s, ud_t = pfaffian(orbitals=jnp.array(orbitals_angular))
-        #jax.debug.print('uu:{}', uu)
-        #jax.debug.print('dd:{}', dd)
-        #jax.debug.print("coe:{}", params['coe_uu'])
-        #jax.debug.print("f_s:{}", params['f_s'])
-        #jax.debug.print("f_t:{}", params['f_t'])
-
         r_ee_uu = jnp.reshape(r_ee, (6, -1))
-        """what we need here is three r12, r13, r23, i.e., r_ee_uu_1[0], r_ee_uu_1[1]"""
         jax.debug.print("r_ee:{}", r_ee_uu)
-        #jax.debug.print("parallel_indices:{}", parallel_indices)
-        #jax.debug.print("antiparallel_indices:{}", antiparallel_indices)
+        """what we need here is three r12, r13, r23, i.e., r_ee_uu_1[0], r_ee_uu_1[1]"""
         r_ees_parallel = jnp.array([r_ee_uu[parallel_indices[:, i][0], parallel_indices[:, i][1]] for i in range(6)])
-        #jax.debug.print("r_ees_parallel:{}", r_ees_parallel)
         r_ees_parallel_uu = jnp.reshape(r_ees_parallel[0:3], (-1, 1))
         r_ees_parallel_uu = jnp.repeat(r_ees_parallel_uu, repeats=3, axis=1)
-        #jax.debug.print("r_ees_parallel_uu:{}", r_ees_parallel_uu)
+
         coe_uu = jax.vmap(coe_apply, in_axes=(None, 0))(params['coe_uu'], r_ees_parallel_uu)
-        #jax.debug.print("coe_uu:{}", coe_uu)
+        jax.debug.print("r_ees_parallel:{}", r_ees_parallel)
+        r_ees_parallel_dd = jnp.reshape(r_ees_parallel[3:], (-1, 1))
+        r_ees_parallel_dd = jnp.repeat(r_ees_parallel_dd, repeats=3, axis=1)
+        jax.debug.print("r_ees_parallel_dd:{}", r_ees_parallel_dd)
+        coe_dd = jax.vmap(coe_apply_dd, in_axes=(None, 0))(params['coe_dd'], r_ees_parallel_dd)
+
         value_uu = jnp.sum(coe_uu * uu, axis=1)
-        #jax.debug.print("value_uu:{}", value_uu)
+        value_dd = jnp.sum(coe_dd * dd, axis=1)
         """so far, we got the up triangle part of matrix elements of G_uu. 11.09.2025.
-               The G_dd part can be done in the same way. The problem is G_ud part. 12.09.2025."""
+           The G_dd part can be done in the same way. The problem is G_ud part. 12.09.2025."""
         r_ees_antiparallel = jnp.array([r_ee_uu[antiparallel_indices[:, i][0], antiparallel_indices[:, i][1]] for i in range(9)])
-        jax.debug.print("r_ees_antiparallel:{}", r_ees_antiparallel)
+        #jax.debug.print("r_ees_antiparallel:{}", r_ees_antiparallel)
         r_ees_antiparallel = jnp.reshape(r_ees_antiparallel, (-1, 1))
         r_ees_antiparallel_ud = jnp.repeat(r_ees_antiparallel, repeats=9, axis=1)
-        jax.debug.print("r_ees_antiparallel_ud:{}", r_ees_antiparallel_ud)
-        f_s = jax.vmap(coe_f_s_apply, in_axes=(None, 0))(params['f_s'], r_ees_antiparallel_ud)
-        f_t = jax.vmap(coe_f_t_apply, in_axes=(None, 0))(params['f_t'], r_ees_antiparallel_ud)
-        jax.debug.print("f_s:{}", f_s)
-        jax.debug.print("f_t:{}", f_t)
-        jax.debug.print("ud_s:{}", ud_s)
-        jax.debug.print("ud_t:{}", ud_t)
+        #jax.debug.print("r_ees_antiparallel_ud:{}", r_ees_antiparallel_ud)
+        f_s_coe = jax.vmap(coe_f_s_apply, in_axes=(None, 0))(params['f_s'], r_ees_antiparallel_ud)
+        f_t_coe = jax.vmap(coe_f_t_apply, in_axes=(None, 0))(params['f_t'], r_ees_antiparallel_ud)
+
+        def return_array(ud_s: jnp.array):
+            """here, we use a trick of changing the output axis to reshape the array.15.09/2025
+            Just because the orbitals data used in the fs is int the wrong order as show in the slides page 16."""
+            return ud_s
+
+        return_array_vmap = jax.vmap(jax.vmap(return_array, in_axes=1, out_axes=0), in_axes=0, out_axes=0)
+        f_s_orbitals = return_array_vmap(ud_s)
+        f_t_orbitals = return_array_vmap(ud_t)
+        f_s_coe = jnp.reshape(f_s_coe, f_s_orbitals.shape)
+        f_t_coe = jnp.reshape(f_t_coe, f_t_orbitals.shape)
+        f_s = jnp.sum(jnp.sum(f_s_orbitals * f_s_coe, axis=-1), axis=-1)
+        f_t = jnp.sum(jnp.sum(f_t_orbitals * f_t_coe, axis=-1), axis=-1)
+        #jax.debug.print("f_s: {}", f_s.shape)
+        #jax.debug.print("f_t: {}", f_t.shape)
+        value_f_ud = f_s + f_t
+        #jax.debug.print("f_ud:{}", value_f_ud.shape)
+        #jax.debug.print("uu:{}", value_uu.shape)
         """the shape of ud_s and ud_t need to be modified further. 12.09.2025."""
-        '''
-        jastrow = jnp.exp(jastrow_ee_apply(r_ee=r_ee,
+        """currently, we dont make the general method to construct pfaffian. Now, we just make it working for 6 electrons."""
+
+        f_uu = jnp.zeros((9), dtype=jnp.complex64)
+        f_dd = jnp.zeros((9), dtype=jnp.complex64)
+        f_ud = jnp.zeros((3,3), dtype=jnp.complex64)
+        #jax.debug.print("value_uu:{}", value_uu)
+        #jax.debug.print("f_uu:{}", f_uu)
+        f_uu = f_uu.at[1].set(value_uu[0])
+        f_uu = f_uu.at[2].set(value_uu[1])
+        f_uu = f_uu.at[5].set(value_uu[2])
+        #jax.debug.print("f_uu:{}", f_uu)
+        value_f_uu = jnp.reshape(f_uu, (3, 3))
+        f_dd = f_dd.at[1].set(value_uu[0])
+        f_dd = f_dd.at[2].set(value_uu[1])
+        f_dd = f_dd.at[5].set(value_uu[2])
+        value_f_dd = jnp.reshape(f_dd, (3, 3))
+        jax.debug.print("f_dd:{}", value_f_dd)
+        #jax.debug.print("f_uu:{}", value_f_uu)
+        #jax.debug.print("f_ud:{}", value_f_ud)
+        pfaffian_wavefunction_up_down = jnp.concatenate((f_ud, value_f_dd), axis=1)
+        pfaffian_wavefunction_up_up = jnp.concatenate((value_f_uu, value_f_ud), axis=1)
+        jax.debug.print("pfaffian_wavefunction_up_down:{}", pfaffian_wavefunction_up_down)
+        jax.debug.print("pfaffian_wavefunction_up_up:{}", pfaffian_wavefunction_up_up)
+        pfaffian_up = jnp.concatenate((pfaffian_wavefunction_up_up, pfaffian_wavefunction_up_down), axis=0)
+        jax.debug.print("pfaffian_up:{}", pfaffian_up)
+        return pfaffian_up
+
+        '''jastrow = jnp.exp(jastrow_ee_apply(r_ee=r_ee,
                                            parallel_indices=parallel_indices,
                                            antiparallel_indices=antiparallel_indices,
                                            params=params['jastrow_ee']) / 6)
-        """to be continued... Jastrow 11.5.2025."""
         orbitals_angular_jastrow = [orbital * jastrow for orbital in orbitals_angular]
-        '''
-        return orbitals_angular
+        return orbitals_angular'''
+
 
     return init, apply
 
@@ -499,10 +541,23 @@ def make_gaussian_net(
               spins: jnp.ndarray,
               atoms: jnp.ndarray,
               charges: jnp.ndarray, ) -> Tuple[jnp.ndarray, jnp.ndarray]:
-        orbitals_with_angular = orbitals_apply(params, pos, spins, atoms, charges)
+        #orbitals_with_angular = orbitals_apply(params, pos, spins, atoms, charges)
         """here, we test the pfaffian function.10.09.2025."""
         #output = pfaffian(orbitals_with_angular)
-        result = network_blocks.logdet_matmul(orbitals_with_angular)
+        #result = network_blocks.logdet_matmul(orbitals_with_angular)
+        pfaffian_wavefunction = orbitals_apply(params, pos, spins, atoms, charges)
+        #jax.debug.print("pfaffian_wavefunction:{}", pfaffian_wavefunction)
+        #jax.debug.print("-pfaffian_wavefunction:{}", -pfaffian_wavefunction)
+        #pfaffian_wavefunction =pfaffian_wavefunction - jnp.transpose(pfaffian_wavefunction)
+        """this is only working for the real number.15.09.2025. we need find a way to solve this problem.
+        the python version is not working well but the cpython version is working. 16.09.2025."""
+        #result = pf.pfaffian(pfaffian_wavefunction)
+        jax.debug.print("type_pfaffian_wavefunction:{}", type(pfaffian_wavefunction))
+        """here, we have a type warning. It does not matter. 16.09.2025."""
+        result = cpf(matrix= pfaffian_wavefunction, uplo='U')
+        """here,we need notice the output of pfaffian is just a complex number. While we calculate the determinant, we are
+        using the log to calculate the value of wave function. To match the format, we rewrite the result to [[[result]]]"""
+        result = network_blocks.slogdet(jnp.array([[[result]]]))
         return result
 
     return Network(init=init, apply=apply, orbitals=orbitals_apply)
