@@ -32,9 +32,9 @@
 from typing import Mapping, Optional, Sequence, Tuple, Union
 
 from absl import logging
-from ferminet.utils import elements
-from ferminet.utils import gto
-from ferminet.utils import system
+from GaussianNet.tools.utils import elements
+from GaussianNet.tools.utils import gto
+from GaussianNet.tools.utils import system
 import jax.numpy as jnp
 import jax.tree_util
 import numpy as np

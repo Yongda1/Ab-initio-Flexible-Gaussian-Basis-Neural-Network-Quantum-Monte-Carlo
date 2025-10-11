@@ -14,7 +14,7 @@
 
 """Tools for downloading and processing pseudopotentials."""
 
-from ferminet.utils import elements
+from GaussianNet.tools.utils import elements
 import jax
 import jax.numpy as jnp
 import numpy as np

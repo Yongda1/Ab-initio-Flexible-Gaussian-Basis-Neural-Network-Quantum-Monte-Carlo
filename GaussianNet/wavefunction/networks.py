@@ -227,6 +227,8 @@ def make_gaussian_net_layers(nspins: Tuple[int, int],
             2.0) if x.shape == y.shape else y  # the shape of x must be same with y
         h_two_embedding = h_two[0]
         h_one_in = construct_symmetric_features(h_one, h_two_embedding, nspins)
+        jax.debug.print("h_one_in:{}", h_one_in)
+        jax.debug.print("params['single']:{}", params['single'])
         h_one_next = jnp.tanh(network_blocks.linear_layer(h_one_in, **params['single']))
         h_one = residual(h_one, h_one_next)
         if 'double' in params:
@@ -248,6 +250,7 @@ def make_gaussian_net_layers(nspins: Tuple[int, int],
         )
         h_one = ae_features
         h_two = [ee_features]
+        jax.debug.print("h_one:{}", h_one)
         for i in range(len(hidden_dims)):
             h_one, h_two = apply_layer(params['embedding_layer'][i],
                                        h_one,
@@ -272,14 +275,14 @@ def pfaffian(orbitals: jnp.ndarray,):
     orbitals_dd = orbitals[0][0][n_spin_up:, n_spin_up:]
     orbitals_ud = orbitals[0][0][n_spin_up:, 0:n_spin_up]
     orbitals_du = orbitals[0][0][0:n_spin_up:, n_spin_up:]
-    jax.debug.print("orbitals_ud:{}", orbitals_ud)
+    #jax.debug.print("orbitals_ud:{}", orbitals_ud)
     #jax.debug.print("orbitals_dd:{}", orbitals_dd)
     f_s, f_t = generate_g_ud.split_matrix( orbitals_determinant_uu=orbitals_uu,
                                                orbitals_determinant_dd=orbitals_dd,
                                                orbitals_determinant_ud=orbitals_ud,
                                                orbitals_determinant_du=orbitals_du)
-    jax.debug.print("f_s:{}", f_s)
-    jax.debug.print("f_t:{}", f_t)
+    #jax.debug.print("f_s:{}", f_s)
+    #jax.debug.print("f_t:{}", f_t)
     """then we need generate the coefficients function 12.09.2025."""
     det_value_uu = generate_g_uu.split_matrix(orbitals_determinant=orbitals_uu, n_spin=n_spin_up)
     #jax.debug.print("det_value_uu:{}", det_value_uu)
@@ -363,7 +366,7 @@ def make_orbitals(nspins: Tuple[int, int],
 
         h_to_orbitals = jnp.split(h_to_orbitals, network_blocks.array_partitions(nspins), axis=0)
         h_to_orbitals = [h for h, spin in zip(h_to_orbitals, nspins) if spin > 0]
-        #jax.debug.print("h_to_orbitals:{}", h_to_orbitals)
+        jax.debug.print("h_to_orbitals:{}", h_to_orbitals)
         #jax.debug.print("orbital:{}", params['orbital'])
         #for h, p in zip(h_to_orbitals, params['orbital']):
             #jax.debug.print("h:{}", h)
@@ -374,7 +377,7 @@ def make_orbitals(nspins: Tuple[int, int],
             network_blocks.linear_layer(h, **p)
             for h, p in zip(h_to_orbitals, params['orbital'])
         ]
-        #jax.debug.print("orbitals:{}", orbitals)
+        jax.debug.print("orbitals:{}", orbitals)
 
         orbitals = [orbital[..., ::2] + 1.0j * orbital[..., 1::2] for orbital in orbitals]
         #jax.debug.print("orbitals_complex:{}", orbitals)
@@ -556,7 +559,10 @@ def make_gaussian_net(
         """here, we have a type warning. It does not matter. 16.09.2025."""
         result = cpf(matrix= pfaffian_wavefunction, uplo='U')
         """here,we need notice the output of pfaffian is just a complex number. While we calculate the determinant, we are
-        using the log to calculate the value of wave function. To match the format, we rewrite the result to [[[result]]]"""
+        using the log to calculate the value of wave function. To match the format, we rewrite the result to [[[result]]].
+        Tomorrow, we test it. We also notice the method orbitals_apply. in case somewhere we used it. 16.09.2025.
+        It is running now. We need check out if our codes are running smoothly 16.09.2025..
+        """
         result = network_blocks.slogdet(jnp.array([[[result]]]))
         return result
 
@@ -579,14 +585,14 @@ spins_test = jnp.array([[1., 1., 1., - 1., - 1., -1.]])
 spins = spins_test
 parallel_indices, antiparallel_indices, n_parallel, n_antiparallel = spin_indices.jastrow_indices_ee(spins=spins_test,
                                     nelectrons=6)
-jax.debug.print("parallel_indices:{}", parallel_indices)
-jax.debug.print("antiparallel_indices:{}", antiparallel_indices)
-jax.debug.print("n_parallel:{}", n_parallel)
-jax.debug.print("n_antiparallel:{}", n_antiparallel)
+#jax.debug.print("parallel_indices:{}", parallel_indices)
+#jax.debug.print("antiparallel_indices:{}", antiparallel_indices)
+#jax.debug.print("n_parallel:{}", n_parallel)
+#jax.debug.print("n_antiparallel:{}", n_antiparallel)
 
 n_spin_up = 3
 number_coe = int(math.factorial(n_spin_up) / (math.factorial(2) * math.factorial(n_spin_up - 2)))
-jax.debug.print("number_coe:{}", number_coe)
+#jax.debug.print("number_coe:{}", number_coe)
 network = make_gaussian_net(nspins=(3, 3),
                             charges=charges,
                             parallel_indices=parallel_indices,
