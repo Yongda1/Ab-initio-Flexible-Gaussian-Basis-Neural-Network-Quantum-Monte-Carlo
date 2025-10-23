@@ -18,7 +18,7 @@ jax.debug.print("parallel_indices:{}", parallel_indices)
 jax.debug.print("antiparallel_indices:{}", antiparallel_indices)
 
 
-"""parameters for neural networks."""
+"""parameters for neural networks. We also need add different grid range for different layer ? 23.10.2025."""
 layer_dims = jnp.array([4, 4, 4, 6])
 g = jnp.array([3, 3, 3,])
 k = jnp.array([3, 3, 3,])
