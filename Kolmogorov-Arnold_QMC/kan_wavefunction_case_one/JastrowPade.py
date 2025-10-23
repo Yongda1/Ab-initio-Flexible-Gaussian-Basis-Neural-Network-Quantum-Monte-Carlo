@@ -29,10 +29,11 @@ def _jastrow_ee(r_ees: jnp.array, params: ParamTree, parallel_indices: jnp.array
         nelectrons: the number of electron.
         spins: spin configuration.
         now the problem is how to make the system identify the spin configurations automatically?
-        currently, it is only working for 6 electrons.23.10.2025.
     """
-    r_ees_test = jnp.reshape(r_ees, (6, 6))
-    jax.debug.print("r_ees_test", r_ees_test)
+    r_ees_test = r_ees
+    jax.debug.print("r_ees_test:{}", r_ees_test)
+    jax.debug.print("parallel_indices:{}", parallel_indices)
+    jax.debug.print("antiparallel_indices:{}", antiparallel_indices)
     r_ees_parallel = jnp.array([r_ees_test[parallel_indices[:, i][0], parallel_indices[:, i][1]] for i in range(6)])
     r_ees_antiparallel = jnp.array([r_ees_test[antiparallel_indices[:, i][0], antiparallel_indices[:, i][1]] for i in range(9)])
     jastrow_ee_par = jnp.sum(jastrow_fun(r_ees_parallel, 0.25, params['ee_par']))

@@ -5,6 +5,7 @@ import chex
 from typing import Any, Iterable, Mapping, MutableMapping, Optional, Sequence, Tuple, Union
 import kan_networks_blocks_case_one as kan_networks_blocks
 import kan_envelopes_case_one_general as kan_envelopes
+from JastrowPade import make_pade_ee_jastrow
 
 
 
@@ -37,7 +38,7 @@ def make_kan_features(natoms: int, ndim: int = 3):
 
 
 
-def make_kan_net_layers(layer_dims: jnp.ndarray):
+def make_kan_net_layers(layer_dims: jnp.ndarray, g: jnp.ndarray, k: jnp.ndarray):
 
     def init(key: chex.PRNGKey):
         """here, we initialize the parameters of KANets wave function. 9.10.2025."""
@@ -52,8 +53,8 @@ def make_kan_net_layers(layer_dims: jnp.ndarray):
             layer_params['single'] = kan_networks_blocks.init_ka_layer(key=key,
                                                   n_in=dimension_in,
                                                   n_out=dimension_out,
-                                                  g=3,
-                                                  k=3,
+                                                  g=int(g[i]),
+                                                  k=int(k[i]),
                                                   add_residual=True,
                                                   add_bias=True,
                                                   external_weights=True)
@@ -68,15 +69,15 @@ def make_kan_net_layers(layer_dims: jnp.ndarray):
                     h_one: jnp.ndarray,
                     n_in: int,
                     n_out: int,
-                    g: int,
-                    k: int,
+                    g_each_layer: int,
+                    k_each_layer: int,
                     grid_range: jnp.ndarray,
                     ):
         h_one_next = kan_networks_blocks.forward_each_layer(x=h_one,
                                                             n_in=n_in,
                                                             n_out=n_out,
-                                                            g=g,
-                                                            k=k,
+                                                            g=g_each_layer,
+                                                            k=k_each_layer,
                                                             grid_range=grid_range,
                                                             c_basis = params['c_basis'],
                                                             c_spl = params['c_spl'],
@@ -85,17 +86,17 @@ def make_kan_net_layers(layer_dims: jnp.ndarray):
         return h_one_next
 
     def apply(params,
-              input: jnp.ndarray,):
-        h_one = input
+              input_vector: jnp.ndarray,):
+        h_one = input_vector
         for i in range(len(layer_dims)-1):
             #jax.debug.print("h_one:{}", h_one)
             h_one = apply_layer(
-                                params=params['embedding_layer'][i]['single'],
-                                h_one=h_one,
-                                n_in= int(layer_dims[i]),
-                                n_out= int(layer_dims[i+1]),
-                                g=3,
-                                k=3,
+                                params = params['embedding_layer'][i]['single'],
+                                h_one = h_one,
+                                n_in = int(layer_dims[i]),
+                                n_out = int(layer_dims[i+1]),
+                                g_each_layer = int(g[i]),
+                                k_each_layer = int(k[i]),
                                 grid_range=jnp.array([0, 1]))
 
         return h_one
@@ -109,8 +110,16 @@ def make_orbitals(nspins: Tuple[int, int],
                   charges: jnp.ndarray,
                   nelectrons: int,
                   nfeatures: int,
+                  n_parallel: int,
+                  n_antiparallel: int,
+                  parallel_indices: jnp.ndarray,
+                  antiparallel_indices: jnp.ndarray,
                   equivariant_layers_init,
-                  equivariant_layers_apply,):
+                  equivariant_layers_apply,
+                  jastrow_ee_init,
+                  jastrow_ee_apply,
+
+                  ):
     #equivariant_layers_init, equivariant_layers_apply = equivariant_layers()
 
 
@@ -122,6 +131,8 @@ def make_orbitals(nspins: Tuple[int, int],
         params['map_h_to_orbitals'] = jax.random.normal(key_map, (nelectrons, nelectrons))
         #params['envelopes'] = jax.random.normal(key_envelope, (3, 1, 1))
         params['orbitals'] = kan_envelopes.init_ka_layer(key=key_orbitals, n_in=nelectrons, n_out=nelectrons, g=3, k=3)
+        params['jastrow_ee'] = jastrow_ee_init(n_parallel=n_parallel, n_antiparallel=n_antiparallel)
+        #jax.debug.print("params['jastrow_ee']:{}", params['jastrow_ee'])
         return params
 
     def apply(params,
@@ -136,15 +147,16 @@ def make_orbitals(nspins: Tuple[int, int],
                             orbital3(r1), orbital3(r2), orbital3(r3)
         """
         ae, ee, r_ae, r_ee = construct_input_features(pos, atoms, ndim=3)
-        jax.debug.print("ae:{}", ae)
-        jax.debug.print("r_ae: {}", r_ae)
+        #jax.debug.print("ae:{}", ae)
+        #jax.debug.print("r_ae: {}", r_ae)
         #nfeatures = 4
         #nelectrons = 6
-        input = jnp.concatenate((r_ae, ae), axis=2).reshape(nelectrons, -1)
-        jax.debug.print("input:{}", input)
+        """we construct input layer here.23.10.2025."""
+        input_layer = jnp.concatenate((r_ae, ae), axis=2).reshape(nelectrons, -1)
+        #jax.debug.print("input:{}", input)
         """to be finished...21.10.2025."""
         """we need think more about the orbitals construction."""
-        h_to_orbitals = equivariant_layers_apply(params['layers'], input)
+        h_to_orbitals = equivariant_layers_apply(params['layers'], input_layer)
         #h_to_orbitals = jnp.expand_dims(h_to_orbitals, 1)
         #jax.debug.print("h_to_orbitals:{}", h_to_orbitals)
         #coe_eff = jnp.sum(h_to_orbitals * params['map_h_to_orbitals'], axis=-1)
@@ -157,22 +169,24 @@ def make_orbitals(nspins: Tuple[int, int],
         #jax.debug.print("coe_eff:{}", coe_eff)
         coe_eff = jnp.sum(coe_eff, axis=0)
         #jax.debug.print("coe_eff:{}", coe_eff)
-
-        jax.debug.print("r_ae:{}", r_ae)
-        """for case one, we need """
-        r_ae = jnp.tile(r_ae, (nelectrons)).reshape(nelectrons, nelectrons)
         #jax.debug.print("r_ae:{}", r_ae)
+        """for case one, we need """
+        r_ae = jnp.tile(r_ae, (nelectrons,)).reshape(nelectrons, nelectrons)
         r_eff = r_ae + coe_eff
-        #jax.debug.print("r_eff:{}", r_eff)
-
         orbitals_spline_determinant = kan_envelopes.forward_each_layer(x=r_eff, n_in=nelectrons, n_out=nelectrons, g=3, k=3, grid_range=jnp.array([0, 1]),
                                                                        c_basis =  params['orbitals']['c_basis'],
                                                                        c_spl =  params['orbitals']['c_spl'],
                                                                        bias =  params['orbitals']['bias'],
                                                                        c_res =  params['orbitals']['c_res'])
-
+        #jax.debug.print("r_ee:{}", r_ee)
+        r_ee = jnp.reshape(r_ee, (nelectrons, nelectrons))
+        #jax.debug.print("r_ee:{}", r_ee)
+        jastrow = jnp.exp(jastrow_ee_apply(r_ee=r_ee,
+                                           params=params['jastrow_ee'],
+                                           parallel_indices=parallel_indices,
+                                           antiparallel_indices=antiparallel_indices,)/nelectrons)
         #jax.debug.print("orbitals_spline_determinant:{}", orbitals_spline_determinant)
-        return orbitals_spline_determinant
+        return orbitals_spline_determinant * jastrow
     return init, apply
 
 
@@ -180,23 +194,43 @@ def make_kan_net(nspins: Tuple[int, int],
                  charges: jnp.ndarray,
                  nelectrons: int,
                  nfeatures: int,
+                 n_parallel: int,
+                 n_antiparallel: int,
+                 parallel_indices: jnp.array,
+                 antiparallel_indices: jnp.array,
                  layer_dims : jnp.ndarray,
+                 g: jnp.ndarray,
+                 k: jnp.ndarray,
                  natoms: int,
                  ndims: int=3,
                  ):
     """
+    nspins: the spin configuration.
     nelectrons: number of electrons.
     natoms: number of atoms.
-    nfeatures: it is the number of features, it should be (number of atoms) * 4 for each electron."""
-    feature_layer = make_kan_features(natoms=natoms, ndim=ndims)
-    kan_equivariant_layers_init, kan_equivariant_layers_apply = make_kan_net_layers(layer_dims=layer_dims,)
-
+    nfeatures: it is the number of features, it should be (number of atoms) * 4 for each electron.
+    layer_dims: it is an array. [m_1, m_2, m_3, ..., m_n], m_1 must be same with nfeatures. m_n must be same with nelectrons, i.e., the number of orbitals.
+    make_kan_net_layers is the equivariant layer based on Kolmogorov-Arnold Networks.
+    Currently, it is only working for single atom. But no limit for electrons.
+    ndims: the number of dimensions.
+    g: the grid number on each layer. We allow different layer uses different grids.
+    k: the oder of spline functions on each layer. We allow different layer uses different order of spline functions.
+    """
+    #feature_layer = make_kan_features(natoms=natoms, ndim=ndims)
+    kan_equivariant_layers_init, kan_equivariant_layers_apply = make_kan_net_layers(layer_dims=layer_dims, g=g, k=k)
+    jastrow_ee_init, jastrow_ee_apply = make_pade_ee_jastrow()
     orbitals_init, orbitals_apply = make_orbitals(nspins=nspins,
                                                   charges=charges,
                                                   nelectrons=nelectrons,
                                                   nfeatures=nfeatures,
+                                                  n_parallel=n_parallel,
+                                                  n_antiparallel=n_antiparallel,
+                                                  parallel_indices=parallel_indices,
+                                                  antiparallel_indices=antiparallel_indices,
                                                   equivariant_layers_init=kan_equivariant_layers_init,
-                                                  equivariant_layers_apply=kan_equivariant_layers_apply)
+                                                  equivariant_layers_apply=kan_equivariant_layers_apply,
+                                                  jastrow_ee_init = jastrow_ee_init,
+                                                  jastrow_ee_apply = jastrow_ee_apply,)
 
     def init(key: chex.PRNGKey) -> ParamTree:
         key, subkey = jax.random.split(key, num=2)
@@ -214,42 +248,4 @@ def make_kan_net(nspins: Tuple[int, int],
 
     return init, apply
 
-"""we make the example for C atom which has six electrons.23.10.2025."""
-seed = 23
-key = jax.random.PRNGKey(seed)
-key, subkey = jax.random.split(key)
-atoms = jnp.array([[0.0, 0.0, 0.0]])
-pos = jnp.array([0.1, 0.1, 0.1, 0.2, 0.2, 0.2, 0.3, 0.3, 0.3, 0.4, 0.4, 0.4, 0.5, 0.5, 0.5, 0.6, 0.6, 0.6])
-charges = jnp.array([0.0])
-spins_test = jnp.array([[1., 1., - 1.,]])
-spins = spins_test
-layer_dims = jnp.array([4, 4, 4, 6])
-# the first number of nodes of layer_dims must be 4 because it is the number of features.
-# the last number of nodes of layer_dims must be 6 because it is the number of electrons.
-kan_init, kan_apply = make_kan_net(nspins=(3,3),
-                                   charges=charges,
-                                   nelectrons=6,
-                                   nfeatures=3,
-                                   natoms=1,
-                                   ndims=3,
-                                   layer_dims=layer_dims)
 
-params = kan_init(subkey)
-#jax.debug.print("params:{}", params)
-#jax.debug.print("params_embedding_single:{}", params['layers']['embedding_layer'][0]['single'])
-wavefunction_value = kan_apply(params, pos, spins, atoms, charges)
-jax.debug.print("wavefunction_value:{}", wavefunction_value)
-
-'''
-n_in = 6
-n_out = 1
-n_hidden = 8
-seed = 42
-layer_dims = [n_in, n_hidden, n_hidden, n_out]
-req_params = {'G': 10,'external_weights':True}
-model = KAN(layer_dims=layer_dims,
-            layer_type='Spline',
-            required_parameters=req_params,
-            seed=seed)
-print(model.layers.Param)
-'''

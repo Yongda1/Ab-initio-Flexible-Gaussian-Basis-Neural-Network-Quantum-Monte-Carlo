@@ -106,10 +106,10 @@ def forward_each_layer(x: jnp.ndarray,
                        bias: jnp.ndarray,
                        c_res: jnp.ndarray,):
     batch = x.shape[0]
-    jax.debug.print("x:{}", x)
+    #jax.debug.print("x:{}", x)
     nfeatures = x.shape[1]
-    jax.debug.print("batch:{}", batch)
-    jax.debug.print("nfeatures:{}", nfeatures)
+    #jax.debug.print("batch:{}", batch)
+    #jax.debug.print("nfeatures:{}", nfeatures)
     grid = init_grid(n_in = n_in, n_out = n_out, g = g, k = k, grid_range = grid_range)
     Bi = spline_each_layer(x, n_in, n_out, k, grid)
     """the Bi is the value of the spline functions on the edge. The shape is the (n_in * n_out, G+K, batch) """
