@@ -1,7 +1,7 @@
-In this branch, we try to make pfaffian wave function.
+In this branch, we try to make many body wave function based on Kolmogorov-Arnold Networks.
 Jax version 0.5.3.
 The current architectures is as follows,
-![img.png](img.png)
+![img.png](C:\Users\Administrator\Desktop\Ab-initio-Flexible-Gaussian-Basis-Neural-Network-Quantum-Monte-Carlo\img2.png)
 
 Basically, we understood the construction of pfaffian wave function.
 Two things need to be done later.
