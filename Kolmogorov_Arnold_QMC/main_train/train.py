@@ -7,11 +7,54 @@ one more thing is that we do not pretrain it currently.
 import ml_collections
 import jax.numpy as jnp
 import jax
-from Kolmogorov_Arnold_QMC.kan_wavefunction_case_one.kan_networks_case_one import make_kan_net
+import time
+from Kolmogorov_Arnold_QMC.kan_wavefunction_case_one.kan_networks_case_one import make_kan_net, KANetsData
 from Kolmogorov_Arnold_QMC.kan_wavefunction_case_one.spin_indices import jastrow_indices_ee, jastrow_indices_ae
+from Kolmogorov_Arnold_QMC.monte_carlo_step.mcmc import make_mcmc_step
 
 
 def train(cfg: ml_collections.ConfigDict,):
-    spins = jnp.array(cfg.spins)
+    spins_jastrow = jnp.array(cfg.spins)
+    #jax.debug.print("spins:{}", spins_jastrow)
+    parallel_indices, antiparallel_indices, n_parallel, n_antiparallel = jastrow_indices_ee(spins=spins_jastrow,
+                                                                                            nelectrons=6)
+    #jax.debug.print("parallel_indices:{}", parallel_indices)
+    g = jnp.array(cfg.g)
+    k = jnp.array(cfg.k)
+    layer_dims = jnp.array(cfg.layer_dims)
+    charges = jnp.array(cfg.charges)
+    atoms = jnp.array(cfg.atoms)
+    pos = jnp.array(cfg.pos)
+    #jax.debug.print("g:{}", g)
+    kan_init, kan_apply = make_kan_net(nspins=(3, 3),
+                                       charges=charges,
+                                       nelectrons=6,
+                                       nfeatures=4,
+                                       n_parallel=n_parallel,
+                                       n_antiparallel=n_antiparallel,
+                                       parallel_indices=parallel_indices,
+                                       antiparallel_indices=antiparallel_indices,
+                                       g=g,
+                                       k=k,
+                                       natoms=1,
+                                       ndims=3,
+                                       layer_dims=layer_dims)
+
+    seed = 42
+    key = jax.random.PRNGKey(seed)
+    key, subkey = jax.random.split(key)
+    params = kan_init(subkey)
+    signed_network = kan_apply
+    logabs_network = lambda *args, **kwargs: signed_network(*args, **kwargs)[1]
+    spins = jnp.array([cfg.spins])
     jax.debug.print("spins:{}", spins)
+    batch_network = jax.vmap(
+        logabs_network, in_axes=(None, 0, None, None, None), out_axes=0
+    )
+
+
+    data = KANetsData(positions=pos, spins=spins, atoms=atoms, charges=charges)
+
+
+
 

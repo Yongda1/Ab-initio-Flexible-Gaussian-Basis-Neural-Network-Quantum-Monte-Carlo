@@ -3,14 +3,21 @@ import jax.numpy as jnp
 import jax
 import chex
 from typing import Any, Iterable, Mapping, MutableMapping, Optional, Sequence, Tuple, Union
-import kan_networks_blocks_case_one as kan_networks_blocks
-import kan_envelopes_case_one_general as kan_envelopes
-from JastrowPade import make_pade_ee_jastrow
-
+from Kolmogorov_Arnold_QMC.kan_wavefunction_case_one import kan_networks_blocks_case_one as kan_networks_blocks
+from Kolmogorov_Arnold_QMC.kan_wavefunction_case_one import kan_envelopes_case_one_general as kan_envelopes
+from Kolmogorov_Arnold_QMC.kan_wavefunction_case_one.JastrowPade import make_pade_ee_jastrow
 
 
 ParamTree = Union[jnp.ndarray, Iterable['ParamTree'], MutableMapping[Any, 'ParamTree']]
 Param = MutableMapping[str, jnp.ndarray]
+
+@chex.dataclass
+class KANetsData:
+    positions: Any
+    spins: Any
+    atoms: Any
+    charges: Any
+
 
 def construct_input_features(
         pos: jnp.ndarray,
@@ -86,7 +93,8 @@ def make_kan_net_layers(layer_dims: jnp.ndarray, g: jnp.ndarray, k: jnp.ndarray)
         return h_one_next
 
     def apply(params,
-              input_vector: jnp.ndarray,):
+              input_vector: jnp.ndarray,
+              grid_range: jnp.ndarray,):
         h_one = input_vector
         for i in range(len(layer_dims)-1):
             #jax.debug.print("h_one:{}", h_one)
@@ -97,7 +105,7 @@ def make_kan_net_layers(layer_dims: jnp.ndarray, g: jnp.ndarray, k: jnp.ndarray)
                                 n_out = int(layer_dims[i+1]),
                                 g_each_layer = int(g[i]),
                                 k_each_layer = int(k[i]),
-                                grid_range=jnp.array([0, 1]))
+                                grid_range=grid_range[i],)
 
         return h_one
 
@@ -108,6 +116,7 @@ def make_kan_net_layers(layer_dims: jnp.ndarray, g: jnp.ndarray, k: jnp.ndarray)
 
 def make_orbitals(nspins: Tuple[int, int],
                   charges: jnp.ndarray,
+                  grid_range: jnp.ndarray,
                   nelectrons: int,
                   nfeatures: int,
                   n_parallel: int,
@@ -156,7 +165,7 @@ def make_orbitals(nspins: Tuple[int, int],
         #jax.debug.print("input:{}", input)
         """to be finished...21.10.2025."""
         """we need think more about the orbitals construction."""
-        h_to_orbitals = equivariant_layers_apply(params['layers'], input_layer)
+        h_to_orbitals = equivariant_layers_apply(params['layers'], input_layer, grid_range=grid_range)
         #h_to_orbitals = jnp.expand_dims(h_to_orbitals, 1)
         #jax.debug.print("h_to_orbitals:{}", h_to_orbitals)
         #coe_eff = jnp.sum(h_to_orbitals * params['map_h_to_orbitals'], axis=-1)
@@ -201,6 +210,7 @@ def make_kan_net(nspins: Tuple[int, int],
                  layer_dims : jnp.ndarray,
                  g: jnp.ndarray,
                  k: jnp.ndarray,
+                 grid_range: jnp.ndarray,
                  natoms: int,
                  ndims: int=3,
                  ):
@@ -221,6 +231,7 @@ def make_kan_net(nspins: Tuple[int, int],
     jastrow_ee_init, jastrow_ee_apply = make_pade_ee_jastrow()
     orbitals_init, orbitals_apply = make_orbitals(nspins=nspins,
                                                   charges=charges,
+                                                  grid_range=grid_range,
                                                   nelectrons=nelectrons,
                                                   nfeatures=nfeatures,
                                                   n_parallel=n_parallel,

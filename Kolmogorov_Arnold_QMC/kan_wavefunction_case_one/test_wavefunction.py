@@ -22,7 +22,7 @@ jax.debug.print("antiparallel_indices:{}", antiparallel_indices)
 layer_dims = jnp.array([4, 4, 4, 6])
 g = jnp.array([3, 3, 3,])
 k = jnp.array([3, 3, 3,])
-
+grid_range = jnp.array([[0, 1], [0, 1], [0, 1]])
 # the first number of nodes of layer_dims must be 4 because it is the number of features.
 # the last number of nodes of layer_dims must be 6 because it is the number of electrons.
 kan_init, kan_apply = make_kan_net(nspins=(3,3),
@@ -33,6 +33,7 @@ kan_init, kan_apply = make_kan_net(nspins=(3,3),
                                    n_antiparallel=n_antiparallel,
                                    parallel_indices=parallel_indices,
                                    antiparallel_indices=antiparallel_indices,
+                                   grid_range=grid_range,
                                    g=g,
                                    k=k,
                                    natoms=1,
