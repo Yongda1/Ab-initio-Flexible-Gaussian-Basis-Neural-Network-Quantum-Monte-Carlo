@@ -60,6 +60,7 @@ class BaseLayer(nnx.Module):
     def basis(self, x):
         jax.debug.print("x:{}", x)
         batch = x.shape[0]
+        jax.debug.print("batch:{}", batch)
         # Extend to shape (batch, n_in*n_out)
         """x is batched input. For example x is [[1, 1, 1], [2, 2, 2]], But the information need to be transferred into each edge."""
         x_ext = jnp.einsum('ij,k->ikj', x, jnp.ones(self.n_out, )).reshape((batch, self.n_in * self.n_out))
@@ -74,7 +75,7 @@ class BaseLayer(nnx.Module):
         the matrix has two cols, i.e., two batches, but 12 rows, corresponding to two edges."""
         x = jnp.expand_dims(x_ext, axis=1)
         #jax.debug.print("grid:{}", grid)
-        #jax.debug.print("x:{}", x)
+        jax.debug.print("x:{}", x)
         # k = 0 case
         #temp1 = grid[:, :-1]
         #temp2 = grid[:, 1:]
@@ -101,6 +102,8 @@ class BaseLayer(nnx.Module):
             left_term = (x - grid[:, :-(K+1)]) / (grid[:, K:-1] - grid[:, :-(K+1)])
             right_term = (grid[:, K + 1:] - x) / (grid[:, K + 1:] - grid[:, 1:(-K)])
             basis_splines = left_term * basis_splines[:, :-1] + right_term * basis_splines[:, 1:]
+
+        jax.debug.print("basis_splines:{}", basis_splines)
         return basis_splines
 
 

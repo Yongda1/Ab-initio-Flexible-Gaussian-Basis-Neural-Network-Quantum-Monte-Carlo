@@ -4,7 +4,7 @@ from kan_networks_case_one import make_kan_net
 from spin_indices import jastrow_indices_ee, jastrow_indices_ae
 
 """we make the example for C atom which has six electrons.23.10.2025."""
-seed = 23
+seed = 42
 key = jax.random.PRNGKey(seed)
 key, subkey = jax.random.split(key)
 atoms = jnp.array([[0.0, 0.0, 0.0]])
