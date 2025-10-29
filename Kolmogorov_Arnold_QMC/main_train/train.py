@@ -34,6 +34,7 @@ def train(cfg: ml_collections.ConfigDict,):
                                        n_antiparallel=n_antiparallel,
                                        parallel_indices=parallel_indices,
                                        antiparallel_indices=antiparallel_indices,
+                                       grid_range=cfg.grid_range,
                                        g=g,
                                        k=k,
                                        natoms=1,
@@ -52,8 +53,23 @@ def train(cfg: ml_collections.ConfigDict,):
         logabs_network, in_axes=(None, 0, None, None, None), out_axes=0
     )
 
-
+    jax.debug.print("pos:{}", pos)
+    jax.debug.print("atoms:{}", atoms)
+    wavefunction_value = batch_network(params, pos, spins, atoms, charges)
+    jax.debug.print("wavefunction_value:{}", wavefunction_value)
+    """we need do batch for pos."""
     data = KANetsData(positions=pos, spins=spins, atoms=atoms, charges=charges)
+
+    monte_carlo = make_mcmc_step(batch_network=batch_network,
+                                 batch_per_device=2,
+                                 steps=10,
+                                 atoms=atoms,
+                                 blocks=1)
+    key, monte_carlo_key = jax.random.split(subkey)
+    new_data = monte_carlo(params, data, monte_carlo_key, 0.1)
+
+
+
 
 
 
