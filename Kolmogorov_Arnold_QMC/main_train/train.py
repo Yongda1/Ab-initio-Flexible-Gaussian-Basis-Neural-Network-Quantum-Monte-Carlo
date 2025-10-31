@@ -11,6 +11,7 @@ import time
 from Kolmogorov_Arnold_QMC.kan_wavefunction_case_one.kan_networks_case_one import make_kan_net, KANetsData
 from Kolmogorov_Arnold_QMC.kan_wavefunction_case_one.spin_indices import jastrow_indices_ee, jastrow_indices_ae
 from Kolmogorov_Arnold_QMC.monte_carlo_step.mcmc import make_mcmc_step
+from Kolmogorov_Arnold_QMC.hamiltonian import hamiltonian
 
 
 def train(cfg: ml_collections.ConfigDict,):
@@ -65,8 +66,20 @@ def train(cfg: ml_collections.ConfigDict,):
                                  steps=10,
                                  atoms=atoms,
                                  blocks=1)
-    key, monte_carlo_key = jax.random.split(subkey)
-    new_data = monte_carlo(params, data, monte_carlo_key, 0.1)
+    """the following two lines for testing the walker move process.31.10.2025."""
+    #key, monte_carlo_key = jax.random.split(subkey)
+    #new_data = monte_carlo(params, data, monte_carlo_key, 0.1)
+    """now we need move to the energy calculation method."""
+    """the following is energy calculation test. 31.10.2025."""
+    jax.debug.print("charges:{}", charges)
+    key, energy_key = jax.random.split(key)
+    local_energy = hamiltonian.local_energy(f=signed_network,
+                                            nspins=(3, 3),
+                                            charges=charges,
+                                            use_scan=False,
+                                            complex_output=False,
+                                            laplacian_method='default')
+    output = local_energy(params, energy_key, data,)
 
 
 
