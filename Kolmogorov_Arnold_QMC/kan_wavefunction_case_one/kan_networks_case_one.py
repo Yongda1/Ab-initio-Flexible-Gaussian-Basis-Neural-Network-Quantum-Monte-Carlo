@@ -24,6 +24,7 @@ def construct_input_features(
         atoms: jnp.ndarray,
         ndim: int = 3) -> Tuple[jnp.ndarray, jnp.ndarray, jnp.ndarray, jnp.ndarray]:
     """Constructs inputs to Fermi Net from raw electron and atomic positions."""
+    #jax.debug.print("atoms:{}", atoms)
     assert atoms.shape[1] == ndim
     ae = jnp.reshape(pos, [-1, 1, ndim]) - atoms[None, ...]
     ee = jnp.reshape(pos, [1, -1, ndim]) - jnp.reshape(pos, [-1, 1, ndim])
@@ -155,6 +156,8 @@ def make_orbitals(nspins: Tuple[int, int],
                             orbital2(r1), orbital2(r2), orbital2(r3)
                             orbital3(r1), orbital3(r2), orbital3(r3)
         """
+        #jax.debug.print("pos:{}", pos)
+        #jax.debug.print("atoms:{}", atoms)
         ae, ee, r_ae, r_ee = construct_input_features(pos, atoms, ndim=3)
         #jax.debug.print("ae:{}", ae)
         #jax.debug.print("r_ae: {}", r_ae)

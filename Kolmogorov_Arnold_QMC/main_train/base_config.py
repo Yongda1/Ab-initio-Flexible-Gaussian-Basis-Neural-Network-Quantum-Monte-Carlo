@@ -14,5 +14,6 @@ def default() -> ml_collections.ConfigDict:
         'g': [3, 3, 3,],
         'k': [3, 3, 3,],
         'grid_range':[[0, 1], [0, 1], [0, 1]],
+        'iterations': 1000,
     })
     return cfg

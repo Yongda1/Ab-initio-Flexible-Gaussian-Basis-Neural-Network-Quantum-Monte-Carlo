@@ -85,21 +85,26 @@ def local_kinetic_energy(
 
   if laplacian_method == 'default':
 
-    def _lapl_over_f(params, data):
-      n = data.positions.shape[0]
-      jax.debug.print("n:{}", n)
+    def _lapl_over_f(params,
+                     pos: jnp.ndarray,
+                     spins: jnp.ndarray,
+                     atoms: jnp.ndarray,
+                     charges: jnp.ndarray,
+                     ):
+      n = pos.shape[0]
+      #jax.debug.print("n:{}", n)
       eye = jnp.eye(n)
       grad_f = jax.grad(logabs_f, argnums=1)
       def grad_f_closure(x):
-        return grad_f(params, x, data.spins, data.atoms, data.charges)
+        return grad_f(params, x, spins, atoms, charges)
 
-      primal, dgrad_f = jax.linearize(grad_f_closure, data.positions)
+      primal, dgrad_f = jax.linearize(grad_f_closure, pos)
       if complex_output:
         grad_phase = jax.grad(phase_f, argnums=1)
         def grad_phase_closure(x):
-          return grad_phase(params, x, data.spins, data.atoms, data.charges)
+          return grad_phase(params, x, spins, atoms, charges)
         phase_primal, dgrad_phase = jax.linearize(
-            grad_phase_closure, data.positions)
+            grad_phase_closure, pos)
         hessian_diagonal = (
             lambda i: dgrad_f(eye[i])[i] + 1.j * dgrad_phase(eye[i])[i]
         )
@@ -185,9 +190,13 @@ def local_energy(
   """Creates the function to evaluate the local energy."""
   del nspins
 
-  def _e_l(
-      params: networks.ParamTree, key: chex.PRNGKey, data: networks.KANetsData
-  ) -> Tuple[jnp.ndarray, Optional[jnp.ndarray]]:
+  def _e_l(params: networks.ParamTree,
+           key: chex.PRNGKey,
+           pos: jnp.ndarray,
+           spins: jnp.ndarray,
+           atoms: jnp.ndarray,
+           charges: jnp.ndarray,
+   ) -> Tuple[jnp.ndarray, Optional[jnp.ndarray]]:
     """Returns the total energy.
 
     Args:
@@ -200,13 +209,14 @@ def local_energy(
                               complex_output=complex_output,
                               laplacian_method=laplacian_method)
     ae, _, r_ae, r_ee = networks.construct_input_features(
-        data.positions, data.atoms
+        pos, atoms
     )
-    potential = (potential_energy(r_ae, r_ee, data.atoms, charges))
+    potential = (potential_energy(r_ae, r_ee, atoms, charges))
     """something is wrong in the kinetic energy calculation.31.10.2025."""
-    #kinetic = ke(params, data)
-    total_energy = potential
-    #total_energy = potential + kinetic
+    #jax.debug.print("data:{}", data)
+    kinetic = ke(params, pos, spins, atoms, charges,)
+    #total_energy = potential
+    total_energy = potential + kinetic
     energy_mat = None  # Not necessary for ground state
     return total_energy, energy_mat
 

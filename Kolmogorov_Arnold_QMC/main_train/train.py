@@ -8,10 +8,16 @@ import ml_collections
 import jax.numpy as jnp
 import jax
 import time
+
+import optax
+from tensorflow_probability.python.internal.backend.jax import truediv
+import kfac_jax
+from Kolmogorov_Arnold_QMC.optimizer.opt import make_training_step, make_opt_update_step
 from Kolmogorov_Arnold_QMC.kan_wavefunction_case_one.kan_networks_case_one import make_kan_net, KANetsData
 from Kolmogorov_Arnold_QMC.kan_wavefunction_case_one.spin_indices import jastrow_indices_ee, jastrow_indices_ae
 from Kolmogorov_Arnold_QMC.monte_carlo_step.mcmc import make_mcmc_step
 from Kolmogorov_Arnold_QMC.hamiltonian import hamiltonian
+from Kolmogorov_Arnold_QMC.loss_function import loss as qmc_loss_functions
 
 
 def train(cfg: ml_collections.ConfigDict,):
@@ -79,7 +85,41 @@ def train(cfg: ml_collections.ConfigDict,):
                                             use_scan=False,
                                             complex_output=False,
                                             laplacian_method='default')
-    output = local_energy(params, energy_key, data,)
+    """the reason for the error is local_energy can not accept the batched input. 3.11.2025."""
+    """we solved it by a simple reconstruction of input axes."""
+    local_energy_vmap = jax.vmap(local_energy, in_axes=(None, None, 0, None, None, None))
+    output = local_energy_vmap(params, energy_key, data.positions, data.spins, data.atoms, data.charges,)
+    jax.debug.print("output:{}", output)
+    """next, we need construction the loss function. 3.11.2025."""
+    evaluate_loss = qmc_loss_functions.make_loss(logabs_network,
+                                                 local_energy,
+                                                 clip_local_energy=5.0,
+                                                 clip_from_median=True,
+                                                 center_at_clipped_energy=True,
+                                                 complex_output=False,
+                                                 )
+
+    def learning_rate_schedule(t_: jnp.ndarray) -> jnp.ndarray:
+        return cfg.optim.lr.rate * jnp.power(
+            (1.0 / (1.0 + (t_ / cfg.optim.lr.delay))), cfg.optim.lr.decay)
+
+    optimizer = optax.chain(optax.scale_by_adam({'b1': 0.9, 'b2': 0.999, 'eps': 1e-6, 'eps_root': 0.0}))
+    opt_state = optimizer.init(params)
+    step = make_training_step(mcmc_step=evaluate_loss,
+                              optimizer_step=make_opt_update_step(evaluate_loss, opt_state),
+                              reset_if_nan=True)
+
+    mcmc_width = 0.1
+    pmoves = None
+    t_init = 0
+    sharded_key = kfac_jax.utils.make_different_rng_key_on_all_devices(key)
+    jax.debug.print("sharded_key:{}", sharded_key)
+    """to be continued... 3.11.2025."""
+    #for t in range(t_init, cfg.iterations):
+
+
+
+
 
 
 
