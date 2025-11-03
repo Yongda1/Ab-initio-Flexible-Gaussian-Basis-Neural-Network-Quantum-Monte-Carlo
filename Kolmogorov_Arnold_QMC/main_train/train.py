@@ -103,9 +103,12 @@ def train(cfg: ml_collections.ConfigDict,):
         return cfg.optim.lr.rate * jnp.power(
             (1.0 / (1.0 + (t_ / cfg.optim.lr.delay))), cfg.optim.lr.decay)
 
-    optimizer = optax.chain(optax.scale_by_adam({'b1': 0.9, 'b2': 0.999, 'eps': 1e-6, 'eps_root': 0.0}))
+    optimizer = optax.chain(
+        optax.scale_by_adam({'b1': 0.9, 'b2': 0.999, 'eps': 1e-6, 'eps_root': 0.0}),
+        optax.scale_by_schedule(learning_rate_schedule),
+        optax.scale(-1.))
     opt_state = optimizer.init(params)
-    step = make_training_step(mcmc_step=evaluate_loss,
+    step = make_training_step(mcmc_step=monte_carlo,
                               optimizer_step=make_opt_update_step(evaluate_loss, opt_state),
                               reset_if_nan=True)
 
