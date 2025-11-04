@@ -66,7 +66,7 @@ def mh_update(params,
     del i, blocks  # electron index ignored for all-electron moves
     key, subkey = jax.random.split(key)
     x1 = data.positions
-    jax.debug.print("x1:{}", x1)
+    #jax.debug.print("x1:{}", x1)
     if atoms is None:  # symmetric proposal, same stddev everywhere
         x2 = x1 + stddev * jax.random.normal(subkey, shape=x1.shape)  # proposal
         lp_2 = 2.0 * f(
@@ -108,13 +108,13 @@ def make_mcmc_step(batch_network,
     def mcmc_step(params, data, key, width):
         pos = data.positions
         nsteps = steps * blocks
-        jax.debug.print("nsteps:{}", nsteps)
+        #jax.debug.print("nsteps:{}", nsteps)
         logprob = 2.0 * batch_network(params, pos, data.spins, data.atoms, data.charges)
-        jax.debug.print("logprob:{}", logprob)
+        #jax.debug.print("logprob:{}", logprob)
         """it is kind of stupid. i hate loop."""
         for i in range(steps):
             data, key, logprob, num_accepts = mh_update(params, batch_network, data, key, logprob, 0.0, )
-        jax.debug.print("new_data:{}", data)
+        #jax.debug.print("new_data:{}", data)
         return data
 
     return mcmc_step

@@ -176,7 +176,7 @@ def make_loss(network,
       over the batch and over all devices inside a pmap.
     """
     keys = jax.random.split(key, num=data.positions.shape[0])
-    e_l, e_l_mat = batch_local_energy(params, keys, data)
+    e_l, e_l_mat = batch_local_energy(params, keys, data.positions, data.spins, data.atoms, data.charges,)
     #jax.debug.print("e_l:{}", e_l)
     #jax.debug.print("data.positions:{}", data.positions)
     loss = constants.pmean(jnp.mean(e_l))

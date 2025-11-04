@@ -109,7 +109,10 @@ def make_opt_update_step(evaluate_loss: qmc_loss_functions.LossFn,
   ) -> OptUpdateResults:
     """Evaluates the loss and gradients and updates the parameters using optax."""
     (loss, aux_data), grad = loss_and_grad(params, key, data)
-    grad = constants.pmean(grad)
+    #grad = constants.pmean(grad)
+    #jax.debug.print("grad:{}", grad.type)
+    #jax.debug.print("params:{}", params.type)
+    #jax.debug.print("opt_state:{}", opt_state.type)
     updates, opt_state = optimizer.update(grad, opt_state, params)
     params = optax.apply_updates(params, updates)
     return params, opt_state, loss, aux_data
@@ -138,8 +141,8 @@ def make_training_step(
     optimizer_step: OptUpdate,
     reset_if_nan: bool = False,
 ) -> Step:
-  """Factory to create traning step for non-KFAC optimizers."""
-  @functools.partial(constants.pmap, donate_argnums=(0, 1, 2))
+  """Factory to create training step for non-KFAC optimizers."""
+  #@functools.partial(jax.vmap, donate_argnums=(0, 1, 2)) we dont have the parallel strategy for it. So comment out this line.
   def step(
       data: networks.KANetsData,
       params: networks.ParamTree,
@@ -150,7 +153,7 @@ def make_training_step(
     """A full update iteration (except for KFAC): MCMC steps + optimization."""
     # MCMC loop
     mcmc_key, loss_key = jax.random.split(key, num=2)
-    data, pmove = mcmc_step(params, data, mcmc_key, mcmc_width)
+    data = mcmc_step(params, data, mcmc_key, mcmc_width)
     #data, pmove = mcmc_step(params, data, mcmc_key)
 
     # Optimization step
@@ -165,6 +168,6 @@ def make_training_step(
       new_state = jax.lax.cond(jnp.isnan(loss),
                                lambda: state,
                                lambda: new_state)
-    return data, new_params, new_state, loss, aux_data, pmove
+    return data, new_params, new_state, loss, aux_data
 
   return step
