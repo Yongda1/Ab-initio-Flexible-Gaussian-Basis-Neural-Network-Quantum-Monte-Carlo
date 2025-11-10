@@ -92,7 +92,7 @@ def mh_update(params,
         x2 = jnp.reshape(x2, [n, -1])
     x_new, key, lp_new, num_accepts = mh_accept(
         x1, x2, lp_1, lp_2, ratio, key, num_accepts)
-    jax.debug.print("num_accepts:{}", num_accepts)
+    #jax.debug.print("num_accepts:{}", num_accepts)
     new_data = networks.KANetsData(**(dict(data) | {'positions': x_new}))
     return new_data, key, lp_new, num_accepts
 
@@ -111,7 +111,7 @@ def make_mcmc_step(batch_network,
         #jax.debug.print("nsteps:{}", nsteps)
         logprob = 2.0 * batch_network(params, pos, data.spins, data.atoms, data.charges)
         #jax.debug.print("logprob:{}", logprob)
-        """it is kind of stupid. i hate loop."""
+        """it is kind of stupid. i hate loop. However, currently it is working."""
         for i in range(steps):
             data, key, logprob, num_accepts = mh_update(params, batch_network, data, key, logprob, 0.0, )
         #jax.debug.print("new_data:{}", data)

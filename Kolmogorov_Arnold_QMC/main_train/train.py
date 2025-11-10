@@ -54,15 +54,15 @@ def train(cfg: ml_collections.ConfigDict,):
     signed_network = kan_apply
     logabs_network = lambda *args, **kwargs: signed_network(*args, **kwargs)[1]
     spins = jnp.array([cfg.spins])
-    jax.debug.print("spins:{}", spins)
+    #jax.debug.print("spins:{}", spins)
     batch_network = jax.vmap(
         logabs_network, in_axes=(None, 0, None, None, None), out_axes=0
     )
 
-    jax.debug.print("pos:{}", pos)
-    jax.debug.print("atoms:{}", atoms)
-    wavefunction_value = batch_network(params, pos, spins, atoms, charges)
-    jax.debug.print("wavefunction_value:{}", wavefunction_value)
+    #jax.debug.print("pos:{}", pos)
+    #jax.debug.print("atoms:{}", atoms)
+    #wavefunction_value = batch_network(params, pos, spins, atoms, charges)
+    #jax.debug.print("wavefunction_value:{}", wavefunction_value)
     """we need do batch for pos."""
     data = KANetsData(positions=pos, spins=spins, atoms=atoms, charges=charges)
 
@@ -76,7 +76,7 @@ def train(cfg: ml_collections.ConfigDict,):
     #new_data = monte_carlo(params, data, monte_carlo_key, 0.1)
     """now we need move to the energy calculation method."""
     """the following is energy calculation test. 31.10.2025."""
-    jax.debug.print("charges:{}", charges)
+    #jax.debug.print("charges:{}", charges)
     key, energy_key = jax.random.split(key)
     local_energy = hamiltonian.local_energy(f=signed_network,
                                             nspins=(3, 3),
@@ -106,10 +106,10 @@ def train(cfg: ml_collections.ConfigDict,):
         optax.scale_by_adam(b1=0.9, b2=0.999,eps=1e-6),
         optax.scale_by_schedule(learning_rate_schedule),
         optax.scale(-1.))
-    jax.debug.print("type_of_optimizer:{}",type(optimizer))
+    #jax.debug.print("type_of_optimizer:{}",type(optimizer))
     if isinstance(optimizer, optax.GradientTransformation):
         opt_state = optimizer.init(params)
-        jax.debug.print("opt_state:{}", opt_state)
+        #jax.debug.print("opt_state:{}", opt_state)
         """because we dont set any parallel strategy for monte carlo step. We also need rewrite the parallel strategy for optimization.4.11.2025."""
         step = make_training_step(mcmc_step=monte_carlo,
                                   optimizer_step=make_opt_update_step(evaluate_loss, optimizer),
@@ -127,6 +127,7 @@ def train(cfg: ml_collections.ConfigDict,):
         data, params, opt_state, loss, aux_data = step(data, params, opt_state, subkeys, mcmc_width,)
 
         #loss = loss[0]
+        jax.debug.print("loss:{}", loss)
 
 
 
