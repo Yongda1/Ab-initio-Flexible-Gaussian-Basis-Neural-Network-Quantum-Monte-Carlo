@@ -18,7 +18,7 @@ def init_ka_layer(key: chex.PRNGKey,
     g: the number of grid.
     k: the order of spline."""
     key_basis, key_residual, key_external_weights, key_bias = jax.random.split(key, 4)
-    c_basis = jax.random.normal(key_basis, shape=(n_in, g + k))
+    c_basis = jax.random.normal(key_basis, shape=(n_in, (g + k)))
     #jax.debug.print("c_basis:{}", c_basis)
 
     if add_residual and external_weights and add_bias:
@@ -111,6 +111,7 @@ def forward_each_layer(x: jnp.ndarray,
 
     spl_w = c_basis * c_spl
     #jax.debug.print("spl_w:{}", spl_w)
+    #jax.debug.print("Bi:{}", Bi)
     value = multiply_Bi_spl_w_vmap(Bi, spl_w)
     #jax.debug.print("value:{}", value)
     value = jnp.transpose(value).reshape(batch, n_in)
@@ -148,7 +149,7 @@ def forward_each_layer(x: jnp.ndarray,
   else:
     return {'w': weight}'''
 
-
+'''
 seed = 23
 key = jax.random.PRNGKey(seed)
 """for example, only one atom and six electrons."""
@@ -157,3 +158,4 @@ input = jnp.array([[0.1, 0.2, 0.1,], [0.2, 0.2, 0.2,],[0.3, 0.3, 0.3,], [0.4, 0.
 params = init_ka_layer(key=key, n_in=3, n_out=3, g=3, k=3, add_residual=True, add_bias=True, external_weights=True)
 output = forward_each_layer(x=input, n_in=3, n_out=3, g=3, k=3, grid_range=jnp.array([0, 1]),
                             c_basis = params['c_basis'], c_spl = params['c_spl'], bias = params['bias'], c_res = params['c_res'] )
+'''

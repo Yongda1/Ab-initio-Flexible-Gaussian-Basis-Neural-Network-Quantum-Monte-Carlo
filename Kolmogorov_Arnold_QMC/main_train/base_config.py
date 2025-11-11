@@ -13,7 +13,18 @@ def default() -> ml_collections.ConfigDict:
         'layer_dims': [4, 4, 4, 6],
         'g': [3, 3, 3,],
         'k': [3, 3, 3,],
-        'grid_range':[[0, 1], [0, 1], [0, 1]],
+        'grid_range':[[-10, 10], [-10, 10], [-10, 10]],
         'iterations': 1000,
+        'system':{
+            'molecule': config_dict.placeholder(list),
+            'electrons': (3, 3),
+            'nelectrons': 6,
+
+        },
+        'envelope':{
+            'g_envelope': 10,
+            'k_envelope': 3,
+            'grid_range_envelope': [-10, 10],
+        }
     })
     return cfg

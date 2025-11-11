@@ -17,6 +17,8 @@ from Kolmogorov_Arnold_QMC.kan_wavefunction_case_one.spin_indices import jastrow
 from Kolmogorov_Arnold_QMC.monte_carlo_step.mcmc import make_mcmc_step
 from Kolmogorov_Arnold_QMC.hamiltonian import hamiltonian
 from Kolmogorov_Arnold_QMC.loss_function import loss as qmc_loss_functions
+from Kolmogorov_Arnold_QMC.initialization import electrons_initialization
+from Kolmogorov_Arnold_QMC.pretrain import pretrain_HF
 
 
 def train(cfg: ml_collections.ConfigDict,):
@@ -28,24 +30,62 @@ def train(cfg: ml_collections.ConfigDict,):
     g = jnp.array(cfg.g)
     k = jnp.array(cfg.k)
     layer_dims = jnp.array(cfg.layer_dims)
+    """electron coordinates initialization. 10.11.2025."""
+    seed_electrons_coords = 22
+    key_electrons_coords = jax.random.PRNGKey(seed_electrons_coords)
+    key_electrons_coords, subkey_electrons_coords = jax.random.split(key_electrons_coords)
+    pos, spins_test = electrons_initialization.init_electrons(
+        subkey_electrons_coords,
+        cfg.system.molecule,
+        cfg.system.electrons,
+        batch_size=cfg.batch_size,
+        init_width=0.1,
+        core_electrons={},
+    )
+
+    #jax.debug.print("pos_test:{}", pos_test)
+    """test pretrain. 10.11.2025."""
+    hartree_fock = pretrain_HF.get_hf(
+        pyscf_mol=cfg.system.get('pyscf_mol'),
+        molecule=cfg.system.molecule,
+        nspins=(3, 3),
+        restricted=False,
+        basis='ccpvdz',
+        ecp={},
+        core_electrons={},
+        states=0,
+        excitation_type='ordered')
+    # broadcast the result of PySCF from host 0 to all other hosts
+    jax.debug.print("hartree_fock:{}", hartree_fock)
+    """we need check the next fitting step.10.11.2025."""
+
+
+
+
+
     charges = jnp.array(cfg.charges)
     atoms = jnp.array(cfg.atoms)
-    pos = jnp.array(cfg.pos)
+    #pos = jnp.array(cfg.pos)
     #jax.debug.print("g:{}", g)
-    kan_init, kan_apply = make_kan_net(nspins=(3, 3),
-                                       charges=charges,
-                                       nelectrons=6,
-                                       nfeatures=4,
-                                       n_parallel=n_parallel,
-                                       n_antiparallel=n_antiparallel,
-                                       parallel_indices=parallel_indices,
-                                       antiparallel_indices=antiparallel_indices,
-                                       grid_range=cfg.grid_range,
-                                       g=g,
-                                       k=k,
-                                       natoms=1,
-                                       ndims=3,
-                                       layer_dims=layer_dims)
+    grid_range_envelope = jnp.array(cfg.envelope.grid_range_envelope)
+    kan_init, kan_apply, orbitals_apply = make_kan_net(nspins=(3, 3),
+                                                       charges=charges,
+                                                       nelectrons=6,
+                                                       nfeatures=4,
+                                                       n_parallel=n_parallel,
+                                                       n_antiparallel=n_antiparallel,
+                                                       parallel_indices=parallel_indices,
+                                                       antiparallel_indices=antiparallel_indices,
+                                                       grid_range=cfg.grid_range,
+                                                       g=g,
+                                                       k=k,
+                                                       natoms=1,
+                                                       ndims=3,
+                                                       layer_dims=layer_dims,
+                                                       g_envelope=cfg.envelope.g_envelope,
+                                                       k_envelope=cfg.envelope.k_envelope,
+                                                       grid_range_envelope=grid_range_envelope,
+                                                       )
 
     seed = 42
     key = jax.random.PRNGKey(seed)
@@ -59,7 +99,27 @@ def train(cfg: ml_collections.ConfigDict,):
         logabs_network, in_axes=(None, 0, None, None, None), out_axes=0
     )
 
-    #jax.debug.print("pos:{}", pos)
+    key, hartree_fock_key = jax.random.split(key, 2)
+    orbitals_vmap = jax.vmap(orbitals_apply, in_axes=(None, 0, None, None, None), out_axes=0)
+    params, pos = pretrain_HF.pretrain_hartree_fock(
+        params=params,
+        positions=pos,
+        spins=spins,
+        charges=charges,
+        atoms=atoms,
+        batch_network=batch_network,
+        batch_orbitals=orbitals_vmap,
+        sharded_key=hartree_fock_key,
+        electrons=cfg.system.electrons,
+        scf_approx=hartree_fock,
+        iterations=10,
+        batch_size=cfg.batch_size,
+        scf_fraction=1.0,
+        states=0,
+    )
+
+    jax.debug.print("pos:{}", pos)
+    jax.debug.print("params:{}", params)
     #jax.debug.print("atoms:{}", atoms)
     #wavefunction_value = batch_network(params, pos, spins, atoms, charges)
     #jax.debug.print("wavefunction_value:{}", wavefunction_value)

@@ -19,13 +19,13 @@ jax.debug.print("antiparallel_indices:{}", antiparallel_indices)
 
 
 """parameters for neural networks. We also need add different grid range for different layer ? 23.10.2025."""
-layer_dims = jnp.array([4, 4, 4, 6])
+layer_dims = jnp.array([4, 4, 4, 8])
 g = jnp.array([3, 3, 3,])
 k = jnp.array([3, 3, 3,])
 grid_range = jnp.array([[0, 1], [0, 1], [0, 1]])
 # the first number of nodes of layer_dims must be 4 because it is the number of features.
 # the last number of nodes of layer_dims must be 6 because it is the number of electrons.
-kan_init, kan_apply = make_kan_net(nspins=(3,3),
+kan_init, kan_apply, orbitals_apply = make_kan_net(nspins=(3,3),
                                    charges=charges,
                                    nelectrons=6,
                                    nfeatures=4,
@@ -38,7 +38,10 @@ kan_init, kan_apply = make_kan_net(nspins=(3,3),
                                    k=k,
                                    natoms=1,
                                    ndims=3,
-                                   layer_dims=layer_dims)
+                                   layer_dims=layer_dims,
+                                   g_envelope=10,
+                                   k_envelope=10,
+                                   grid_range_envelope=jnp.array([-5, 5]),)
 
 params = kan_init(subkey)
 #jax.debug.print("params:{}", params)

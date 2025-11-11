@@ -70,7 +70,8 @@ def make_kan_net_layers(layer_dims: jnp.ndarray, g: jnp.ndarray, k: jnp.ndarray)
             #dimension_in = int(layer_dims[i+1])
 
         params['embedding_layer'] = layers
-        return params
+        output_dims = int(layer_dims[-1])
+        return params, output_dims
 
 
     def apply_layer(params: Mapping[str, ParamTree],
@@ -137,10 +138,12 @@ def make_orbitals(nspins: Tuple[int, int],
         params = {}
         key, subkey, key_map, key_envelope, key_orbitals= jax.random.split(key, num=5)
         """we finished the parameters initialization of equivariant layers."""
-        params['layers'] = equivariant_layers_init(subkey)
-        params['map_h_to_orbitals'] = jax.random.normal(key_map, (nelectrons, nelectrons))
+        params['layers'], output_dims = equivariant_layers_init(subkey)
+        """this parameters is not necessary to be a square matrix."""
+        params['map_h_to_orbitals'] = jax.random.normal(key_map, (nelectrons, output_dims))
         #params['envelopes'] = jax.random.normal(key_envelope, (3, 1, 1))
-        params['orbitals'] = kan_envelopes.init_ka_layer(key=key_orbitals, n_in=nelectrons, n_out=nelectrons, g=3, k=3)
+        """please be same with the apply function. I will reformat it into cfg file."""
+        params['orbitals'] = kan_envelopes.init_ka_layer(key=key_orbitals, n_in=nelectrons, n_out=nelectrons, g=4, k=3)
         params['jastrow_ee'] = jastrow_ee_init(n_parallel=n_parallel, n_antiparallel=n_antiparallel)
         #jax.debug.print("params['jastrow_ee']:{}", params['jastrow_ee'])
         return params
@@ -172,20 +175,29 @@ def make_orbitals(nspins: Tuple[int, int],
         #h_to_orbitals = jnp.expand_dims(h_to_orbitals, 1)
         #jax.debug.print("h_to_orbitals:{}", h_to_orbitals)
         #coe_eff = jnp.sum(h_to_orbitals * params['map_h_to_orbitals'], axis=-1)
-        h_to_orbitals = jnp.reshape(h_to_orbitals, (nelectrons, 1, nelectrons))
+        #jax.debug.print("h_to_orbitals:{}", h_to_orbitals)
+        h_to_orbitals = jnp.reshape(h_to_orbitals, (nelectrons, 1, -1))
         #jax.debug.print("h_to_orbitals:{}", h_to_orbitals)
         #coe_eff = [jnp.dot(h, p) for h, p in zip(h_to_orbitals, params['map_h_to_orbitals'])]
         #jax.debug.print("coe_eff:{}", coe_eff)
         #jax.debug.print("params['map_h_to_orbitals']:{}", params['map_h_to_orbitals'])
         coe_eff = h_to_orbitals * params['map_h_to_orbitals']
         #jax.debug.print("coe_eff:{}", coe_eff)
-        coe_eff = jnp.sum(coe_eff, axis=0)
+        coe_eff = jnp.sum(coe_eff, axis=-1)
         #jax.debug.print("coe_eff:{}", coe_eff)
         #jax.debug.print("r_ae:{}", r_ae)
         """for case one, we need """
         r_ae = jnp.tile(r_ae, (nelectrons,)).reshape(nelectrons, nelectrons)
         r_eff = r_ae + coe_eff
-        orbitals_spline_determinant = kan_envelopes.forward_each_layer(x=r_eff, n_in=nelectrons, n_out=nelectrons, g=3, k=3, grid_range=jnp.array([0, 1]),
+
+        #jax.debug.print("r_eff:{}", r_eff)
+        """do not forget the parameters for the envelope functions. Something is wrong."""
+        orbitals_spline_determinant = kan_envelopes.forward_each_layer(x=r_eff,
+                                                                       n_in=nelectrons,
+                                                                       n_out=nelectrons,
+                                                                       g=4,
+                                                                       k=3,
+                                                                       grid_range=jnp.array([-10, 10]),
                                                                        c_basis =  params['orbitals']['c_basis'],
                                                                        c_spl =  params['orbitals']['c_spl'],
                                                                        bias =  params['orbitals']['bias'],
@@ -214,6 +226,9 @@ def make_kan_net(nspins: Tuple[int, int],
                  g: jnp.ndarray,
                  k: jnp.ndarray,
                  grid_range: jnp.ndarray,
+                 g_envelope: int,
+                 k_envelope: int,
+                 grid_range_envelope: jnp.ndarray,
                  natoms: int,
                  ndims: int=3,
                  ):
@@ -260,6 +275,14 @@ def make_kan_net(nspins: Tuple[int, int],
         """we only consider single determinant.23.10.2025."""
         return sign, logdet
 
-    return init, apply
+    def orbitals(params,
+              pos: jnp.ndarray,
+              spins: jnp.ndarray,
+              atoms: jnp.ndarray,
+              charges: jnp.ndarray, ):
+        determinant = orbitals_apply(params, pos, spins, atoms, charges)
+        return determinant
+
+    return init, apply, orbitals
 
 
