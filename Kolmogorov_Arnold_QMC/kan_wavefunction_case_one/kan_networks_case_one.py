@@ -1,4 +1,4 @@
-from jaxkan.KAN import KAN
+#from jaxkan.KAN import KAN
 import jax.numpy as jnp
 import jax
 import chex
