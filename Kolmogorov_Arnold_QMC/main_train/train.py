@@ -112,7 +112,7 @@ def train(cfg: ml_collections.ConfigDict,):
         sharded_key=hartree_fock_key,
         electrons=cfg.system.electrons,
         scf_approx=hartree_fock,
-        iterations=10,
+        iterations=100,
         batch_size=cfg.batch_size,
         scf_fraction=1.0,
         states=0,

@@ -39,9 +39,9 @@ kan_init, kan_apply, orbitals_apply = make_kan_net(nspins=(3,3),
                                    natoms=1,
                                    ndims=3,
                                    layer_dims=layer_dims,
-                                   g_envelope=10,
-                                   k_envelope=10,
-                                   grid_range_envelope=jnp.array([-5, 5]),)
+                                   g_envelope=3,
+                                   k_envelope=3,
+                                   grid_range_envelope=jnp.array([0, 5]),)
 
 params = kan_init(subkey)
 #jax.debug.print("params:{}", params)

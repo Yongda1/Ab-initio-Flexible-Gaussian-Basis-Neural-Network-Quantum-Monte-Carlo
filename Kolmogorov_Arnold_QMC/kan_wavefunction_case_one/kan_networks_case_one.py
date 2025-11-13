@@ -129,7 +129,9 @@ def make_orbitals(nspins: Tuple[int, int],
                   equivariant_layers_apply,
                   jastrow_ee_init,
                   jastrow_ee_apply,
-
+                  g_envelope: int,
+                  k_envelope: int,
+                  grid_range_envelope: jnp.ndarray,
                   ):
     #equivariant_layers_init, equivariant_layers_apply = equivariant_layers()
 
@@ -143,7 +145,7 @@ def make_orbitals(nspins: Tuple[int, int],
         params['map_h_to_orbitals'] = jax.random.normal(key_map, (nelectrons, output_dims))
         #params['envelopes'] = jax.random.normal(key_envelope, (3, 1, 1))
         """please be same with the apply function. I will reformat it into cfg file."""
-        params['orbitals'] = kan_envelopes.init_ka_layer(key=key_orbitals, n_in=nelectrons, n_out=nelectrons, g=4, k=3)
+        params['orbitals'] = kan_envelopes.init_ka_layer(key=key_orbitals, n_in=nelectrons, n_out=nelectrons, g=g_envelope, k=k_envelope)
         params['jastrow_ee'] = jastrow_ee_init(n_parallel=n_parallel, n_antiparallel=n_antiparallel)
         #jax.debug.print("params['jastrow_ee']:{}", params['jastrow_ee'])
         return params
@@ -188,16 +190,16 @@ def make_orbitals(nspins: Tuple[int, int],
         #jax.debug.print("r_ae:{}", r_ae)
         """for case one, we need """
         r_ae = jnp.tile(r_ae, (nelectrons,)).reshape(nelectrons, nelectrons)
-        r_eff = r_ae + coe_eff
+        r_eff = r_ae + coe_eff # not necessary
 
         #jax.debug.print("r_eff:{}", r_eff)
         """do not forget the parameters for the envelope functions. Something is wrong."""
         orbitals_spline_determinant = kan_envelopes.forward_each_layer(x=r_eff,
                                                                        n_in=nelectrons,
                                                                        n_out=nelectrons,
-                                                                       g=4,
-                                                                       k=3,
-                                                                       grid_range=jnp.array([-10, 10]),
+                                                                       g=g_envelope,
+                                                                       k=k_envelope,
+                                                                       grid_range=grid_range_envelope,
                                                                        c_basis =  params['orbitals']['c_basis'],
                                                                        c_spl =  params['orbitals']['c_spl'],
                                                                        bias =  params['orbitals']['bias'],
@@ -258,8 +260,11 @@ def make_kan_net(nspins: Tuple[int, int],
                                                   antiparallel_indices=antiparallel_indices,
                                                   equivariant_layers_init=kan_equivariant_layers_init,
                                                   equivariant_layers_apply=kan_equivariant_layers_apply,
-                                                  jastrow_ee_init = jastrow_ee_init,
-                                                  jastrow_ee_apply = jastrow_ee_apply,)
+                                                  jastrow_ee_init=jastrow_ee_init,
+                                                  jastrow_ee_apply=jastrow_ee_apply,
+                                                  g_envelope=g_envelope,
+                                                  k_envelope=k_envelope,
+                                                  grid_range_envelope=grid_range_envelope,)
 
     def init(key: chex.PRNGKey) -> ParamTree:
         key, subkey = jax.random.split(key, num=2)
