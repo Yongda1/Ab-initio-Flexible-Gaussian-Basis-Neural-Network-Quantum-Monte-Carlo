@@ -189,9 +189,11 @@ def make_orbitals(nspins: Tuple[int, int],
         #jax.debug.print("coe_eff:{}", coe_eff)
         #jax.debug.print("r_ae:{}", r_ae)
         """for case one, we need """
-        r_ae = jnp.tile(r_ae, (nelectrons,)).reshape(nelectrons, nelectrons)
-        r_eff = r_ae + coe_eff # not necessary
+        #r_ae = jnp.tile(r_ae, (nelectrons,)).reshape(nelectrons, nelectrons)
 
+        #r_eff = r_ae + coe_eff # not necessary
+        r_eff = coe_eff
+        #jax.debug.print("r_ae:{}", r_ae)
         #jax.debug.print("r_eff:{}", r_eff)
         """do not forget the parameters for the envelope functions. Something is wrong."""
         orbitals_spline_determinant = kan_envelopes.forward_each_layer(x=r_eff,

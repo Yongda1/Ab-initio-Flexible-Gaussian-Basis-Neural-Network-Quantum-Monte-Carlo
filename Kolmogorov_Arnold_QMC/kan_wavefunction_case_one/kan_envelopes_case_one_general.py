@@ -78,7 +78,7 @@ def multiply_bi_spl_w(bi: jnp.ndarray, spl_w: jnp.ndarray):
 multiply_Bi_spl_w_vmap = jax.vmap(jax.vmap(multiply_bi_spl_w, in_axes=(1, None)), in_axes=(0, 0))
 
 def residual_function(x: jnp.ndarray,):
-    return x/(1+jnp.exp(-x))
+    return jnp.exp(-1 * x)
 
 def residual_cres(residual_value: jnp.ndarray, c_res: jnp.ndarray):
     return residual_value*c_res

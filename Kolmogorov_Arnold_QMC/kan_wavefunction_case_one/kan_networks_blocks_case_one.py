@@ -18,7 +18,7 @@ def init_ka_layer(key: chex.PRNGKey,
     """Initialises parameters for a KA layer.
     g: the number of grid.
     k: the order of spline.
-    the initialization of parameters can be improved by jax.nn.initializers methods. 17.11.2025."""
+    the initialization of parameters can be improved by jax.nn.initializers.glorot_uniform methods. 17.11.2025."""
     key_basis, key_residual, key_external_weights, key_bias = jax.random.split(key, 4)
     c_basis = jax.random.normal(key_basis, shape=(n_in * n_out, g + k))
     #jax.debug.print("c_basis:{}", c_basis)
