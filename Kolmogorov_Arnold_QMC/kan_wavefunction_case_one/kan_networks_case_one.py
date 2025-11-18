@@ -4,6 +4,7 @@ import jax
 import chex
 from typing import Any, Iterable, Mapping, MutableMapping, Optional, Sequence, Tuple, Union
 from Kolmogorov_Arnold_QMC.kan_wavefunction_case_one import kan_networks_blocks_case_one as kan_networks_blocks
+from Kolmogorov_Arnold_QMC.kan_wavefunction_case_one import chebyshev_blocks as chebyshev_blocks
 from Kolmogorov_Arnold_QMC.kan_wavefunction_case_one import kan_envelopes_case_one_general as kan_envelopes
 from Kolmogorov_Arnold_QMC.kan_wavefunction_case_one.JastrowPade import make_pade_ee_jastrow
 
@@ -46,8 +47,18 @@ def make_kan_features(natoms: int, ndim: int = 3):
 
 
 
-def make_kan_net_layers(layer_dims: jnp.ndarray, g: jnp.ndarray, k: jnp.ndarray):
+def make_kan_net_layers(layer_dims: jnp.ndarray,
+                        g: jnp.ndarray,
+                        k: jnp.ndarray,
+                        chebyshev: bool = False,):
+    """
 
+    :param layer_dims: the number of nodes each layer.
+    :param g: the number of grid for spline basis functions.
+    :param k: the order of the spline or chebyshev basis functions.
+    :param chebyshev: turn on chebyshev basis functions or not.
+    :return: one vector from equivalent layers.
+    """
     def init(key: chex.PRNGKey):
         """here, we initialize the parameters of KANets wave function. 9.10.2025."""
         params = {}
@@ -58,14 +69,24 @@ def make_kan_net_layers(layer_dims: jnp.ndarray, g: jnp.ndarray, k: jnp.ndarray)
             layer_params = {}
             dimension_in = int(layer_dims[i])
             dimension_out = int(layer_dims[i+1])
-            layer_params['single'] = kan_networks_blocks.init_ka_layer(key=key,
-                                                  n_in=dimension_in,
-                                                  n_out=dimension_out,
-                                                  g=int(g[i]),
-                                                  k=int(k[i]),
-                                                  add_residual=True,
-                                                  add_bias=True,
-                                                  external_weights=True)
+            if chebyshev:
+                """choose chebyshev basis functions or not."""
+                layer_params['single'] = chebyshev_blocks.init_chebyshev(key=key,
+                                                                         n_in=dimension_in,
+                                                                         n_out=dimension_out,
+                                                                         d=int(k[i]),
+                                                                         add_residual=True,
+                                                                         add_bias=True,
+                                                                         external_weights=True)
+            else:
+                layer_params['single'] = kan_networks_blocks.init_ka_layer(key=key,
+                                                      n_in=dimension_in,
+                                                      n_out=dimension_out,
+                                                      g=int(g[i]),
+                                                      k=int(k[i]),
+                                                      add_residual=True,
+                                                      add_bias=True,
+                                                      external_weights=True)
             layers.append(layer_params)
             #dimension_in = int(layer_dims[i+1])
 
@@ -82,16 +103,36 @@ def make_kan_net_layers(layer_dims: jnp.ndarray, g: jnp.ndarray, k: jnp.ndarray)
                     k_each_layer: int,
                     grid_range: jnp.ndarray,
                     ):
-        h_one_next = kan_networks_blocks.forward_each_layer(x=h_one,
-                                                            n_in=n_in,
-                                                            n_out=n_out,
-                                                            g=g_each_layer,
-                                                            k=k_each_layer,
-                                                            grid_range=grid_range,
-                                                            c_basis = params['c_basis'],
-                                                            c_spl = params['c_spl'],
-                                                            bias = params['bias'],
-                                                            c_res = params['c_res'])
+        """
+        :param params:
+        :param h_one: input vector for each layer.
+        :param n_in:
+        :param n_out:
+        :param g_each_layer:
+        :param k_each_layer:
+        :param grid_range: no grid range for chebyshev basis functions.
+        :return:
+        """
+        if chebyshev:
+            h_one_next = chebyshev_blocks.forward_each_layer(x=h_one,
+                                                             n_in=n_in,
+                                                             n_out=n_out,
+                                                             d=k_each_layer,
+                                                             c_basis = params['c_basis'],
+                                                             c_ext = params['c_ext'],
+                                                             bias = params['bias'],
+                                                             c_res = params['c_res'])
+        else:
+            h_one_next = kan_networks_blocks.forward_each_layer(x=h_one,
+                                                                n_in=n_in,
+                                                                n_out=n_out,
+                                                                g=g_each_layer,
+                                                                k=k_each_layer,
+                                                                grid_range=grid_range,
+                                                                c_basis = params['c_basis'],
+                                                                c_spl = params['c_spl'],
+                                                                bias = params['bias'],
+                                                                c_res = params['c_res'])
         return h_one_next
 
     def apply(params,
@@ -235,6 +276,7 @@ def make_kan_net(nspins: Tuple[int, int],
                  grid_range_envelope: jnp.ndarray,
                  natoms: int,
                  ndims: int=3,
+                 chebyshev: bool = False,
                  ):
     """
     nspins: the spin configuration.
@@ -247,9 +289,14 @@ def make_kan_net(nspins: Tuple[int, int],
     ndims: the number of dimensions.
     g: the grid number on each layer. We allow different layer uses different grids.
     k: the oder of spline functions on each layer. We allow different layer uses different order of spline functions.
+    chebyshev: whether to use chebyshev orbitals. If it is true, the grid information should be deleted. however, the order of degree should be kept.
     """
     #feature_layer = make_kan_features(natoms=natoms, ndim=ndims)
-    kan_equivariant_layers_init, kan_equivariant_layers_apply = make_kan_net_layers(layer_dims=layer_dims, g=g, k=k)
+    """ to be continued... we need add the module about chebyshev polynomials. 18.11.2025."""
+    kan_equivariant_layers_init, kan_equivariant_layers_apply = make_kan_net_layers(layer_dims=layer_dims,
+                                                                                    g=g,
+                                                                                    k=k,
+                                                                                    chebyshev=chebyshev,)
     jastrow_ee_init, jastrow_ee_apply = make_pade_ee_jastrow()
     orbitals_init, orbitals_apply = make_orbitals(nspins=nspins,
                                                   charges=charges,

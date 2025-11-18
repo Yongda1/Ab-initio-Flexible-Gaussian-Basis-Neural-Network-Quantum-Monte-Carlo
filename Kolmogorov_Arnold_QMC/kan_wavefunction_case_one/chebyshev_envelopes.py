@@ -5,8 +5,9 @@ from typing import MutableMapping, Optional, Sequence, Tuple
 
 #from setuptools.dist import check_extras
 
-"""in this module, we finish the chebyshev polynomial as the the basis functions."""
-
+"""in this module, we finish the chebyshev polynomial as the the basis functions.
+We need add this on the envelope functions. However, we need change the its structure.18.11.2025.
+to be continued....."""
 
 def init_chebyshev(key: chex.PRNGKey,
                    n_in: int,
@@ -37,7 +38,7 @@ def chebyshev_polynomial_each_layer(x: jnp.ndarray,
                                     d: int, ):
     batch = x.shape[0]
     x = jnp.tanh(x)
-
+    jax.debug.print("x:{}", x)
     x = jnp.expand_dims(x, axis=-1)
     x = jnp.tile(x, (1, 1, d+1))
     x = jnp.arccos(x)
@@ -61,11 +62,13 @@ def forward_each_layer(x: jnp.ndarray,
                        c_res: jnp.ndarray,):
     batch = x.shape[0]
     Bi = chebyshev_polynomial_each_layer(x, n_in, n_out, d)
+    jax.debug.print("Bi:{}", Bi)
     act = Bi.reshape(batch, -1)
     #jax.debug.print("act:{}", act)
+    jax.debug.print("c_basis:{}", c_basis)
     act_w = c_basis * c_ext[..., None]
     act_w = act_w.reshape(n_out, -1)
-    #jax.debug.print("act_w:{}", act_w)
+    jax.debug.print("act_w:{}", act_w)
     y = jnp.matmul(act, act_w.T)
     if c_res is not None:
         res = residual(x)
@@ -78,7 +81,7 @@ def forward_each_layer(x: jnp.ndarray,
 
     return y
 
-"""
+
 '''this part is for debugging the chebyshev polynomial basis functions.'''
 seed = 23
 key = jax.random.PRNGKey(seed)
@@ -86,5 +89,4 @@ input = jnp.array([[0.1, 0.2, 0.1,], [0.2, 0.2, 0.2,]])
 params = init_chebyshev(key, 3, 4, 5,)
 output = forward_each_layer(x=input, n_in=3, n_out=4, d=5,
                             c_basis = params['c_basis'], c_ext = params['c_ext'], bias = params['bias'], c_res = params['c_res'] )
-jax.debug.print("output:{}", output)
-"""
+#jax.debug.print("output:{}", output)
