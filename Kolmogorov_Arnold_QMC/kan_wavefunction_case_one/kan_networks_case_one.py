@@ -6,6 +6,7 @@ from typing import Any, Iterable, Mapping, MutableMapping, Optional, Sequence, T
 from Kolmogorov_Arnold_QMC.kan_wavefunction_case_one import kan_networks_blocks_case_one as kan_networks_blocks
 from Kolmogorov_Arnold_QMC.kan_wavefunction_case_one import chebyshev_blocks as chebyshev_blocks
 from Kolmogorov_Arnold_QMC.kan_wavefunction_case_one import kan_envelopes_case_one_general as kan_envelopes
+from Kolmogorov_Arnold_QMC.kan_wavefunction_case_one import chebyshev_envelopes
 from Kolmogorov_Arnold_QMC.kan_wavefunction_case_one.JastrowPade import make_pade_ee_jastrow
 
 
@@ -173,7 +174,7 @@ def make_orbitals(nspins: Tuple[int, int],
                   g_envelope: int,
                   k_envelope: int,
                   grid_range_envelope: jnp.ndarray,
-                  ):
+                  chebyshev: bool = False,):
     #equivariant_layers_init, equivariant_layers_apply = equivariant_layers()
 
 
@@ -186,7 +187,10 @@ def make_orbitals(nspins: Tuple[int, int],
         params['map_h_to_orbitals'] = jax.random.normal(key_map, (nelectrons, output_dims))
         #params['envelopes'] = jax.random.normal(key_envelope, (3, 1, 1))
         """please be same with the apply function. I will reformat it into cfg file."""
-        params['orbitals'] = kan_envelopes.init_ka_layer(key=key_orbitals, n_in=nelectrons, n_out=nelectrons, g=g_envelope, k=k_envelope)
+        if chebyshev:
+            params['orbitals'] = chebyshev_envelopes.init_chebyshev(key=key_envelope, n_in=nelectrons, n_out=nelectrons, d=k_envelope,)
+        else:
+            params['orbitals'] = kan_envelopes.init_ka_layer(key=key_orbitals, n_in=nelectrons, n_out=nelectrons, g=g_envelope, k=k_envelope)
         params['jastrow_ee'] = jastrow_ee_init(n_parallel=n_parallel, n_antiparallel=n_antiparallel)
         #jax.debug.print("params['jastrow_ee']:{}", params['jastrow_ee'])
         return params
@@ -235,26 +239,41 @@ def make_orbitals(nspins: Tuple[int, int],
         #r_eff = r_ae + coe_eff # not necessary
         r_eff = coe_eff
         #jax.debug.print("r_ae:{}", r_ae)
-        #jax.debug.print("r_eff:{}", r_eff)
+        jax.debug.print("r_eff:{}", r_eff)
         """do not forget the parameters for the envelope functions. Something is wrong."""
-        orbitals_spline_determinant = kan_envelopes.forward_each_layer(x=r_eff,
-                                                                       n_in=nelectrons,
-                                                                       n_out=nelectrons,
-                                                                       g=g_envelope,
-                                                                       k=k_envelope,
-                                                                       grid_range=grid_range_envelope,
-                                                                       c_basis =  params['orbitals']['c_basis'],
-                                                                       c_spl =  params['orbitals']['c_spl'],
-                                                                       bias =  params['orbitals']['bias'],
-                                                                       c_res =  params['orbitals']['c_res'])
+        if chebyshev:
+            orbitals_spline_determinant = chebyshev_envelopes.forward_each_layer(x=r_eff,
+                                                                                 n_in=nelectrons,
+                                                                                 n_out=nelectrons,
+                                                                                 d=k_envelope,
+                                                                                 c_basis = params['orbitals']['c_basis'],
+                                                                                 c_ext = params['orbitals']['c_ext'],
+                                                                                 bias = params['orbitals']['bias'],
+                                                                                 c_res = params['orbitals']['c_res'])
+        else:
+            orbitals_spline_determinant = kan_envelopes.forward_each_layer(x=r_eff,
+                                                                           n_in=nelectrons,
+                                                                           n_out=nelectrons,
+                                                                           g=g_envelope,
+                                                                           k=k_envelope,
+                                                                           grid_range=grid_range_envelope,
+                                                                           c_basis =  params['orbitals']['c_basis'],
+                                                                           c_spl =  params['orbitals']['c_spl'],
+                                                                           bias =  params['orbitals']['bias'],
+                                                                           c_res =  params['orbitals']['c_res'])
         #jax.debug.print("r_ee:{}", r_ee)
+        """the shape of orbitals_spline_determinant should be like,
+        |psi_1(r1), psi_2(r1), psi_3(r1), psi_4(r1), psi_5(r1), psi(r1)|
+        |psi_1(r2), psi_2(r2), psi_3(r2), psi_4(r2), psi_5(r2), psi(r2)|
+        ...
+        |psi_1(r6), psi_2(r6), psi_3(r6), psi_4(r6), psi_5(r6), psi(r6)|"""
         r_ee = jnp.reshape(r_ee, (nelectrons, nelectrons))
         #jax.debug.print("r_ee:{}", r_ee)
         jastrow = jnp.exp(jastrow_ee_apply(r_ee=r_ee,
                                            params=params['jastrow_ee'],
                                            parallel_indices=parallel_indices,
                                            antiparallel_indices=antiparallel_indices,)/nelectrons)
-        #jax.debug.print("orbitals_spline_determinant:{}", orbitals_spline_determinant)
+        jax.debug.print("orbitals_spline_determinant:{}", orbitals_spline_determinant)
         return orbitals_spline_determinant * jastrow
     return init, apply
 
@@ -313,7 +332,8 @@ def make_kan_net(nspins: Tuple[int, int],
                                                   jastrow_ee_apply=jastrow_ee_apply,
                                                   g_envelope=g_envelope,
                                                   k_envelope=k_envelope,
-                                                  grid_range_envelope=grid_range_envelope,)
+                                                  grid_range_envelope=grid_range_envelope,
+                                                  chebyshev=chebyshev)
 
     def init(key: chex.PRNGKey) -> ParamTree:
         key, subkey = jax.random.split(key, num=2)

@@ -18,17 +18,18 @@ def init_chebyshev(key: chex.PRNGKey,
                    external_weights: bool = True,
                    ):
     """initialize the parameters for chebyshev polynomial basis functions.
-    we only consider the situation that all bool types are true.17.11.2025."""
+    we only consider the situation that all bool types are true.17.11.2025.
+    we need rewrite the initialization."""
     key_basis, key_residual, key_external_weights, key_bias = jax.random.split(key, 4)
     ext_dim = d if add_bias else d+1
     std = 1.0/jnp.sqrt(n_in * ext_dim)
-    c_basis = jax.nn.initializers.truncated_normal(stddev=std,)(key_basis, (n_out, n_in, ext_dim))
+    c_basis = jax.nn.initializers.truncated_normal(stddev=std,)(key_basis, (n_in, ext_dim))
     #jax.debug.print("c_basis:{}", c_basis)
-    c_res = jax.nn.initializers.glorot_uniform(in_axis=-1, out_axis=-2)(key_residual, (n_out, n_in))
+    c_res = jax.nn.initializers.glorot_uniform(in_axis=-1, out_axis=-2)(key_residual, (n_in, 1))
     #jax.debug.print("c_res:{}", c_res)
-    bias = jnp.zeros(n_out)
+    bias = jnp.zeros(n_in)
     #jax.debug.print("bias:{}", bias)
-    c_ext = jnp.ones((n_out, n_in))
+    c_ext = jnp.ones((n_in,))
     return {'c_basis': c_basis, 'c_res': c_res, 'c_ext': c_ext, 'bias': bias, }
 
 
@@ -38,16 +39,18 @@ def chebyshev_polynomial_each_layer(x: jnp.ndarray,
                                     d: int, ):
     batch = x.shape[0]
     x = jnp.tanh(x)
-    jax.debug.print("x:{}", x)
+    #jax.debug.print("x:{}", x)
     x = jnp.expand_dims(x, axis=-1)
     x = jnp.tile(x, (1, 1, d+1))
     x = jnp.arccos(x)
     x *= jnp.arange(d+1)
     cheb_value = jnp.cos(x)
+    #jax.debug.print("cheb_value:{}", cheb_value)
     return cheb_value[:, :, 1:]
 
 def residual(x: jnp.ndarray,):
-    return x/(1+jnp.exp(-x))
+    """this is a part of the envelope function. it can be any format as you want."""
+    return jnp.exp(-x)
 
 
 
@@ -62,23 +65,26 @@ def forward_each_layer(x: jnp.ndarray,
                        c_res: jnp.ndarray,):
     batch = x.shape[0]
     Bi = chebyshev_polynomial_each_layer(x, n_in, n_out, d)
-    jax.debug.print("Bi:{}", Bi)
-    act = Bi.reshape(batch, -1)
-    #jax.debug.print("act:{}", act)
-    jax.debug.print("c_basis:{}", c_basis)
+    #jax.debug.print("Bi:{}", Bi)
+    #jax.debug.print("c_basis:{}", c_basis)
+    #jax.debug.print("c_ext:{}", c_ext)
     act_w = c_basis * c_ext[..., None]
-    act_w = act_w.reshape(n_out, -1)
-    jax.debug.print("act_w:{}", act_w)
-    y = jnp.matmul(act, act_w.T)
+    #jax.debug.print("act_w:{}", act_w[None, ...])
+    y = Bi * act_w
+    y = jnp.sum(y, axis=-1)
+    #jax.debug.print("y:{}", y)
     if c_res is not None:
         res = residual(x)
-        res_w = c_res
-        full_res = jnp.matmul(res, res_w.T) # (batch, n_out)
-        y += full_res
-
+        res_w = c_res.reshape(1, n_in)
+        #jax.debug.print("res:{}", res)
+        #jax.debug.print("res_w:{}", res_w)
+        full_res = res_w * res
+        y *= full_res
+        #jax.debug.print("y:{}", y)
+    #jax.debug.print("bias:{}", bias)
     if bias is not None:
-       y += bias
-
+       y += bias[None, ...]
+    #jax.debug.print("y:{}", y)
     return y
 
 
