@@ -25,7 +25,8 @@ def construct_input_features(
         pos: jnp.ndarray,
         atoms: jnp.ndarray,
         ndim: int = 3) -> Tuple[jnp.ndarray, jnp.ndarray, jnp.ndarray, jnp.ndarray]:
-    """Constructs inputs to Fermi Net from raw electron and atomic positions."""
+    """Constructs inputs to Fermi Net from raw electron and atomic positions.
+    For KANets, we need do the normalization for the input layer to be [-1, 1]."""
     #jax.debug.print("atoms:{}", atoms)
     assert atoms.shape[1] == ndim
     ae = jnp.reshape(pos, [-1, 1, ndim]) - atoms[None, ...]
@@ -113,7 +114,9 @@ def make_kan_net_layers(layer_dims: jnp.ndarray,
         :param k_each_layer:
         :param grid_range: no grid range for chebyshev basis functions.
         :return:
+        we need residual connection. It is important for the stable opt.
         """
+        residual = lambda x, y: (x + y) / jnp.sqrt(2.0) if x.shape == y.shape else y
         if chebyshev:
             h_one_next = chebyshev_blocks.forward_each_layer(x=h_one,
                                                              n_in=n_in,
@@ -134,6 +137,7 @@ def make_kan_net_layers(layer_dims: jnp.ndarray,
                                                                 c_spl = params['c_spl'],
                                                                 bias = params['bias'],
                                                                 c_res = params['c_res'])
+        h_one_next = residual(h_one, h_one_next)
         return h_one_next
 
     def apply(params,
@@ -209,10 +213,7 @@ def make_orbitals(nspins: Tuple[int, int],
         #jax.debug.print("pos:{}", pos)
         #jax.debug.print("atoms:{}", atoms)
         ae, ee, r_ae, r_ee = construct_input_features(pos, atoms, ndim=3)
-        #jax.debug.print("ae:{}", ae)
-        #jax.debug.print("r_ae: {}", r_ae)
-        #nfeatures = 4
-        #nelectrons = 6
+        ae = ae/r_ae
         """we construct input layer here.23.10.2025."""
         input_layer = jnp.concatenate((r_ae, ae), axis=2).reshape(nelectrons, -1)
         #jax.debug.print("input:{}", input)

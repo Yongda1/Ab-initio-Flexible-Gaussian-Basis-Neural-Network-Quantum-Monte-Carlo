@@ -45,6 +45,7 @@ def chebyshev_polynomial_each_layer(x: jnp.ndarray,
     return cheb_value[:, :, 1:]
 
 def residual(x: jnp.ndarray,):
+    #return jnp.exp(-x)
     return x/(1+jnp.exp(-x))
 
 
