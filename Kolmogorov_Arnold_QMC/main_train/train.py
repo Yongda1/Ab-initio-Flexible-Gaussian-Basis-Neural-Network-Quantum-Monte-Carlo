@@ -8,7 +8,6 @@ import ml_collections
 import jax.numpy as jnp
 import jax
 import time
-
 import optax
 import kfac_jax
 from Kolmogorov_Arnold_QMC.optimizer.opt import make_training_step, make_opt_update_step
@@ -59,10 +58,6 @@ def train(cfg: ml_collections.ConfigDict,):
     jax.debug.print("hartree_fock:{}", hartree_fock)
     """we need check the next fitting step.10.11.2025."""
 
-
-
-
-
     charges = jnp.array(cfg.charges)
     atoms = jnp.array(cfg.atoms)
     #pos = jnp.array(cfg.pos)
@@ -85,7 +80,7 @@ def train(cfg: ml_collections.ConfigDict,):
                                                        g_envelope=cfg.envelope.g_envelope,
                                                        k_envelope=cfg.envelope.k_envelope,
                                                        grid_range_envelope=grid_range_envelope,
-                                                       )
+                                                       chebyshev=cfg.chebyshev,)
 
     seed = 42
     key = jax.random.PRNGKey(seed)

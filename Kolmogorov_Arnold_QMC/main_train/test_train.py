@@ -20,5 +20,6 @@ cfg.envelope.g_envelope = 10
 cfg.envelope.k_envelope = 3
 cfg.envelope.grid_range_envelope = [0, 2]
 cfg.iterations = 100
+cfg.chebyshev = True
 train.train(cfg)
 

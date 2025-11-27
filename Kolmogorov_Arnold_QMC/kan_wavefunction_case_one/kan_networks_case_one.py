@@ -239,7 +239,7 @@ def make_orbitals(nspins: Tuple[int, int],
         #r_eff = r_ae + coe_eff # not necessary
         r_eff = coe_eff
         #jax.debug.print("r_ae:{}", r_ae)
-        jax.debug.print("r_eff:{}", r_eff)
+        #jax.debug.print("r_eff:{}", r_eff)
         """do not forget the parameters for the envelope functions. Something is wrong."""
         if chebyshev:
             orbitals_spline_determinant = chebyshev_envelopes.forward_each_layer(x=r_eff,
@@ -262,18 +262,19 @@ def make_orbitals(nspins: Tuple[int, int],
                                                                            bias =  params['orbitals']['bias'],
                                                                            c_res =  params['orbitals']['c_res'])
         #jax.debug.print("r_ee:{}", r_ee)
-        """the shape of orbitals_spline_determinant should be like,
-        |psi_1(r1), psi_2(r1), psi_3(r1), psi_4(r1), psi_5(r1), psi(r1)|
-        |psi_1(r2), psi_2(r2), psi_3(r2), psi_4(r2), psi_5(r2), psi(r2)|
+        """the shape of orbitals_spline_determinant should be like, 19.11.2025.
+        |psi_1(r1), psi_2(r1), psi_3(r1), psi_4(r1), psi_5(r1), psi6(r1)|
+        |psi_1(r2), psi_2(r2), psi_3(r2), psi_4(r2), psi_5(r2), psi6(r2)|
         ...
-        |psi_1(r6), psi_2(r6), psi_3(r6), psi_4(r6), psi_5(r6), psi(r6)|"""
+        |psi_1(r6), psi_2(r6), psi_3(r6), psi_4(r6), psi_5(r6), psi6(r6)|
+        the normalization constant is ignored. because it can be absorbed into the neural network."""
         r_ee = jnp.reshape(r_ee, (nelectrons, nelectrons))
         #jax.debug.print("r_ee:{}", r_ee)
         jastrow = jnp.exp(jastrow_ee_apply(r_ee=r_ee,
                                            params=params['jastrow_ee'],
                                            parallel_indices=parallel_indices,
                                            antiparallel_indices=antiparallel_indices,)/nelectrons)
-        jax.debug.print("orbitals_spline_determinant:{}", orbitals_spline_determinant)
+        #jax.debug.print("orbitals_spline_determinant:{}", orbitals_spline_determinant)
         return orbitals_spline_determinant * jastrow
     return init, apply
 

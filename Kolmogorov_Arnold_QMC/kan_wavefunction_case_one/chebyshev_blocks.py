@@ -36,8 +36,7 @@ def chebyshev_polynomial_each_layer(x: jnp.ndarray,
                                     n_out: int,
                                     d: int, ):
     batch = x.shape[0]
-    x = jnp.tanh(x)
-
+    x = jnp.tanh(x) # this line is important to make the net stable.
     x = jnp.expand_dims(x, axis=-1)
     x = jnp.tile(x, (1, 1, d+1))
     x = jnp.arccos(x)
@@ -71,6 +70,7 @@ def forward_each_layer(x: jnp.ndarray,
         res = residual(x)
         res_w = c_res
         full_res = jnp.matmul(res, res_w.T) # (batch, n_out)
+        """consider to change + to *, also change the residual function."""
         y += full_res
 
     if bias is not None:

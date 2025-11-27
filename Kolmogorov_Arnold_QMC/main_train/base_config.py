@@ -15,6 +15,7 @@ def default() -> ml_collections.ConfigDict:
         'k': [3, 3, 3,],
         'grid_range':[[-10, 10], [-10, 10], [-10, 10]],
         'iterations': 1000,
+        'chebyshev': True,
         'system':{
             'molecule': config_dict.placeholder(list),
             'electrons': (3, 3),
