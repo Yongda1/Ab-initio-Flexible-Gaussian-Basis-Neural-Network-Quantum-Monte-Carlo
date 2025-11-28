@@ -52,7 +52,8 @@ def make_kan_features(natoms: int, ndim: int = 3):
 def make_kan_net_layers(layer_dims: jnp.ndarray,
                         g: jnp.ndarray,
                         k: jnp.ndarray,
-                        chebyshev: bool = False,):
+                        chebyshev: bool = False,
+                        spline: bool = False,):
     """
 
     :param layer_dims: the number of nodes each layer.
@@ -80,7 +81,7 @@ def make_kan_net_layers(layer_dims: jnp.ndarray,
                                                                          add_residual=True,
                                                                          add_bias=True,
                                                                          external_weights=True)
-            else:
+            elif spline:
                 layer_params['single'] = kan_networks_blocks.init_ka_layer(key=key,
                                                       n_in=dimension_in,
                                                       n_out=dimension_out,
@@ -116,7 +117,7 @@ def make_kan_net_layers(layer_dims: jnp.ndarray,
         :return:
         we need residual connection. It is important for the stable opt.
         """
-        residual = lambda x, y: (x + y) / jnp.sqrt(2.0) if x.shape == y.shape else y
+        #residual = lambda x, y: (x + y) / jnp.sqrt(2.0) if x.shape == y.shape else y
         if chebyshev:
             h_one_next = chebyshev_blocks.forward_each_layer(x=h_one,
                                                              n_in=n_in,
@@ -126,7 +127,7 @@ def make_kan_net_layers(layer_dims: jnp.ndarray,
                                                              c_ext = params['c_ext'],
                                                              bias = params['bias'],
                                                              c_res = params['c_res'])
-        else:
+        elif spline:
             h_one_next = kan_networks_blocks.forward_each_layer(x=h_one,
                                                                 n_in=n_in,
                                                                 n_out=n_out,
@@ -137,7 +138,7 @@ def make_kan_net_layers(layer_dims: jnp.ndarray,
                                                                 c_spl = params['c_spl'],
                                                                 bias = params['bias'],
                                                                 c_res = params['c_res'])
-        h_one_next = residual(h_one, h_one_next)
+        #h_one_next = residual(h_one, h_one_next)
         return h_one_next
 
     def apply(params,
@@ -178,7 +179,8 @@ def make_orbitals(nspins: Tuple[int, int],
                   g_envelope: int,
                   k_envelope: int,
                   grid_range_envelope: jnp.ndarray,
-                  chebyshev: bool = False,):
+                  chebyshev: bool = False,
+                  spline: bool = False,):
     #equivariant_layers_init, equivariant_layers_apply = equivariant_layers()
 
 
@@ -193,8 +195,10 @@ def make_orbitals(nspins: Tuple[int, int],
         """please be same with the apply function. I will reformat it into cfg file."""
         if chebyshev:
             params['orbitals'] = chebyshev_envelopes.init_chebyshev(key=key_envelope, n_in=nelectrons, n_out=nelectrons, d=k_envelope,)
-        else:
+        elif spline:
             params['orbitals'] = kan_envelopes.init_ka_layer(key=key_orbitals, n_in=nelectrons, n_out=nelectrons, g=g_envelope, k=k_envelope)
+        else:
+            params['orbitals'] = jax.random.normal(key_orbitals, (nelectrons, 3))
         params['jastrow_ee'] = jastrow_ee_init(n_parallel=n_parallel, n_antiparallel=n_antiparallel)
         #jax.debug.print("params['jastrow_ee']:{}", params['jastrow_ee'])
         return params
@@ -213,7 +217,7 @@ def make_orbitals(nspins: Tuple[int, int],
         #jax.debug.print("pos:{}", pos)
         #jax.debug.print("atoms:{}", atoms)
         ae, ee, r_ae, r_ee = construct_input_features(pos, atoms, ndim=3)
-        ae = ae/r_ae
+        #ae = ae/r_ae
         """we construct input layer here.23.10.2025."""
         input_layer = jnp.concatenate((r_ae, ae), axis=2).reshape(nelectrons, -1)
         #jax.debug.print("input:{}", input)
@@ -235,10 +239,11 @@ def make_orbitals(nspins: Tuple[int, int],
         #jax.debug.print("coe_eff:{}", coe_eff)
         #jax.debug.print("r_ae:{}", r_ae)
         """for case one, we need """
+        #jax.debug.print("ae:{}", ae)
         #r_ae = jnp.tile(r_ae, (nelectrons,)).reshape(nelectrons, nelectrons)
-
         #r_eff = r_ae + coe_eff # not necessary
         r_eff = coe_eff
+        #jax.debug.print("r_eff:{}", r_eff)
         #jax.debug.print("r_ae:{}", r_ae)
         #jax.debug.print("r_eff:{}", r_eff)
         """do not forget the parameters for the envelope functions. Something is wrong."""
@@ -251,7 +256,7 @@ def make_orbitals(nspins: Tuple[int, int],
                                                                                  c_ext = params['orbitals']['c_ext'],
                                                                                  bias = params['orbitals']['bias'],
                                                                                  c_res = params['orbitals']['c_res'])
-        else:
+        elif spline:
             orbitals_spline_determinant = kan_envelopes.forward_each_layer(x=r_eff,
                                                                            n_in=nelectrons,
                                                                            n_out=nelectrons,
@@ -262,6 +267,15 @@ def make_orbitals(nspins: Tuple[int, int],
                                                                            c_spl =  params['orbitals']['c_spl'],
                                                                            bias =  params['orbitals']['bias'],
                                                                            c_res =  params['orbitals']['c_res'])
+        else:
+            """28.11.2025, it is proved that the format of envelope function has a large impact on the calculation result.
+            We need do more on the envelope function. Consider to read some coefficients from HF."""
+            #jax.debug.print("params['orbitals']:{}", params['orbitals'])
+            ae = jnp.reshape(ae, (nelectrons, 3))
+            envelope_exp = jnp.exp(-1 * jnp.abs(jnp.sum(params['orbitals']*ae, axis=-1)))
+            #jax.debug.print("envelope_exp:{}", envelope_exp)
+            orbitals_spline_determinant = envelope_exp[None, ...] * coe_eff
+
         #jax.debug.print("r_ee:{}", r_ee)
         """the shape of orbitals_spline_determinant should be like, 19.11.2025.
         |psi_1(r1), psi_2(r1), psi_3(r1), psi_4(r1), psi_5(r1), psi6(r1)|
@@ -298,6 +312,7 @@ def make_kan_net(nspins: Tuple[int, int],
                  natoms: int,
                  ndims: int=3,
                  chebyshev: bool = False,
+                 spline: bool = False,
                  ):
     """
     nspins: the spin configuration.
@@ -317,7 +332,8 @@ def make_kan_net(nspins: Tuple[int, int],
     kan_equivariant_layers_init, kan_equivariant_layers_apply = make_kan_net_layers(layer_dims=layer_dims,
                                                                                     g=g,
                                                                                     k=k,
-                                                                                    chebyshev=chebyshev,)
+                                                                                    chebyshev=chebyshev,
+                                                                                    spline=spline)
     jastrow_ee_init, jastrow_ee_apply = make_pade_ee_jastrow()
     orbitals_init, orbitals_apply = make_orbitals(nspins=nspins,
                                                   charges=charges,
@@ -335,7 +351,8 @@ def make_kan_net(nspins: Tuple[int, int],
                                                   g_envelope=g_envelope,
                                                   k_envelope=k_envelope,
                                                   grid_range_envelope=grid_range_envelope,
-                                                  chebyshev=chebyshev)
+                                                  chebyshev=False,
+                                                  spline=False)
 
     def init(key: chex.PRNGKey) -> ParamTree:
         key, subkey = jax.random.split(key, num=2)

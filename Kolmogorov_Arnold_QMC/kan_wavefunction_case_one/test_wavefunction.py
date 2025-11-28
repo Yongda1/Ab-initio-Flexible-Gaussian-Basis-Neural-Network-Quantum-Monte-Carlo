@@ -42,7 +42,8 @@ kan_init, kan_apply, orbitals_apply = make_kan_net(nspins=(3, 3),
                                                    g_envelope=3,
                                                    k_envelope=3,
                                                    grid_range_envelope=jnp.array([0, 5]),
-                                                   chebyshev=True,)
+                                                   chebyshev=True,
+                                                   spline=False,)
 
 params = kan_init(subkey)
 #jax.debug.print("params:{}", params)
