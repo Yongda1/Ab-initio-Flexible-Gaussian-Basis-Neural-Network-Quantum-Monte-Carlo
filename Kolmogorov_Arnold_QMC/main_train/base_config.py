@@ -17,6 +17,12 @@ def default() -> ml_collections.ConfigDict:
         'iterations': 1000,
         'preiterations': 1000,
         'chebyshev': True,
+        'spline': False,
+        'envelope_chebyshev': False,
+        'envelope_spline': False,
+        'add_residual' : False,
+        'add_bias': True,
+        'external_weights': True,
         'system':{
             'molecule': config_dict.placeholder(list),
             'electrons': (3, 3),

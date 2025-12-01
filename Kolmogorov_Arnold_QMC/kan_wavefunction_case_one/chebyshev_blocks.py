@@ -6,13 +6,13 @@ from typing import MutableMapping, Optional, Sequence, Tuple
 #from setuptools.dist import check_extras
 
 """in this module, we finish the chebyshev polynomial as the the basis functions."""
-
+"""let us try to remove the residual functions. It probably is not necessary for our calculation."""
 
 def init_chebyshev(key: chex.PRNGKey,
                    n_in: int,
                    n_out: int,
                    d: int,
-                   add_residual: bool = True,
+                   add_residual: bool = False,
                    add_bias: bool = True,
                    external_weights: bool = True,
                    ):
@@ -22,13 +22,13 @@ def init_chebyshev(key: chex.PRNGKey,
     ext_dim = d if add_bias else d+1
     std = 1.0/jnp.sqrt(n_in * ext_dim)
     c_basis = jax.nn.initializers.truncated_normal(stddev=std,)(key_basis, (n_out, n_in, ext_dim))
-    #jax.debug.print("c_basis:{}", c_basis)
-    c_res = jax.nn.initializers.glorot_uniform(in_axis=-1, out_axis=-2)(key_residual, (n_out, n_in))
-    #jax.debug.print("c_res:{}", c_res)
     bias = jnp.zeros(n_out)
-    #jax.debug.print("bias:{}", bias)
     c_ext = jnp.ones((n_out, n_in))
-    return {'c_basis': c_basis, 'c_res': c_res, 'c_ext': c_ext, 'bias': bias, }
+    if add_residual:
+        c_res = jax.nn.initializers.glorot_uniform(in_axis=-1, out_axis=-2)(key_residual, (n_out, n_in))
+        return {'c_basis': c_basis, 'c_res': c_res, 'c_ext': c_ext, 'bias': bias, }
+    else:
+        return {'c_basis': c_basis, 'c_ext': c_ext, 'bias': bias, 'c_res': None,}
 
 
 def chebyshev_polynomial_each_layer(x: jnp.ndarray,
@@ -45,7 +45,7 @@ def chebyshev_polynomial_each_layer(x: jnp.ndarray,
     return cheb_value[:, :, 1:]
 
 def residual(x: jnp.ndarray,):
-    #return jnp.exp(-x)
+    #return x
     return x/(1+jnp.exp(-x))
 
 

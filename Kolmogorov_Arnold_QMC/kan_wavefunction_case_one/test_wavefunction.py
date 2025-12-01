@@ -43,7 +43,12 @@ kan_init, kan_apply, orbitals_apply = make_kan_net(nspins=(3, 3),
                                                    k_envelope=3,
                                                    grid_range_envelope=jnp.array([0, 5]),
                                                    chebyshev=True,
-                                                   spline=False,)
+                                                   spline=False,
+                                                   add_residual=False,
+                                                   add_bias=True,
+                                                   external_weights=True,
+                                                   envelope_chebyshev=False,
+                                                   envelope_spline=False,)
 
 params = kan_init(subkey)
 #jax.debug.print("params:{}", params)
