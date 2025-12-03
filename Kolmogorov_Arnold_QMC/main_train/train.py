@@ -94,6 +94,7 @@ def train(cfg: ml_collections.ConfigDict,):
     params = kan_init(subkey)
     signed_network = kan_apply
     logabs_network = lambda *args, **kwargs: signed_network(*args, **kwargs)[1]
+    """these are for real orbitals. not for complex orbitals. to be continued...3.12.2025.!!!"""
     spins = jnp.array([cfg.spins])
     #jax.debug.print("spins:{}", spins)
     batch_network = jax.vmap(

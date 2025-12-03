@@ -32,7 +32,7 @@ def _jastrow_ee(r_ees: jnp.array, params: ParamTree, parallel_indices: jnp.array
         currently, it is only working for 6 electrons.23.10.2025.
     """
     r_ees_test = jnp.reshape(r_ees, (6, 6))
-    jax.debug.print("r_ees_test", r_ees_test)
+    #jax.debug.print("r_ees_test", r_ees_test)
     r_ees_parallel = jnp.array([r_ees_test[parallel_indices[:, i][0], parallel_indices[:, i][1]] for i in range(6)])
     r_ees_antiparallel = jnp.array([r_ees_test[antiparallel_indices[:, i][0], antiparallel_indices[:, i][1]] for i in range(9)])
     jastrow_ee_par = jnp.sum(jastrow_fun(r_ees_parallel, 0.25, params['ee_par']))

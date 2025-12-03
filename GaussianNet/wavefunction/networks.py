@@ -227,8 +227,8 @@ def make_gaussian_net_layers(nspins: Tuple[int, int],
             2.0) if x.shape == y.shape else y  # the shape of x must be same with y
         h_two_embedding = h_two[0]
         h_one_in = construct_symmetric_features(h_one, h_two_embedding, nspins)
-        jax.debug.print("h_one_in:{}", h_one_in)
-        jax.debug.print("params['single']:{}", params['single'])
+        #jax.debug.print("h_one_in:{}", h_one_in)
+        #jax.debug.print("params['single']:{}", params['single'])
         h_one_next = jnp.tanh(network_blocks.linear_layer(h_one_in, **params['single']))
         h_one = residual(h_one, h_one_next)
         if 'double' in params:
@@ -250,7 +250,7 @@ def make_gaussian_net_layers(nspins: Tuple[int, int],
         )
         h_one = ae_features
         h_two = [ee_features]
-        jax.debug.print("h_one:{}", h_one)
+        #jax.debug.print("h_one:{}", h_one)
         for i in range(len(hidden_dims)):
             h_one, h_two = apply_layer(params['embedding_layer'][i],
                                        h_one,
@@ -363,10 +363,10 @@ def make_orbitals(nspins: Tuple[int, int],
                                                  ee=ee,
                                                  r_ee=r_ee,
                                                  charges=charges)
-
+        jax.debug.print("h_to_orbitals:{}", h_to_orbitals)
         h_to_orbitals = jnp.split(h_to_orbitals, network_blocks.array_partitions(nspins), axis=0)
         h_to_orbitals = [h for h, spin in zip(h_to_orbitals, nspins) if spin > 0]
-        jax.debug.print("h_to_orbitals:{}", h_to_orbitals)
+        #jax.debug.print("h_to_orbitals:{}", h_to_orbitals)
         #jax.debug.print("orbital:{}", params['orbital'])
         #for h, p in zip(h_to_orbitals, params['orbital']):
             #jax.debug.print("h:{}", h)
@@ -400,12 +400,12 @@ def make_orbitals(nspins: Tuple[int, int],
         #jax.debug.print("orbitals_angular_before:{}", orbitals_angular)
         orbitals_angular = [jnp.transpose(orbital, (1, 0, 2)) for orbital in orbitals_angular]
         orbitals_angular = [jnp.concatenate(orbitals_angular, axis=1)]
-        #jax.debug.print("orbitals_angular:{}", orbitals_angular)
+        jax.debug.print("orbitals_angular:{}", orbitals_angular)
         """the determinant is |psi_1(r_1)  psi_2(r_1) psi_3(r_1) psi_4(r_1)|
                               |psi_1(r_2)  psi_2(r_2) psi_3(r_2) psi_4(r_2)|
                               |psi_1(r_3)  psi_2(r_3) psi_3(r_3) psi_4(r_3)|
                               |psi_1(r_4)  psi_2(r_4) psi_3(r_4) psi_4(r_4)|"""
-
+        '''
         """the next step, we need construct the G_uu and G_dd 11.09.2025."""
         uu, dd, ud_s, ud_t = pfaffian(orbitals=jnp.array(orbitals_angular))
         r_ee_uu = jnp.reshape(r_ee, (6, -1))
@@ -478,13 +478,14 @@ def make_orbitals(nspins: Tuple[int, int],
         pfaffian_up = jnp.concatenate((pfaffian_wavefunction_up_up, pfaffian_wavefunction_up_down), axis=0)
         jax.debug.print("pfaffian_up:{}", pfaffian_up)
         return pfaffian_up
-
-        '''jastrow = jnp.exp(jastrow_ee_apply(r_ee=r_ee,
+        '''
+        """
+        jastrow = jnp.exp(jastrow_ee_apply(r_ee=r_ee,
                                            parallel_indices=parallel_indices,
                                            antiparallel_indices=antiparallel_indices,
                                            params=params['jastrow_ee']) / 6)
-        orbitals_angular_jastrow = [orbital * jastrow for orbital in orbitals_angular]
-        return orbitals_angular'''
+        orbitals_angular_jastrow = [orbital * jastrow for orbital in orbitals_angular]"""
+        return orbitals_angular
 
 
     return init, apply
@@ -544,26 +545,27 @@ def make_gaussian_net(
               spins: jnp.ndarray,
               atoms: jnp.ndarray,
               charges: jnp.ndarray, ) -> Tuple[jnp.ndarray, jnp.ndarray]:
-        #orbitals_with_angular = orbitals_apply(params, pos, spins, atoms, charges)
+        orbitals_with_angular = orbitals_apply(params, pos, spins, atoms, charges)
+        jax.debug.print("orbitals_with_angular:{}", orbitals_with_angular)
         """here, we test the pfaffian function.10.09.2025."""
         #output = pfaffian(orbitals_with_angular)
-        #result = network_blocks.logdet_matmul(orbitals_with_angular)
-        pfaffian_wavefunction = orbitals_apply(params, pos, spins, atoms, charges)
+        result = network_blocks.logdet_matmul(orbitals_with_angular)
+        #pfaffian_wavefunction = orbitals_apply(params, pos, spins, atoms, charges)
         #jax.debug.print("pfaffian_wavefunction:{}", pfaffian_wavefunction)
         #jax.debug.print("-pfaffian_wavefunction:{}", -pfaffian_wavefunction)
         #pfaffian_wavefunction =pfaffian_wavefunction - jnp.transpose(pfaffian_wavefunction)
         """this is only working for the real number.15.09.2025. we need find a way to solve this problem.
         the python version is not working well but the cpython version is working. 16.09.2025."""
         #result = pf.pfaffian(pfaffian_wavefunction)
-        jax.debug.print("type_pfaffian_wavefunction:{}", type(pfaffian_wavefunction))
+        #jax.debug.print("type_pfaffian_wavefunction:{}", type(pfaffian_wavefunction))
         """here, we have a type warning. It does not matter. 16.09.2025."""
-        result = cpf(matrix= pfaffian_wavefunction, uplo='U')
+        #result = cpf(matrix= pfaffian_wavefunction, uplo='U')
         """here,we need notice the output of pfaffian is just a complex number. While we calculate the determinant, we are
         using the log to calculate the value of wave function. To match the format, we rewrite the result to [[[result]]].
         Tomorrow, we test it. We also notice the method orbitals_apply. in case somewhere we used it. 16.09.2025.
         It is running now. We need check out if our codes are running smoothly 16.09.2025..
         """
-        result = network_blocks.slogdet(jnp.array([[[result]]]))
+        #result = network_blocks.slogdet(jnp.array([[[result]]]))
         return result
 
     return Network(init=init, apply=apply, orbitals=orbitals_apply)
