@@ -85,8 +85,8 @@ def train(cfg: ml_collections.ConfigDict,):
                                                        add_residual=cfg.add_residual,
                                                        add_bias=cfg.add_bias,
                                                        external_weights=cfg.external_weights,
-                                                       envelope_chebyshev=cfg.chebyshev,
-                                                       envelope_spline=cfg.spline)
+                                                       envelope_chebyshev=cfg.envelope_chebyshev,
+                                                       envelope_spline=cfg.envelope_spline)
 
     seed = 42
     key = jax.random.PRNGKey(seed)
@@ -95,11 +95,21 @@ def train(cfg: ml_collections.ConfigDict,):
     signed_network = kan_apply
     logabs_network = lambda *args, **kwargs: signed_network(*args, **kwargs)[1]
     """these are for real orbitals. not for complex orbitals. to be continued...3.12.2025.!!!"""
+    """complex version can run. 5.12.2025."""
     spins = jnp.array([cfg.spins])
     #jax.debug.print("spins:{}", spins)
     batch_network = jax.vmap(
         logabs_network, in_axes=(None, 0, None, None, None), out_axes=0
     )
+    jax.debug.print("pos:{}", pos)
+    jax.debug.print("spis:{}", spins)
+    jax.debug.print("atoms:{}", atoms)
+    jax.debug.print("charges:{}", charges)
+    #value_wavefunction = batch_network(params, pos, spins, atoms, charges)
+
+    def log_network(*args, **kwargs):
+        phase, mag = signed_network(*args, **kwargs)
+        return mag + 1.j * phase
 
     key, hartree_fock_key = jax.random.split(key, 2)
     orbitals_vmap = jax.vmap(orbitals_apply, in_axes=(None, 0, None, None, None), out_axes=0)
@@ -120,10 +130,10 @@ def train(cfg: ml_collections.ConfigDict,):
         states=0,
     )
 
-    jax.debug.print("pos:{}", pos)
-    jax.debug.print("params:{}", params)
+    #jax.debug.print("pos:{}", pos)
+    #jax.debug.print("params:{}", params)
     #jax.debug.print("atoms:{}", atoms)
-    #wavefunction_value = batch_network(params, pos, spins, atoms, charges)
+
     #jax.debug.print("wavefunction_value:{}", wavefunction_value)
     """we need do batch for pos."""
     data = KANetsData(positions=pos, spins=spins, atoms=atoms, charges=charges)
@@ -152,12 +162,12 @@ def train(cfg: ml_collections.ConfigDict,):
     #output = local_energy_vmap(params, energy_key, data.positions, data.spins, data.atoms, data.charges,)
     #jax.debug.print("output:{}", output)
     """next, we need construction the loss function. 3.11.2025."""
-    evaluate_loss = qmc_loss_functions.make_loss(logabs_network,
+    evaluate_loss = qmc_loss_functions.make_loss(log_network,
                                                  local_energy,
                                                  clip_local_energy=5.0,
                                                  clip_from_median=True,
                                                  center_at_clipped_energy=True,
-                                                 complex_output=False,
+                                                 complex_output=True,
                                                  )
 
     def learning_rate_schedule(t_: jnp.ndarray) -> jnp.ndarray:

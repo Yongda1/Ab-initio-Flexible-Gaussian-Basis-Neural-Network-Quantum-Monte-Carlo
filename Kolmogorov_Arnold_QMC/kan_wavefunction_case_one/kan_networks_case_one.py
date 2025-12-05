@@ -367,8 +367,7 @@ def make_orbitals(nspins: Tuple[int, int],
             orbitals_angular[i] = orbitals_angular[i] * simple_envelope_apply(ae=ae_channels[i],
                                                                               r_ae=r_ae_channels[i],
                                                                               r_ee=r_ee_channels[i],
-                                                                              pi=params['envelope'][i]['pi'],
-                                                                              sigma=params['envelope'][i]['sigma'])
+                                                                              **params['envelope'][i],)
 
         shapes = [(spin, -1, sum(nspins)) for spin in active_spin_channels]
         orbitals_angular = [jnp.reshape(orbital, shape) for orbital, shape in zip(orbitals_angular, shapes)]
@@ -541,9 +540,9 @@ def make_kan_net(nspins: Tuple[int, int],
         determinant = orbitals_apply(params, pos, spins, atoms, charges)
         #jax.debug.print("determinant:{}", determinant)
         #sign, logdet = jnp.linalg.slogdet(determinant)
-        result = normal_network_blocks.logdet_matmul(determinant)
+        sign, logdet = normal_network_blocks.logdet_matmul(determinant)
         """we only consider single determinant.23.10.2025."""
-        return result
+        return sign, logdet
 
     def orbitals(params,
               pos: jnp.ndarray,
