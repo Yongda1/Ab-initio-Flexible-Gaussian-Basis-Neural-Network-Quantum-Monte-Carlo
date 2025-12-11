@@ -20,6 +20,7 @@ def default() -> ml_collections.ConfigDict:
         'spline': False,
         'envelope_chebyshev': False,
         'envelope_spline': False,
+        'envelope_simple': True,
         'add_residual' : False,
         'add_bias': True,
         'external_weights': True,

@@ -47,11 +47,27 @@ kan_init, kan_apply, orbitals_apply = make_kan_net(nspins=(3, 3),
                                                    add_residual=False,
                                                    add_bias=True,
                                                    external_weights=True,
-                                                   envelope_chebyshev=False,
-                                                   envelope_spline=False,)
+                                                   envelope_chebyshev=True,
+                                                   envelope_spline=False,
+                                                   envelope_simple=False,)
 
 params = kan_init(subkey)
 #jax.debug.print("params:{}", params)
 #jax.debug.print("params_embedding_single:{}", params['layers']['embedding_layer'][0]['single'])
+#jax.debug.print("params:{}", params)
+mask = jax.tree.map(lambda x: x == 1, params)
+#for x in params:
+#    jax.debug.print("x:{}", x)
+#jax.debug.print("mask:{}", type(mask))
+#jax.debug.print("mask:{}", mask)
+'''
+jax.debug.print("mask_envelope:{}", mask['envelope'])
+envelope_opt = True
+if envelope_opt:
+    #new_value = True
+    my_dict = {k: v == False for k, v in mask['envelope'].items()}
+    #mask['envelope'] = {k: new_value for k in mask['envelope']}
+    jax.debug.print("mask:{}", mask['envelope'])
+'''
 wavefunction_value = kan_apply(params, pos, spins, atoms, charges)
 jax.debug.print("wavefunction_value:{}", wavefunction_value)

@@ -86,7 +86,8 @@ def train(cfg: ml_collections.ConfigDict,):
                                                        add_bias=cfg.add_bias,
                                                        external_weights=cfg.external_weights,
                                                        envelope_chebyshev=cfg.envelope_chebyshev,
-                                                       envelope_spline=cfg.envelope_spline)
+                                                       envelope_spline=cfg.envelope_spline,
+                                                       envelope_simple=cfg.envelope_simple,)
 
     seed = 42
     key = jax.random.PRNGKey(seed)

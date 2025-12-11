@@ -260,7 +260,8 @@ def make_orbitals(nspins: Tuple[int, int],
                   k_envelope: int,
                   grid_range_envelope: jnp.ndarray,
                   chebyshev: bool = False,
-                  spline: bool = False,):
+                  spline: bool = False,
+                  simple: bool = True,):
     #equivariant_layers_init, equivariant_layers_apply = equivariant_layers()
     simple_envelope_init, simple_envelope_apply = simple_envelope.make_isotropic_envelope()
 
@@ -304,7 +305,7 @@ def make_orbitals(nspins: Tuple[int, int],
             params['orbitals'] = chebyshev_envelopes.init_chebyshev(key=key_envelope, n_in=nelectrons, n_out=nelectrons, d=k_envelope,)
         elif spline:
             params['orbitals'] = kan_envelopes.init_ka_layer(key=key_orbitals, n_in=nelectrons, n_out=nelectrons, g=g_envelope, k=k_envelope)
-        else:
+        elif simple:
             #params['orbitals'] = jax.random.normal(key_orbitals, (nelectrons, 3))
             #params['orbitals'] = jax.random.normal(key_orbitals, (nelectrons, 1))
             params['envelope'] = simple_envelope_init(natom=1, output_dims=output_dims, ndim=3)
@@ -330,13 +331,13 @@ def make_orbitals(nspins: Tuple[int, int],
         #ae = ae/r_ae
         """we construct input layer here.23.10.2025."""
         h_one = jnp.concatenate((r_ae, ae), axis=2).reshape(nelectrons, -1)
-        ee_features = jnp.concatenate((r_ee, ee), axis=2)
+        #ee_features = jnp.concatenate((r_ee, ee), axis=2)
         #jax.debug.print("ee_features:{}", ee_features)
-        h_two = ee_features
+        #h_two = ee_features
         #jax.debug.print("input:{}", input)
         #jax.debug.print("h_two:{}", h_two)
 
-        h_test = construct_symmetric_features(h_one, h_two, nspins)
+        #h_test = construct_symmetric_features(h_one, h_two, nspins)
         """ignore this line, it is not applied currently in our nets.3.12.2025."""
         #jax.debug.print("h_test:{}", h_test)
         """we need do more for this part to make h_test to be the input vector."""
@@ -356,19 +357,56 @@ def make_orbitals(nspins: Tuple[int, int],
         #jax.debug.print("orbitals_complex:{}", orbitals)
 
         orbitals_angular = orbitals
-
+        #jax.debug.print("orbitals_angular:{}", orbitals_angular)
+        #jax.debug.print("r_ae:{}", r_ae)
+        shape = r_ae.shape
         active_spin_channels = [spin for spin in nspins if spin > 0]
         active_spin_partitions = array_partitions(active_spin_channels)
         ae_channels = jnp.split(ae, active_spin_partitions, axis=0)
         r_ae_channels = jnp.split(r_ae, active_spin_partitions, axis=0)
         r_ee_channels = jnp.split(r_ee, active_spin_partitions, axis=0)
-        #jax.debug.print("params['envelope']:{}", params['envelope'])
-        for i in range(len(active_spin_channels)):
-            orbitals_angular[i] = orbitals_angular[i] * simple_envelope_apply(ae=ae_channels[i],
-                                                                              r_ae=r_ae_channels[i],
-                                                                              r_ee=r_ee_channels[i],
-                                                                              **params['envelope'][i],)
 
+        r_ae = jnp.reshape(r_ae, (1, nelectrons))
+
+        if simple:
+            #jax.debug.print("active_spin_channels:{}", active_spin_channels)
+            for i in range(len(active_spin_channels)):
+                orbitals_angular[i] = orbitals_angular[i] * simple_envelope_apply(ae=ae_channels[i],
+                                                                                  r_ae=r_ae_channels[i],
+                                                                                  r_ee=r_ee_channels[i],
+                                                                                  **params['envelope'][i],)
+        elif chebyshev:
+            envelope_chebyshev = chebyshev_envelopes.forward_each_layer(x=r_ae,
+                                                                        n_in=nelectrons,
+                                                                        n_out=nelectrons,
+                                                                        d=k_envelope,
+                                                                        c_basis=params['orbitals']['c_basis'],
+                                                                        c_ext=params['orbitals']['c_ext'],
+                                                                        bias=params['orbitals']['bias'],
+                                                                        c_res=params['orbitals']['c_res'])
+
+            envelope_chebyshev = jnp.reshape(envelope_chebyshev, shape)
+            envelope_chebyshev = jnp.split(envelope_chebyshev, active_spin_partitions, axis=0)
+            #jax.debug.print("envelope_chebyshev:{}",  envelope_chebyshev)
+            for i in range(len(active_spin_channels)):
+                orbitals_angular[i] = orbitals_angular[i] * envelope_chebyshev[i]
+        elif spline:
+            envelope_spline = kan_envelopes.forward_each_layer(x=r_ae,
+                                                                           n_in=nelectrons,
+                                                                           n_out=nelectrons,
+                                                                           g=g_envelope,
+                                                                           k=k_envelope,
+                                                                           grid_range=grid_range_envelope,
+                                                                           c_basis=params['orbitals']['c_basis'],
+                                                                           c_spl=params['orbitals']['c_spl'],
+                                                                           bias=params['orbitals']['bias'],
+                                                                           c_res=params['orbitals']['c_res'])
+            envelope_spline = jnp.reshape(envelope_spline, shape)
+            envelope_spline = jnp.split(envelope_spline, active_spin_partitions, axis=0)
+            for i in range(len(active_spin_channels)):
+                orbitals_angular[i] = orbitals_angular[i] * envelope_spline[i]
+
+        #jax.debug.print("orbitals_angular_second:{}", orbitals_angular)
         shapes = [(spin, -1, sum(nspins)) for spin in active_spin_channels]
         orbitals_angular = [jnp.reshape(orbital, shape) for orbital, shape in zip(orbitals_angular, shapes)]
         #jax.debug.print("orbitals_angular_before:{}", orbitals_angular)
@@ -482,6 +520,7 @@ def make_kan_net(nspins: Tuple[int, int],
                  external_weights: bool = True,
                  envelope_chebyshev: bool = False,
                  envelope_spline: bool = False,
+                 envelope_simple: bool = True,
                  ):
     """
     nspins: the spin configuration.
@@ -526,7 +565,8 @@ def make_kan_net(nspins: Tuple[int, int],
                                                   k_envelope=k_envelope,
                                                   grid_range_envelope=grid_range_envelope,
                                                   chebyshev=envelope_chebyshev,
-                                                  spline=envelope_spline)
+                                                  spline=envelope_spline,
+                                                  simple=envelope_simple,)
 
     def init(key: chex.PRNGKey) -> ParamTree:
         key, subkey = jax.random.split(key, num=2)
