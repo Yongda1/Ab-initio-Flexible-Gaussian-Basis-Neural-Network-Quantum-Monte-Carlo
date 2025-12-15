@@ -392,15 +392,15 @@ def make_orbitals(nspins: Tuple[int, int],
                 orbitals_angular[i] = orbitals_angular[i] * envelope_chebyshev[i]
         elif spline:
             envelope_spline = kan_envelopes.forward_each_layer(x=r_ae,
-                                                                           n_in=nelectrons,
-                                                                           n_out=nelectrons,
-                                                                           g=g_envelope,
-                                                                           k=k_envelope,
-                                                                           grid_range=grid_range_envelope,
-                                                                           c_basis=params['orbitals']['c_basis'],
-                                                                           c_spl=params['orbitals']['c_spl'],
-                                                                           bias=params['orbitals']['bias'],
-                                                                           c_res=params['orbitals']['c_res'])
+                                                               n_in=nelectrons,
+                                                               n_out=nelectrons,
+                                                               g=g_envelope,
+                                                               k=k_envelope,
+                                                               grid_range=grid_range_envelope,
+                                                               c_basis=params['orbitals']['c_basis'],
+                                                               c_spl=params['orbitals']['c_spl'],
+                                                               bias=params['orbitals']['bias'],
+                                                               c_res=params['orbitals']['c_res'])
             envelope_spline = jnp.reshape(envelope_spline, shape)
             envelope_spline = jnp.split(envelope_spline, active_spin_partitions, axis=0)
             for i in range(len(active_spin_channels)):
